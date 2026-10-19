@@ -2839,4 +2839,56 @@ memory.consolidate(store2, "claude-haiku-5-5", names=world2.names(), all_ids=["w
 assert f.kinds() == ["consolidate"]
 print("   PASS")
 
+# ------------------------------------------------------------------ 86
+print("== 86. action beats: the setting, what a speaker is told, and the transcript ==")
+store, world, c = make([WREN, MICK], narrator=True)
+assert world.fixed["actions"] == "rare", "on by default"
+fw, fn = world.render_fixed("wren"), world.render_fixed("narrator")
+assert "ACTIONS: speech comes first" in fw and "overrides any instruction above to write only spoken words" in fw, "the engine text beats an authored 'speak only'"
+assert "ACTIONS:" not in fn, "the narrator's wording is its own"
+assert "only for yourself" in fw and "never say what others do, feel or notice" in fw, "a character acts for themselves only"
+# the reminder sits last in context, so it carries the exception too
+rem = world.reminder_for("wren")
+assert rem.startswith("R-WREN ") and rem.endswith("only when it matters."), rem
+assert world.reminder_for("narrator") == world.narrator["reminder"].strip(), "the narrator's reminder is untouched"
+world.character("wren")["reminder"] = ""
+assert world.reminder_for("wren") == st.ACTION_MODES["rare"][1], "no authored reminder: just the line"
+world.character("wren")["reminder"] = "R-WREN"
+system, tail = c.build_context("wren", [])
+assert "ACTIONS: speech comes first" in system, "in the context a character is given"
+assert (system + tail).rstrip().endswith("only when it matters."), "and the reminder, last of all, carries the exception"
+# off leaves the authored wording alone
+world.fixed["actions"] = "off"
+assert "ACTIONS:" not in world.render_fixed("wren") and world.reminder_for("wren") == "R-WREN"
+world.fixed["actions"] = "nonsense"
+assert "ACTIONS: speech comes first" in world.render_fixed("wren"), "an unknown value falls back to the default"
+world.fixed["actions"] = "rare"
+# the setting: endpoint, persistence, an older world
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine = store, world, c
+cl = appmod.app.test_client()
+r = cl.post("/api/fixed", json={"actions": "off"})
+assert r.status_code == 200 and world.fixed["actions"] == "off" and r.get_json()["world"]["fixed"]["actions"] == "off"
+assert st.WorldState(world.path).fixed["actions"] == "off", "persisted"
+cl.post("/api/fixed", json={"actions": "always"})
+assert world.fixed["actions"] == "off", "an unknown value is ignored"
+cl.post("/api/fixed", json={"scenario": "New scenario."})
+assert world.fixed["actions"] == "off", "saving other fields keeps it"
+json.dump({"fixed": {"core_instructions": "C", "scenario": "S"}, "scene": {}, "characters": [{"name": "Wren"}], "narrator": {}, "player": {}},
+          open(os.path.join(tmp, "oldact.json"), "w"))
+assert st.WorldState(os.path.join(tmp, "oldact.json")).fixed["actions"] == "rare", "a world saved before the setting gets the default"
+world.reset_all()
+assert world.fixed["actions"] == "rare"
+# an action is just text in the line: nothing strips it, and an all-action line doesn't demand a reply
+assert c._clean("*slides the glass across.* Here.") == "*slides the glass across.* Here."
+assert c._expects_reply("Sure. *slides the key across.*") and not c._expects_reply("*slides the key across.*")
+# the transcript and the input
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert "function fillBody" in tmpl and ".act {" in tmpl and 'fillBody(div.querySelector(".body"), text)' in tmpl
+assert "innerHTML" not in tmpl[tmpl.index("function fillBody"):tmpl.index("function toggleDo")], "action text is never inserted as markup"
+assert 'id="do-toggle"' in tmpl and "function toggleDo" in tmpl and "function asAction" in tmpl and "/me" in tmpl
+assert 'id="fx-actions"' in tmpl and "describeActions" in tmpl and "actions: document.getElementById" in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

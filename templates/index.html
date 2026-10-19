@@ -44,6 +44,9 @@
   .msg.priv .body { border-left: 2px solid var(--teal); padding-left: 10px; }
   .msg.priv .who { color: var(--teal); }
   #say-to { align-self: flex-start; max-width: 150px; }
+  .act { color: var(--dim); font-style: italic; }
+  #do-toggle { align-self: flex-start; min-width: 48px; }
+  #do-toggle.on { background: var(--accent); color: #10131a; border-color: var(--accent); font-weight: 600; }
 
   #inputbar { border-top: 1px solid var(--line); padding: 12px 16px; background: var(--panel); }
   #inputrow { display: flex; gap: 8px; }
@@ -153,7 +156,8 @@
     <div id="cast-strip"></div>
     <div id="inputrow">
       <select id="say-to" title="Who hears this. Resets to everyone after each line."></select>
-      <textarea id="msg" placeholder="Say or do something…  (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="do-toggle" onclick="toggleDo()" title="Say: what you speak. Do: what you do, sent as an *action*. Also: start a line with /me. Resets to Say after each line.">Say</button>
+      <textarea id="msg" placeholder="Say or do something…  (Enter to send, Shift+Enter for newline, /me for an action)"></textarea>
       <button id="send" onclick="send()">Send</button>
     </div>
   </div>
@@ -377,6 +381,12 @@
           <option value="free">Free</option>
         </select>
         <div class="note" id="fx-invention-note" style="margin-top:4px"></div></div>
+      <div class="field"><label for="fx-actions">Action beats</label>
+        <select id="fx-actions" onchange="describeActions()">
+          <option value="rare">Rare and short</option>
+          <option value="off">Off (speech only)</option>
+        </select>
+        <div class="note" id="fx-actions-note" style="margin-top:4px"></div></div>
       <button onclick="saveFixed()">Save prompt</button>
     </div>
     <div class="section">
@@ -497,6 +507,36 @@ function colorOf(id) {
 }
 
 /* ---------------- transcript ---------------- */
+// Text between *asterisks* is an action: shown in italics, the asterisks themselves dropped. Built from text
+// nodes and spans (never innerHTML), so nothing a model writes can inject markup.
+function fillBody(el, text) {
+  el.textContent = "";
+  let last = 0;
+  for (const m of String(text).matchAll(/\*([^*\n]+)\*/g)) {
+    if (m.index > last) el.append(document.createTextNode(text.slice(last, m.index)));
+    const span = document.createElement("span");
+    span.className = "act";
+    span.textContent = m[1];
+    el.append(span);
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) el.append(document.createTextNode(text.slice(last)));
+}
+// What you type: in Do mode, or after /me, the line is sent as an action.
+let doMode = false;
+function toggleDo(on) {
+  doMode = on === undefined ? !doMode : on;
+  const b = document.getElementById("do-toggle");
+  b.textContent = doMode ? "Do" : "Say";
+  b.classList.toggle("on", doMode);
+  document.getElementById("msg").focus();
+}
+function asAction(text) {
+  const me = text.match(/^\/me\s+([\s\S]+)/i);
+  const body = me ? me[1].trim() : text;
+  if (!me && !doMode) return text;
+  return /^\*[^*]+\*$/.test(body) ? body : `*${body.replace(/\*/g, "")}*`;
+}
 function addMsg(cls, who, text, color) {
   const div = document.createElement("div");
   div.className = "msg " + cls;
@@ -504,7 +544,7 @@ function addMsg(cls, who, text, color) {
   const w = div.querySelector(".who");
   w.textContent = who;
   if (color) w.style.color = color;
-  div.querySelector(".body").textContent = text;
+  fillBody(div.querySelector(".body"), text);
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
   return div;
@@ -1169,6 +1209,7 @@ async function saveFixed() {
     core_instructions: document.getElementById("fx-core_instructions").value,
     scenario: document.getElementById("fx-scenario").value,
     invention: document.getElementById("fx-invention").value,
+    actions: document.getElementById("fx-actions").value,
   };
   const res = await (await fetch("/api/fixed", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
@@ -1259,9 +1300,10 @@ function cfg() {
 }
 async function send() {
   const box = document.getElementById("msg");
-  const text = box.value.trim();
-  if (!text) return;
+  const text = asAction(box.value.trim());
+  if (!box.value.trim() || /^\/me\s*$/i.test(box.value.trim())) return;
   box.value = "";
+  toggleDo(false);
   document.getElementById("send").disabled = true;
   const to = document.getElementById("say-to").value || null;
   addSpoken("player", nameOf("player"), text, to);
@@ -1374,7 +1416,16 @@ function loadFixed() {
   document.getElementById("fx-core_instructions").value = W.fixed.core_instructions || "";
   document.getElementById("fx-scenario").value = W.fixed.scenario || "";
   document.getElementById("fx-invention").value = W.fixed.invention || "balanced";
+  document.getElementById("fx-actions").value = W.fixed.actions || "rare";
+  describeActions();
   describeInvention();
+}
+function describeActions() {
+  const notes = {
+    rare: "Speech comes first. A character may add one short *action* when it matters (handing something over, leaving, a pointed gesture), only for themselves. This overrides any 'speak only' wording in your world prompt or a character's reminder. Type /me or press Do to act yourself.",
+    off: "Characters speak only, as your world prompt and their reminders say. You can still write actions.",
+  };
+  document.getElementById("fx-actions-note").textContent = notes[document.getElementById("fx-actions").value] || "";
 }
 function describeInvention() {
   const notes = {

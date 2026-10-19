@@ -159,6 +159,8 @@ def save_fixed():
         if field in body:
             if field == "invention" and body[field] not in state_mod.INVENTION_MODES:
                 continue
+            if field == "actions" and body[field] not in state_mod.ACTION_MODES:
+                continue
             world.fixed[field] = body[field]
     world.save()
     return jsonify({"ok": True, "world": world.snapshot()})

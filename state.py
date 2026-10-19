@@ -38,7 +38,7 @@ NARRATOR_ID = "narrator"
 WORLD_ID = "world"  # a memory subject, not a participant
 RESERVED_IDS = {PLAYER_ID, NARRATOR_ID, WORLD_ID, "*"}
 
-FIXED_FIELDS = ["core_instructions", "scenario", "invention"]
+FIXED_FIELDS = ["core_instructions", "scenario", "invention", "actions"]
 # `location` (the id of the scene place) is not free text, so it is not among these.
 SCENE_FIELDS = ["fiction_time", "extras", "open_threads"]
 CHAR_STATE_FIELDS = ["status", "view_of_player", "relationship", "location"]
@@ -111,6 +111,7 @@ GUIDANCE = {
 
 DEFAULT_FIXED = {
     "invention": "balanced",  # how freely characters may make things up: strict | balanced | free
+    "actions": "rare",        # whether characters may add a short action beat to what they say: rare | off
     "core_instructions": (
         "Stay in character at all times. Never mention being an AI and never "
         "break the fourth wall.\n\n"
@@ -217,6 +218,24 @@ INVENTION_MODES = {
         "opinions and rumours, even about other people. What you say about the world becomes part "
         "of it, so stay consistent with what you have been told and with what you have said before.",
         "GROUNDING: Describe and invent freely; stay consistent with what has been established.",
+    ),
+}
+
+# Action beats. The world is dialogue-first, so by default a character may add ONE short action in
+# *asterisks* only when it matters. This is engine text, not authored text: authored core instructions and
+# per-character reminders typically say "speak only", so it says plainly that it overrides them. "off" leaves
+# the authored wording in charge. The action is part of the same line, so everyone present sees it, and it
+# is only ever the character's own: what others do, feel or notice is not theirs to decide.
+ACTION_MODES = {
+    "off": ("", ""),
+    "rare": (
+        "ACTIONS: speech comes first. Only when an action matters (handing something over, leaving, "
+        "striking someone, a pointed gesture that changes the moment), add one short action in "
+        "*asterisks*, a few words in the third person, before or after what you say: '*slides the "
+        "glass across.* Here.' At most one. Never for routine business, and only for yourself: never "
+        "say what others do, feel or notice, or that anything happens in the world beyond your own "
+        "movement. This overrides any instruction above to write only spoken words.",
+        "Speech first; at most one short *action* in asterisks, only when it matters.",
     ),
 }
 
@@ -891,7 +910,8 @@ class WorldState:
         else:
             c = self.character(viewer) or {}
             parts = [self.fixed.get("core_instructions", ""), c.get("persona", ""),
-                     self.fixed.get("scenario", ""), scene_part, self._grounding(viewer), self._reserved_text(viewer)]
+                     self.fixed.get("scenario", ""), scene_part, self._grounding(viewer), self._reserved_text(viewer),
+                     self._actions_mode()[0]]
             if self.multi_party():
                 parts.append(
                     f"This is a scene with several people. You are {c.get('name', 'a character')}, "
@@ -907,10 +927,16 @@ class WorldState:
         char, narrator = INVENTION_MODES.get(mode, INVENTION_MODES["balanced"])
         return narrator if viewer == NARRATOR_ID else char
 
+    def _actions_mode(self) -> tuple[str, str]:
+        """(paragraph, reminder line) for the actions setting; both empty when off."""
+        return ACTION_MODES.get(self.fixed.get("actions"), ACTION_MODES["rare"])
+
     def reminder_for(self, viewer: str) -> str:
         if viewer == NARRATOR_ID:
             return (self.narrator.get("reminder") or "").strip()
-        return ((self.character(viewer) or {}).get("reminder") or "").strip()
+        r = ((self.character(viewer) or {}).get("reminder") or "").strip()
+        # last in context, so it has to carry the exception too: an authored reminder usually says "no stage directions"
+        return (r + " " + self._actions_mode()[1]).strip()
 
     def render_scene(self, viewer: str) -> str:
         names = self.names()
