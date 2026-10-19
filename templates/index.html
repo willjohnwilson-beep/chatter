@@ -1,0 +1,1333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chatter — roleplay memory harness</title>
+<style>
+  :root {
+    --bg: #12141a; --panel: #181b23; --panel-2: #1e222c; --line: #2a2f3d;
+    --text: #dfe3ec; --dim: #8b93a7; --accent: #7aa2f7; --warm: #e0af68;
+    --green: #9ece6a; --pink: #bb9af7; --red: #f7768e; --teal: #73daca;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; height: 100vh; display: flex; overflow: hidden;
+         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: var(--bg); color: var(--text); }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+       color: var(--dim); margin: 0 0 8px; font-weight: 600; }
+
+  /* ---------- left: chat ---------- */
+  #left { flex: 1 1 55%; display: flex; flex-direction: column; min-width: 0; }
+  #topbar { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex;
+            gap: 8px; align-items: center; flex-wrap: wrap; background: var(--panel); }
+  #topbar .title { font-weight: 600; margin-right: auto; }
+  #topbar .title span { color: var(--dim); font-weight: 400; }
+  button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+           padding: 5px 11px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  button:hover { border-color: var(--accent); }
+  button.danger:hover { border-color: var(--red); color: var(--red); }
+  button.armed { border-color: var(--red); color: var(--red); background: #2a1a1f; }
+  button.small { padding: 1px 8px; font-size: 11px; }
+
+  #chat { flex: 1; overflow-y: auto; padding: 18px 16px; }
+  .msg { margin-bottom: 14px; display: flex; gap: 10px; }
+  .msg .who { flex: 0 0 auto; font-size: 11px; text-transform: uppercase;
+              letter-spacing: .06em; color: var(--dim); width: 92px; padding-top: 3px;
+              overflow-wrap: anywhere; }
+  .msg .body { flex: 1; white-space: pre-wrap; min-width: 0; }
+  .msg.player .who { color: var(--text); }
+  .msg.narr .body { color: var(--dim); font-style: italic; }
+  .msg.sys .body { color: var(--dim); font-style: italic; font-size: 13px; }
+  .msg.err .body { color: var(--red); font-family: ui-monospace, monospace; font-size: 12px; }
+  .msg.away { opacity: .55; }
+  .msg.priv .body { border-left: 2px solid var(--teal); padding-left: 10px; }
+  .msg.priv .who { color: var(--teal); }
+  #say-to { align-self: flex-start; max-width: 150px; }
+
+  #inputbar { border-top: 1px solid var(--line); padding: 12px 16px; background: var(--panel); }
+  #inputrow { display: flex; gap: 8px; }
+  #cast-strip { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
+  #cast-strip .chip { display: inline-block; padding: 1px 8px; border-radius: 10px; margin-right: 6px;
+                      border: 1px solid var(--line); }
+  #cast-strip .chip.away { opacity: .45; text-decoration: line-through; }
+  textarea, input, select { background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; }
+  textarea { resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
+  #msg { flex: 1; height: 62px; }
+  #send { padding: 0 18px; background: var(--accent); color: #10131a; border: none; font-weight: 600; }
+  #send:disabled { opacity: .45; cursor: default; }
+
+  /* ---------- right: inspector ---------- */
+  #right { flex: 1 1 45%; max-width: 620px; border-left: 1px solid var(--line);
+           background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
+  #tabs { display: flex; border-bottom: 1px solid var(--line); }
+  #tabs button { flex: 1; border: none; border-radius: 0; background: none;
+                 padding: 10px 4px; color: var(--dim); font-size: 12px;
+                 text-transform: uppercase; letter-spacing: .06em; }
+  #tabs button.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+  #tabs button:hover { color: var(--text); }
+  .pane { display: none; overflow-y: auto; padding: 14px 16px; flex: 1; }
+  .pane.on { display: block; }
+  .section { margin-bottom: 20px; }
+
+  .card { background: var(--panel-2); border: 1px solid var(--line);
+          border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .card .id { color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; }
+  .card .summary { margin: 3px 0 6px; }
+  .card .detail { color: var(--dim); font-size: 12.5px; }
+  .card .reason { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line);
+                  color: var(--accent); font-size: 12.5px; font-style: italic; }
+  .card.is-core { border-left: 2px solid var(--accent); }
+  .card.is-canon { border-left: 2px solid var(--warm); }
+  .card .asof { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
+  .card .evidence { color: var(--dim); font-size: 12px; margin-top: 4px; font-style: italic;
+                    border-left: 2px solid var(--line); padding-left: 8px; }
+  .card details.versions { margin-top: 6px; }
+  .card details.versions summary { text-transform: none; letter-spacing: 0; font-weight: 400;
+                                   font-size: 11.5px; color: var(--dim); }
+  .card .ver { font-size: 12px; color: var(--dim); margin-top: 4px; padding-left: 8px;
+               border-left: 2px solid var(--line); }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .tag { background: #232838; color: var(--pink); border: 1px solid var(--line);
+         padding: 1px 7px; border-radius: 10px; font-size: 11px; font-family: ui-monospace, monospace; }
+  .badge { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
+           padding: 1px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600; }
+  .badge.create { background: #1f3320; color: var(--green); }
+  .badge.update { background: #33301f; color: var(--warm); }
+  .badge.core { background: #1e2b3d; color: var(--accent); }
+  .badge.subject { background: #2a2536; color: var(--pink); }
+  .badge.knows { background: #1c2e2c; color: var(--teal); }
+  .badge.secret { background: #3a2a1f; color: var(--warm); }
+  .badge.warn { background: #3a1f26; color: var(--red); }
+  .empty { color: var(--dim); font-style: italic; font-size: 13px; }
+
+  .field { margin-bottom: 10px; }
+  .field label { display: block; font-size: 11px; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--dim); margin-bottom: 3px; font-weight: 600; }
+  .field label .changed { color: var(--green); text-transform: none; letter-spacing: 0;
+                          font-weight: 400; font-style: italic; margin-left: 6px; }
+  .field textarea, .field input[type=text] { width: 100%; font-size: 12.5px; }
+  .field textarea.one { height: 42px; }
+  .field textarea.multi { height: 62px; }
+  .field textarea.big { height: 150px; }
+  .field textarea.flash, .field input.flash { border-color: var(--green); }
+
+  .char-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+               padding: 12px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
+  .char-card .head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .char-card .head input[type=text] { flex: 1; font-weight: 600; }
+  .char-card .head label { font-size: 12px; color: var(--dim); display: flex; gap: 4px; align-items: center; }
+  .char-card .cid { color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; }
+  .char-card .field input[type=text] { background: var(--panel); }
+
+  .models { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
+  .models label { color: var(--dim); font-size: 12px; }
+  .models select, .models input { padding: 4px 6px; font-size: 12px; width: 100%; }
+  .mi { font-size: 11px; color: var(--dim); margin-top: 2px; min-height: 14px; }
+  .mi.warn { color: #f7768e; }
+  #usage { color: var(--dim); font-size: 11.5px; font-family: ui-monospace, monospace; }
+  #summary { color: var(--dim); font-size: 13px; white-space: pre-wrap; }
+  .note { color: var(--dim); font-size: 12px; }
+  .delta { font-size: 12.5px; margin-bottom: 6px; }
+  .delta b { color: var(--warm); font-weight: 600; }
+  .delta .why { color: var(--dim); font-style: italic; }
+  .saved { color: var(--green); font-size: 12px; margin-left: 8px; }
+  .dir-line { margin-bottom: 6px; font-size: 13px; }
+  .dir-line .cue { color: var(--dim); font-style: italic; }
+  .speaker-block { margin-bottom: 14px; }
+  .speaker-block h3 { font-size: 12px; margin: 0 0 6px; font-weight: 600; }
+</style>
+</head>
+<body>
+
+<div id="left">
+  <div id="topbar">
+    <div class="title">Chatter <span>— roleplay harness</span></div>
+    <button onclick="newSession()">End scene</button>
+    <button id="wipe" class="danger" onclick="wipe()">Wipe everything</button>
+  </div>
+  <div id="chat"></div>
+  <div id="inputbar">
+    <div id="cast-strip"></div>
+    <div id="inputrow">
+      <select id="say-to" title="Who hears this. Resets to everyone after each line."></select>
+      <textarea id="msg" placeholder="Say or do something…  (Enter to send, Shift+Enter for newline)"></textarea>
+      <button id="send" onclick="send()">Send</button>
+    </div>
+  </div>
+</div>
+
+<div id="right">
+  <div id="tabs">
+    <button class="on" onclick="tab(this,'p-turn')">Turn</button>
+    <button onclick="tab(this,'p-cast')">Cast</button>
+    <button onclick="tab(this,'p-places')">Places</button>
+    <button onclick="tab(this,'p-scene')">Scene</button>
+    <button onclick="tab(this,'p-mem')">Memory</button>
+    <button onclick="tab(this,'p-prompt')">Prompts</button>
+  </div>
+
+  <!-- ---------- turn ---------- -->
+  <div id="p-turn" class="pane on">
+    <div class="section">
+      <h2>Director</h2>
+      <div id="director"><div class="empty">nothing yet</div></div>
+    </div>
+    <div class="section">
+      <h2>What each speaker recalled</h2>
+      <div id="recalled"><div class="empty">nothing yet</div></div>
+    </div>
+    <div class="section">
+      <h2>Scene changed</h2>
+      <div id="deltas"><div class="empty">nothing yet</div></div>
+    </div>
+    <div class="section">
+      <h2>Offstage <button class="small" onclick="offstageNow()" title="Refresh what everyone out of sight is up to">update now</button></h2>
+      <div class="note" style="margin-bottom:6px">Hidden from the story. The director can let it surface; a character who walks in arrives from it.</div>
+      <div id="offstage"><div class="empty">nobody is out of sight</div></div>
+    </div>
+    <div class="section">
+      <h2>Formation</h2>
+      <div id="formstatus" class="note"></div>
+      <div id="formed" style="margin-top:8px"><div class="empty">nothing formed yet</div></div>
+      <button onclick="flushNow()" style="margin-top:8px">Form now</button>
+    </div>
+    <div class="section">
+      <h2>Models and settings</h2>
+      <div class="models">
+        <label>Director</label><div><input id="m-director" list="model-list" spellcheck="false"><div class="mi" id="mi-director"></div></div>
+        <label>Retrieval</label><div><input id="m-retrieval" list="model-list" spellcheck="false"><div class="mi" id="mi-retrieval"></div></div>
+        <label>Character</label><div><input id="m-character" list="model-list" spellcheck="false"><div class="mi" id="mi-character"></div></div>
+        <label>State</label><div><input id="m-state" list="model-list" spellcheck="false"><div class="mi" id="mi-state"></div></div>
+        <label>Formation</label><div><input id="m-formation" list="model-list" spellcheck="false"><div class="mi" id="mi-formation"></div></div>
+        <label>Summary</label><div><input id="m-summary" list="model-list" spellcheck="false"><div class="mi" id="mi-summary"></div></div>
+        <label title="OpenRouter models only. Direct Claude models keep their own settings.">Thinking: characters</label><select id="r-character" onchange="saveReasoning()"><option value="none">off</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+        <label title="Director, retrieval, state, formation and summaries. OpenRouter models only.">Thinking: background</label><select id="r-background" onchange="saveReasoning()"><option value="none">off</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+        <label>Max speakers</label><input id="cfg-speakers" type="number" min="1" max="6">
+        <label title="Turns between updates of what characters out of sight are up to. 0 = never">Offstage every</label><input id="cfg-life" type="number" min="0" max="50">
+        <label>Window</label><input id="cfg-verbatim" type="number" min="2" step="2">
+        <label>Batch</label><input id="cfg-batch" type="number" min="1">
+        <label>Recall cap</label><input id="cfg-recall" type="number" min="0" max="20">
+        <label>Layout</label>
+        <select id="cfg-layout"><option value="system">system</option><option value="tail">tail</option></select>
+        <label>Whispers</label>
+        <select id="cfg-notice"><option value="true">others notice one</option><option value="false">completely silent</option></select>
+        <label>Recall tool</label>
+        <select id="cfg-tool"><option value="false">off</option><option value="true">on</option></select>
+      </div>
+      <div id="provider-note" class="mi" style="margin-top:6px"></div>
+      <datalist id="model-list"></datalist>
+      <div id="usage" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- ---------- cast ---------- -->
+  <div id="p-cast" class="pane">
+    <div class="section">
+      <h2>Player <span id="cast-saved" class="saved"></span></h2>
+      <div class="field">
+        <label for="player-name">Your character's name</label>
+        <input id="player-name" type="text">
+      </div>
+    </div>
+    <div class="section">
+      <h2>Characters</h2>
+      <div class="note" style="margin-bottom:10px">
+        Each character has their own persona and sees only what they were present for.
+        The director chooses who answers. Status, reading and relationship are kept
+        current by the watcher; correct them here when they drift.
+      </div>
+      <div id="chars"></div>
+      <button onclick="addCharacter()">+ Add character</button>
+    </div>
+    <div class="section">
+      <h2>Narrator</h2>
+      <div class="note" style="margin-bottom:10px">
+        An optional extra voice for description and transitions. Off by default; the
+        director picks it only when the scene needs it.
+      </div>
+      <div class="field"><label><input id="nar-enabled" type="checkbox"> enabled</label></div>
+      <div class="field"><label for="nar-persona">Persona</label><textarea id="nar-persona" class="multi"></textarea></div>
+      <div class="field"><label for="nar-reminder">Reminder</label><textarea id="nar-reminder" class="one"></textarea></div>
+    </div>
+    <button onclick="saveCast()">Save cast</button>
+  </div>
+
+  <!-- ---------- places ---------- -->
+  <div id="p-places" class="pane">
+    <div class="section">
+      <h2>Places <span id="places-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Define the world's locations the way you define the cast. Whoever is at the
+        scene's place is told its description and what is nearby. Each character is
+        <i>in</i> a place (set on the Cast tab), and who is present is simply who is
+        where the scene is. The watcher moves the scene and people between these places and
+        keeps each one's condition current; it never invents a place. Connections say what
+        is nearby, they don't forbid going anywhere else.
+      </div>
+      <div id="places"></div>
+      <button onclick="addPlace()">+ Add place</button>
+    </div>
+    <button onclick="savePlaces()">Save places</button>
+  </div>
+
+  <!-- ---------- scene ---------- -->
+  <div id="p-scene" class="pane">
+    <div class="section">
+      <h2>Scene <span id="scene-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Updated by the watcher each turn. Everyone sees the place and the time; an
+        open thread is shown only to those who were present when it arose.
+      </div>
+      <div class="field"><label for="sc-place">Where<span class="changed" id="ch-location"></span></label>
+        <select id="sc-place" onchange="planMove()"></select>
+        <div class="note" id="sc-place-desc" style="margin-top:4px"></div>
+        <div id="move-plan" class="note" style="display:none;margin-top:6px">
+          Take the scene to <b id="mv-name"></b>. Coming along: <span id="mv-bring"></span>
+          <div style="margin-top:6px"><button class="small" onclick="doMove()">Move</button>
+          <button class="small" onclick="cancelMove()">Cancel</button></div>
+        </div>
+      </div>
+      <div class="field"><label for="sc-premise">Scene premise (told to every speaker; never changed by the watcher)<span class="changed" id="ch-premise"></span></label>
+        <textarea id="sc-premise" class="multi"></textarea></div>
+      <div class="field"><label for="sc-fiction_time">Time<span class="changed" id="ch-fiction_time"></span></label>
+        <textarea id="sc-fiction_time" class="one"></textarea></div>
+      <div class="field"><label for="sc-extras">Others around (not in the cast)<span class="changed" id="ch-extras"></span></label>
+        <textarea id="sc-extras" class="multi"></textarea></div>
+      <div class="field"><label for="sc-open_threads">Left hanging<span class="changed" id="ch-open_threads"></span></label>
+        <textarea id="sc-open_threads" class="multi"></textarea></div>
+      <button onclick="saveScene()">Save scene</button>
+    </div>
+    <div class="section">
+      <h2>Scene presets <span id="presets-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        A ready-made starting point: a place, the time, who is where and doing what, what is hanging,
+        and an optional premise and opening line. Starting one ends the current scene and sets the new
+        one up. The cast, places and memories carry on.
+      </div>
+      <div class="field"><label><input type="checkbox" id="ps-flush" checked> Save the current scene to memory first</label></div>
+      <div id="presets"></div>
+      <div style="margin-top:8px">
+        <button onclick="addPreset()">+ New preset</button>
+        <button onclick="savePresets()">Save presets</button>
+      </div>
+      <div class="field" style="margin-top:10px"><label>Or capture the scene as it is now</label>
+        <input type="text" id="ps-capture-name" placeholder="name for the captured scene">
+        <button style="margin-top:6px" onclick="capturePreset()">Save current scene as preset</button></div>
+    </div>
+  </div>
+
+  <!-- ---------- memory ---------- -->
+  <div id="p-mem" class="pane">
+    <div class="section">
+      <h2>Tidy up</h2>
+      <div class="note" style="margin-bottom:8px">
+        Merges memories that record the same fact and are known to the same people.
+        Reversible: originals are archived, not deleted (<span id="archived-count">0</span> archived).
+      </div>
+      <button onclick="consolidate()">Consolidate memories</button>
+      <div id="consolidate-out" class="note" style="margin-top:8px;white-space:pre-wrap"></div>
+    </div>
+    <div class="section">
+      <h2>Shared summary</h2>
+      <div class="note" style="margin-bottom:8px">
+        Omniscient. Used for the narrator and for scenes with a single character.
+      </div>
+      <div id="summary" class="empty">nothing yet</div>
+    </div>
+    <div class="section">
+      <h2>What each character saw</h2>
+      <div class="note" style="margin-bottom:8px">
+        Each is written only from the lines that character witnessed, so a
+        character's summary can't contain what they didn't see.
+      </div>
+      <div id="char-summaries"><div class="empty">none yet</div></div>
+    </div>
+    <div class="section">
+      <h2>Memories (<span id="memcount">0</span>)</h2>
+      <div class="field" style="margin-bottom:10px">
+        <label for="mem-filter">Show what this person knows</label>
+        <select id="mem-filter" onchange="renderMemories()"></select>
+      </div>
+      <div class="field" style="margin-bottom:10px">
+        <label for="mem-place-filter">Show memories formed at</label>
+        <select id="mem-place-filter" onchange="renderMemories()"></select>
+      </div>
+      <div id="memories"><div class="empty">no memories stored</div></div>
+    </div>
+  </div>
+
+  <!-- ---------- prompts ---------- -->
+  <div id="p-prompt" class="pane">
+    <div class="section">
+      <h2>World prompt <span id="fixed-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Shared by every character. Per-character persona and reminder live on the Cast tab.
+      </div>
+      <div class="field"><label for="fx-core_instructions">core instructions</label>
+        <textarea id="fx-core_instructions" class="big"></textarea></div>
+      <div class="field"><label for="fx-scenario">scenario</label>
+        <textarea id="fx-scenario" class="big"></textarea></div>
+      <div class="field"><label for="fx-invention">How freely characters invent</label>
+        <select id="fx-invention" onchange="describeInvention()">
+          <option value="balanced">Balanced</option>
+          <option value="strict">Strict</option>
+          <option value="free">Free</option>
+        </select>
+        <div class="note" id="fx-invention-note" style="margin-top:4px"></div></div>
+      <button onclick="saveFixed()">Save prompt</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const DEFAULTS = {{ defaults | tojson }};
+const STEPS = ["director", "retrieval", "character", "state", "formation", "summary"];
+const PALETTE = ["#e0af68", "#7dcfff", "#bb9af7", "#9ece6a", "#f7768e", "#ff9e64", "#73daca"];
+
+// A model id with no slash goes to Anthropic directly; "vendor/model" goes
+// through OpenRouter. The fields take any id; /api/models fills the suggestions.
+const STRUCTURED = new Set(["director", "retrieval", "state", "formation"]);
+let CATALOG = {};          // OpenRouter id -> row from /api/models
+let DIRECT = [];
+let KEYS = {};
+function savedModels() {
+  try { return JSON.parse(localStorage.getItem("chatter.models") || "{}"); } catch (e) { return {}; }
+}
+function describeModel(step) {
+  const el = document.getElementById("mi-" + step);
+  const v = document.getElementById("m-" + step).value.trim();
+  el.className = "mi";
+  if (!v) { el.textContent = "default: " + DEFAULTS[step]; return; }
+  if (!v.includes("/")) {
+    const known = DIRECT.length === 0 || DIRECT.includes(v);
+    el.textContent = known ? "Anthropic direct" : "not a known direct id; OpenRouter ids look like vendor/model";
+    if (!known) el.className = "mi warn";
+    return;
+  }
+  if (!Object.keys(CATALOG).length) { el.textContent = "OpenRouter"; return; }
+  const r = CATALOG[v];
+  if (!r) { el.textContent = "not in the OpenRouter catalogue"; el.className = "mi warn"; return; }
+  const bits = [`$${r.in.toFixed(2)} in / $${r.out.toFixed(2)} out per M`, `${Math.round((r.context || 0) / 1000)}k ctx`];
+  if (STRUCTURED.has(step) && !r.structured) { bits.push("no structured output: will be asked for JSON in the prompt"); el.className = "mi warn"; }
+  el.textContent = bits.join(" · ");
+}
+for (const step of STEPS) {
+  const inp = document.getElementById("m-" + step);
+  inp.value = savedModels()[step] || DEFAULTS[step];
+  inp.addEventListener("input", () => describeModel(step));
+  inp.addEventListener("change", () => {
+    try { localStorage.setItem("chatter.models", JSON.stringify(Object.fromEntries(STEPS.map(s => [s, document.getElementById("m-" + s).value.trim()])))); } catch (e) {}
+  });
+  describeModel(step);
+}
+async function loadModels() {
+  try {
+    const d = await (await fetch("/api/models")).json();
+    DIRECT = d.direct; KEYS = d.keys;
+    CATALOG = Object.fromEntries(d.openrouter.map(r => [r.id, r]));
+    const dl = document.getElementById("model-list");
+    dl.innerHTML = [...DIRECT.map(m => `<option value="${esc(m)}">Anthropic direct</option>`),
+      ...d.openrouter.map(r => `<option value="${esc(r.id)}">${esc(r.name)} · $${r.in.toFixed(2)}/$${r.out.toFixed(2)}</option>`)].join("");
+    const note = document.getElementById("provider-note");
+    const missing = [];
+    if (!KEYS.openrouter) missing.push("OPENROUTER_API_KEY (needed for vendor/model ids)");
+    if (!KEYS.anthropic) missing.push("ANTHROPIC_API_KEY (needed for bare claude-* ids)");
+    note.textContent = missing.length ? "Not set: " + missing.join("; ") : "";
+    note.className = "mi" + (missing.length ? " warn" : "");
+  } catch (e) { /* offline: the fields still accept any id */ }
+  STEPS.forEach(describeModel);
+}
+loadModels();
+
+// Reasoning effort for OpenRouter models, kept server-side; the browser re-applies
+// its remembered choice on load.
+async function saveReasoning() {
+  const body = { character: document.getElementById("r-character").value, background: document.getElementById("r-background").value };
+  try { localStorage.setItem("chatter.reasoning", JSON.stringify(body)); } catch (e) {}
+  await fetch("/api/reasoning", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+}
+(async function initReasoning() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("chatter.reasoning") || "null"); } catch (e) {}
+  const cur = await (await fetch("/api/reasoning", saved ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(saved) } : undefined)).json();
+  document.getElementById("r-character").value = cur.character;
+  document.getElementById("r-background").value = cur.background;
+})();
+
+let W = null;              // world snapshot from the server
+let MEMS = [];             // current memories
+let LAST_TAGS = [];
+const chat = document.getElementById("chat");
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+function tab(btn, id) {
+  document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("on"));
+  document.querySelectorAll(".pane").forEach(p => p.classList.remove("on"));
+  btn.classList.add("on");
+  document.getElementById(id).classList.add("on");
+}
+function models() {
+  return Object.fromEntries(STEPS.map(s => [s, document.getElementById("m-" + s).value.trim() || DEFAULTS[s]]));
+}
+function nameOf(id) { return (W && W.names && W.names[id]) || id; }
+function colorOf(id) {
+  if (id === "player") return "var(--text)";
+  if (id === "narrator") return "var(--dim)";
+  const i = (W?.characters || []).findIndex(c => c.id === id);
+  return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
+}
+
+/* ---------------- transcript ---------------- */
+function addMsg(cls, who, text, color) {
+  const div = document.createElement("div");
+  div.className = "msg " + cls;
+  div.innerHTML = `<div class="who"></div><div class="body"></div>`;
+  const w = div.querySelector(".who");
+  w.textContent = who;
+  if (color) w.style.color = color;
+  div.querySelector(".body").textContent = text;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div;
+}
+function addSpoken(speaker, name, text, privateTo) {
+  const cls = speaker === "player" ? "player" : speaker === "narrator" ? "narr" : "char";
+  const label = privateTo
+    ? (speaker === "player" ? `${name} → ${nameOf(privateTo)}` : name) + " (private)"
+    : name;
+  const el = addMsg(cls, label, text, colorOf(speaker));
+  if (privateTo) el.classList.add("priv");
+  return el;
+}
+function renderSayTo() {
+  const sel = document.getElementById("say-to");
+  const cur = sel.value;
+  const here = (W?.characters || []).filter(c => c.present);
+  sel.innerHTML = `<option value="">to everyone</option>`
+    + here.map(c => `<option value="${esc(c.id)}">whisper to ${esc(c.name)}</option>`).join("");
+  sel.value = here.some(c => c.id === cur) ? cur : "";
+}
+
+/* ---------------- memory cards ---------------- */
+function knownLabel(m) {
+  const kb = m.known_by || ["*"];
+  if (kb.includes("*")) return null;
+  return kb.length ? "known by " + kb.map(nameOf).join(", ") : "known by no one";
+}
+function memCard(m, opts = {}) {
+  const badge = opts.action ? `<span class="badge ${opts.action}">${opts.action}</span>` : "";
+  const coreBadge = m.core ? `<span class="badge core">core</span>` : "";
+  const subj = m.subject || "player";
+  const subjLabel = subj === "world" ? "world" : "about " + nameOf(subj);
+  const subjBadge = `<span class="badge subject">${esc(subjLabel)}</span>`;
+  const claimBadge = m.source === "claim"
+    ? `<span class="badge warn" title="A character said this about the world or someone else. Nobody has confirmed it.">claimed by ${esc(nameOf(m.claimed_by))}</span>` : "";
+  const confirmedBadge = m.source === "confirmed" ? `<span class="badge create" title="You confirmed this">confirmed</span>` : "";
+  const placeBadge = (m.places || []).length
+    ? `<span class="badge knows" title="Where it was formed">at ${esc(m.places.map(nameOf).join(", "))}</span>` : "";
+  const kl = knownLabel(m);
+  const knowsBadge = kl ? `<span class="badge secret" title="Only these characters know this">${esc(kl)}</span>` : "";
+  const warn = m.verified === false
+    ? `<span class="badge warn" title="The quoted evidence was not found in the conversation">unverified</span>` : "";
+  const reason = m.reason ? `<div class="reason">${esc(m.reason)}</div>` : "";
+  const hits = m.hits ? ` · ${m.hits} hit${m.hits > 1 ? "s" : ""}` : "";
+  const asof = m.as_of ? `<div class="asof">noted ${esc(m.as_of)}</div>` : "";
+  const evidence = m.evidence ? `<div class="evidence">“${esc(m.evidence)}”</div>` : "";
+  const vs = m.versions || [];
+  const versions = vs.length
+    ? `<details class="versions"><summary>${vs.length} earlier version${vs.length > 1 ? "s" : ""}</summary>`
+      + vs.slice().reverse().map(v =>
+          `<div class="ver">${v.as_of ? esc(v.as_of) + " — " : ""}${esc(v.summary || "")}</div>`).join("")
+      + `</details>` : "";
+  const merged = m.merged_from
+    ? `<div class="asof">merged from ${m.merged_from.join(", ")}
+         <button class="small" style="margin-left:6px" onclick="undoMerge('${m.id}')">undo</button></div>` : "";
+  const canon = subj !== "player";
+  return `<div class="card${m.core ? " is-core" : ""}${canon ? " is-canon" : ""}">
+    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${confirmedBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
+    <div class="summary">${esc(m.summary)}</div>
+    <div class="detail">${esc(m.detail)}</div>
+    <div class="tags">${(m.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
+    ${asof}${merged}${evidence}${versions}${reason}
+    ${opts.noActions ? "" : `<div class="asof">${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
+}
+
+function visibleTo(m, who) {
+  if (!who || who === "all") return true;
+  const kb = m.known_by || ["*"];
+  return kb.includes("*") || kb.includes(who);
+}
+function renderMemories() {
+  const who = document.getElementById("mem-filter").value;
+  const at = document.getElementById("mem-place-filter").value || "all";
+  const list = MEMS.filter(m => visibleTo(m, who)
+    && (at === "all" || (at === "none" ? !(m.places || []).length : (m.places || []).includes(at))));
+  document.getElementById("memcount").textContent =
+    (who === "all" || !who) && at === "all" ? MEMS.length : `${list.length} of ${MEMS.length}`;
+  document.getElementById("memories").innerHTML = list.length
+    ? list.slice().reverse().map(m => memCard(m)).join("")
+    : `<div class="empty">no memories stored</div>`;
+}
+async function confirmMemory(id) {
+  const d = await (await fetch("/api/memory/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }) })).json();
+  if (d.error) { alert(d.error); return; }
+  setMemories(d.memories);
+}
+// Deleting is permanent, and native confirm() is auto-dismissed in embedded panes: arm first, then click again.
+let deleteArmed = null;
+async function deleteMemory(btn, id) {
+  if (deleteArmed !== btn) {
+    deleteArmed = btn; btn.textContent = "really delete?";
+    setTimeout(() => { if (deleteArmed === btn) { deleteArmed = null; btn.textContent = "delete"; } }, 4000);
+    return;
+  }
+  deleteArmed = null;
+  const d = await (await fetch("/api/memory/delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }) })).json();
+  if (d.error) { alert(d.error); return; }
+  setMemories(d.memories);
+}
+function setMemories(memories) {
+  MEMS = memories || [];
+  renderMemories();
+}
+function renderFilter() {
+  const sel = document.getElementById("mem-filter");
+  const cur = sel.value || "all";
+  sel.innerHTML = `<option value="all">everyone (omniscient view)</option>`
+    + (W?.characters || []).map(c => `<option value="${esc(c.id)}">${esc(c.name)}</option>`).join("");
+  sel.value = [...sel.options].some(o => o.value === cur) ? cur : "all";
+  const ps = document.getElementById("mem-place-filter");
+  const pcur = ps.value || "all";
+  ps.innerHTML = `<option value="all">anywhere</option><option value="none">no place recorded</option>`
+    + (W?.locations || []).map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join("");
+  ps.value = [...ps.options].some(o => o.value === pcur) ? pcur : "all";
+}
+
+/* ---------------- cast ---------------- */
+function charCardHtml(c, idx) {
+  const color = PALETTE[idx % PALETTE.length];
+  return `<div class="char-card" data-id="${esc(c.id || "")}" style="border-left-color:${color}">
+    <div class="head">
+      <input type="text" class="c-name" value="${esc(c.name || "")}" placeholder="Name">
+      <button class="small danger" onclick="removeCharacter(this)">remove</button>
+    </div>
+    <div class="cid">${c.id ? "id: " + esc(c.id) : "new character"}</div>
+    <div class="field"><label>Where they are${c.location && c.location === W?.scene?.location ? " (here, in the scene)" : ""}<span class="changed c-ch-location"></span></label>
+      <select class="c-location">${placeOptions(c.location)}</select></div>
+    <div class="field"><label>Brief (what others could tell at a glance)</label>
+      <input type="text" class="c-brief" value="${esc(c.brief || "")}"></div>
+    <div class="field"><label>Persona</label>
+      <textarea class="c-persona multi">${esc(c.persona || "")}</textarea></div>
+    <div class="field"><label>Reminder (rides beside the latest line)</label>
+      <textarea class="c-reminder one">${esc(c.reminder || "")}</textarea></div>
+    <div class="field"><label>Doing right now<span class="changed c-ch-status"></span></label>
+      <input type="text" class="c-status" value="${esc(c.status || "")}"></div>
+    <div class="field"><label><input type="checkbox" class="c-active" ${c.active !== false ? "checked" : ""}> Has a life while out of sight</label></div>
+    <div class="field"><label>Offscreen: what they're up to (hidden from the story)<span class="changed c-ch-offscreen"></span></label>
+      <input type="text" class="c-offscreen" value="${esc(c.offscreen || "")}"></div>
+    <div class="field"><label>Reads the player as<span class="changed c-ch-view_of_player"></span></label>
+      <input type="text" class="c-view" value="${esc(c.view_of_player || "")}"></div>
+    <div class="field"><label>Stands with the player<span class="changed c-ch-relationship"></span></label>
+      <input type="text" class="c-rel" value="${esc(c.relationship || "")}"></div>
+  </div>`;
+}
+function renderCast(changes) {
+  if (!W) return;
+  document.getElementById("player-name").value = W.player.name || "";
+  document.getElementById("nar-enabled").checked = !!W.narrator.enabled;
+  document.getElementById("nar-persona").value = W.narrator.persona || "";
+  document.getElementById("nar-reminder").value = W.narrator.reminder || "";
+  const holder = document.getElementById("chars");
+  // don't clobber a card the user is typing in
+  if (holder.contains(document.activeElement) && !changes) return;
+  holder.innerHTML = W.characters.map((c, i) => charCardHtml(c, i)).join("");
+  const field = { status: "status", view_of_player: "view_of_player", relationship: "relationship", location: "location" };
+  for (const ch of changes || []) {
+    const card = holder.querySelector(`.char-card[data-id="${CSS.escape(ch.target)}"]`);
+    const mark = card && card.querySelector(".c-ch-" + field[ch.field]);
+    if (mark) mark.textContent = "changed";
+  }
+}
+function addCharacter() {
+  const holder = document.getElementById("chars");
+  const idx = holder.querySelectorAll(".char-card").length;
+  holder.insertAdjacentHTML("beforeend", charCardHtml({ name: "", location: W?.scene?.location || "" }, idx));
+  holder.lastElementChild.querySelector(".c-name").focus();
+}
+function removeCharacter(btn) {
+  const card = btn.closest(".char-card");
+  if (document.querySelectorAll("#chars .char-card").length <= 1) { return; }
+  card.remove();
+}
+async function saveCast() {
+  const characters = [...document.querySelectorAll("#chars .char-card")].map(card => ({
+    id: card.dataset.id || "",
+    name: card.querySelector(".c-name").value,
+    brief: card.querySelector(".c-brief").value,
+    persona: card.querySelector(".c-persona").value,
+    reminder: card.querySelector(".c-reminder").value,
+    location: card.querySelector(".c-location").value,
+    status: card.querySelector(".c-status").value,
+    active: card.querySelector(".c-active").checked,
+    offscreen: card.querySelector(".c-offscreen").value,
+    view_of_player: card.querySelector(".c-view").value,
+    relationship: card.querySelector(".c-rel").value,
+  })).filter(c => c.name.trim());
+  const res = await (await fetch("/api/cast", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      characters,
+      player: { name: document.getElementById("player-name").value },
+      narrator: {
+        enabled: document.getElementById("nar-enabled").checked,
+        persona: document.getElementById("nar-persona").value,
+        reminder: document.getElementById("nar-reminder").value,
+      },
+    }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world;
+  renderCast(); renderFilter(); renderCastStrip();
+  const s = document.getElementById("cast-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+}
+function renderCastStrip() {
+  if (!W) return;
+  const chips = W.characters.map(c =>
+    `<span class="chip ${c.present ? "" : "away"}" style="color:${colorOf(c.id)}" title="${c.present ? "here" : "at " + esc(placeName(c.location))}">${esc(c.name)}</span>`);
+  if (W.narrator.enabled) chips.push(`<span class="chip" style="color:var(--dim)">Narrator</span>`);
+  document.getElementById("cast-strip").innerHTML =
+    `<span>You are <b>${esc(W.player.name)}</b>, at <b>${esc(placeName(W.scene.location))}</b>. In the scene:</span> ` + chips.join("");
+  renderSayTo();
+}
+
+/* ---------------- scene ---------------- */
+const SCENE_FIELDS = ["premise", "fiction_time", "extras", "open_threads"];
+function placeName(id) {
+  const l = (W?.locations || []).find(x => x.id === id);
+  return l ? l.name : "offstage";
+}
+function placeOptions(selected) {
+  return `<option value="">elsewhere (offstage)</option>`
+    + (W?.locations || []).map(l => `<option value="${esc(l.id)}" ${l.id === selected ? "selected" : ""}>${esc(l.name)}${l.locked ? " (locked)" : ""}</option>`).join("");
+}
+function renderScene(changes) {
+  if (!W) return;
+  const changed = new Set((changes || []).filter(c => c.target === "scene").map(c => c.field));
+  for (const f of SCENE_FIELDS) {
+    const el = document.getElementById("sc-" + f);
+    if (document.activeElement !== el) el.value = W.scene[f] || "";
+    document.getElementById("ch-" + f).textContent = changed.has(f) ? "changed" : "";
+    el.classList.toggle("flash", changed.has(f));
+  }
+  const sel = document.getElementById("sc-place");
+  if (document.getElementById("move-plan").style.display === "none") {
+    sel.innerHTML = (W.locations || []).map(l => `<option value="${esc(l.id)}">${esc(l.name)}${l.locked ? " (locked)" : ""}</option>`).join("");
+    sel.value = W.scene.location;
+  }
+  const here = (W.locations || []).find(l => l.id === W.scene.location);
+  document.getElementById("sc-place-desc").textContent = here
+    ? [here.brief, here.description, here.state ? "Now: " + here.state : ""].filter(Boolean).join(" · ") : "";
+  document.getElementById("ch-location").textContent = changed.has("location") ? "changed" : "";
+  sel.classList.toggle("flash", changed.has("location"));
+  renderPlaces(changes);
+  renderOffstage();
+  renderPresets();
+}
+
+/* ---------------- scene presets ---------------- */
+let presetsSig = "", newPresetN = 0;
+function presetCardHtml(p, idx) {
+  const color = PALETTE[(idx + 5) % PALETTE.length];
+  const locs = W.locations || [];
+  const placeSel = (cur, extra) => (extra || "") + locs.map(l => `<option value="${esc(l.id)}" ${l.id === cur ? "selected" : ""}>${esc(l.name)}</option>`).join("");
+  const rows = W.characters.map(c => {
+    const e = (p.cast || []).find(x => x.id === c.id) || { location: "keep" };
+    const extra = `<option value="keep" ${e.location === "keep" ? "selected" : ""}>(leave as is)</option>`
+      + `<option value="none" ${e.location === "none" ? "selected" : ""}>elsewhere (offstage)</option>`;
+    return `<div class="pc-row" data-id="${esc(c.id)}" data-view="${esc(e.view_of_player || "")}" data-rel="${esc(e.relationship || "")}"
+        style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+      <span style="width:64px;color:${colorOf(c.id)}">${esc(c.name)}</span>
+      <select class="pc-loc" style="width:150px">${placeSel(e.location, extra)}</select>
+      <input type="text" class="pc-status" placeholder="doing (blank = keep)" value="${esc(e.status || "")}" style="flex:1"></div>`;
+  }).join("");
+  return `<div class="char-card preset-card" data-id="${esc(p.id || "")}" style="border-left-color:${color}">
+    <div class="head">
+      <input type="text" class="ps-name" value="${esc(p.name || "")}" placeholder="Name">
+      <button class="small" onclick="startPreset(this)">start</button>
+      <button class="small danger" onclick="removePreset(this)">remove</button>
+    </div>
+    <div class="cid">${p.id && !p.id.startsWith("new-") ? "id: " + esc(p.id) : "new preset"}</div>
+    <div class="field"><label>Scene premise (told to every speaker)</label>
+      <textarea class="ps-premise multi">${esc(p.premise || "")}</textarea></div>
+    <div class="field"><label>Opening line (a stage direction everyone present has seen)</label>
+      <input type="text" class="ps-opening" value="${esc(p.opening || "")}" placeholder="(The door bangs open. Rain.)"></div>
+    <div class="field"><label>Starts at</label><select class="ps-place">${placeSel(p.location || W.scene.location)}</select></div>
+    <div class="field"><label>Time (blank = keep the clock)</label>
+      <input type="text" class="ps-time" value="${esc(p.fiction_time || "")}"></div>
+    <div class="field"><label>Others around (not in the cast)</label>
+      <textarea class="ps-extras one">${esc(p.extras || "")}</textarea></div>
+    <div class="field"><label>Left hanging (one per line; known to everyone present)</label>
+      <textarea class="ps-threads one">${esc(p.open_threads || "")}</textarea></div>
+    <div class="field"><label>Who is where</label>${rows}</div>
+  </div>`;
+}
+function renderPresets(force) {
+  if (!W) return;
+  const holder = document.getElementById("presets");
+  const sig = JSON.stringify([W.presets || [], (W.locations || []).map(l => l.id + l.name), W.characters.map(c => c.id + c.name)]);
+  if (!force && (sig === presetsSig || holder.contains(document.activeElement))) return;
+  presetsSig = sig;
+  holder.innerHTML = (W.presets || []).map((p, i) => presetCardHtml(p, i)).join("")
+    || `<div class="empty">no presets yet</div>`;
+}
+function addPreset() {
+  const holder = document.getElementById("presets");
+  if (!holder.querySelector(".preset-card")) holder.innerHTML = "";
+  const idx = holder.querySelectorAll(".preset-card").length;
+  holder.insertAdjacentHTML("beforeend", presetCardHtml({ id: "new-" + (++newPresetN), name: "", location: W.scene.location, cast: [] }, idx));
+  holder.lastElementChild.querySelector(".ps-name").focus();
+}
+function removePreset(btn) { btn.closest(".preset-card").remove(); }
+function collectPresets() {
+  return [...document.querySelectorAll("#presets .preset-card")].map(card => ({
+    id: card.dataset.id,
+    name: card.querySelector(".ps-name").value,
+    premise: card.querySelector(".ps-premise").value,
+    opening: card.querySelector(".ps-opening").value,
+    location: card.querySelector(".ps-place").value,
+    fiction_time: card.querySelector(".ps-time").value,
+    extras: card.querySelector(".ps-extras").value,
+    open_threads: card.querySelector(".ps-threads").value,
+    cast: [...card.querySelectorAll(".pc-row")].map(r => ({
+      id: r.dataset.id, location: r.querySelector(".pc-loc").value, status: r.querySelector(".pc-status").value,
+      view_of_player: r.dataset.view, relationship: r.dataset.rel,
+    })),
+  })).filter(p => p.name.trim());
+}
+async function savePresets() {
+  const res = await (await fetch("/api/presets", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presets: collectPresets() }),
+  })).json();
+  if (res.error) { alert(res.error); return null; }
+  W = res.world; renderPresets(true);
+  const s = document.getElementById("presets-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+  return res.world;
+}
+async function capturePreset() {
+  const name = document.getElementById("ps-capture-name").value.trim() || "Captured scene";
+  const res = await (await fetch("/api/presets/capture", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name }),
+  })).json();
+  W = res.world; renderPresets(true);
+  document.getElementById("ps-capture-name").value = "";
+}
+// Starting a scene clears the conversation, and native confirm() is auto-dismissed
+// in embedded panes, so the button arms first and the second click does it.
+let startArmed = null;
+async function startPreset(btn) {
+  if (startArmed !== btn) {
+    startArmed = btn; btn.textContent = "end this scene and start?";
+    setTimeout(() => { if (startArmed === btn) { startArmed = null; btn.textContent = "start"; } }, 4000);
+    return;
+  }
+  startArmed = null; btn.textContent = "starting…";
+  // saving re-renders the cards, so find this one's position among the named ones first
+  const named = [...document.querySelectorAll("#presets .preset-card")].filter(c => c.querySelector(".ps-name").value.trim());
+  const idx = named.indexOf(btn.closest(".preset-card"));
+  if (idx < 0) { alert("Give the preset a name first."); btn.textContent = "start"; return; }
+  const saved = await savePresets();
+  if (!saved) { btn.textContent = "start"; return; }
+  const pid = (W.presets[idx] || {}).id;
+  const d = await (await fetch("/api/start_scene", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ preset_id: pid, flush: document.getElementById("ps-flush").checked, models: models() }),
+  })).json();
+  if (d.error) { alert(d.error); btn.textContent = "start"; return; }
+  chat.innerHTML = "";
+  addMsg("sys", "", `Scene started: ${d.started.name}` + (d.formed_count ? ` (${d.formed_count} message(s) saved to memory first)` : ""));
+  for (const m of d.history) if (m.kind === "move" || m.kind === "discover") addMsg("sys", "", m.content);
+  applySnapshot(d);
+  renderDirector(null); renderRecalled(null); renderChanges([]);
+  renderScene(); renderCast(); renderFilter(); renderCastStrip(); renderPresets(true);
+}
+function renderOffstage() {
+  const el = document.getElementById("offstage");
+  const out = (W?.characters || []).filter(c => !c.present && c.active !== false);
+  el.innerHTML = out.length
+    ? out.map(c => `<div class="delta"><b style="color:${colorOf(c.id)}">${esc(c.name)}</b> · ${esc(placeName(c.location))}${c.arriving ? ' <span class="badge knows">on their way here</span>' : ""}
+        <div class="why">${c.offscreen ? esc(c.offscreen) : "<i>nothing yet</i>"}</div></div>`).join("")
+    : `<div class="empty">nobody is out of sight</div>`;
+}
+async function offstageNow() {
+  const res = await (await fetch("/api/offscreen", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models() }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; renderOffstage(); renderCast(); renderUsage({ offscreen: res.usage });
+}
+
+/* ---------------- moving the scene ---------------- */
+function planMove() {
+  const to = document.getElementById("sc-place").value;
+  if (to === W.scene.location) { cancelMove(); return; }
+  if ((W.locations || []).find(l => l.id === to)?.locked) {
+    alert(placeName(to) + " is locked. Unlock it in the Places tab first.");
+    cancelMove(); return;
+  }
+  document.getElementById("mv-name").textContent = placeName(to);
+  const here = W.characters.filter(c => c.present);
+  document.getElementById("mv-bring").innerHTML = here.length
+    ? here.map(c => `<label style="margin-right:10px"><input type="checkbox" class="mv-c" value="${esc(c.id)}" checked> ${esc(c.name)}</label>`).join("")
+    : "no one is here";
+  document.getElementById("move-plan").style.display = "block";
+}
+function cancelMove() {
+  document.getElementById("move-plan").style.display = "none";
+  renderScene();
+}
+async function doMove() {
+  const to = document.getElementById("sc-place").value;
+  const bring = [...document.querySelectorAll(".mv-c:checked")].map(i => i.value);
+  const res = await (await fetch("/api/move", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, bring }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world;
+  document.getElementById("move-plan").style.display = "none";
+  addMsg("sys", "", `(The scene moves to ${placeName(to)}.)`);
+  renderScene(); renderCast(); renderCastStrip();
+}
+
+/* ---------------- places ---------------- */
+let newPlaceN = 0;
+function placeCardHtml(l, idx) {
+  const color = PALETTE[(idx + 3) % PALETTE.length];
+  const here = l.id && l.id === W?.scene?.location;
+  return `<div class="char-card place-card" data-id="${esc(l.id || "")}" data-connects='${esc(JSON.stringify(l.connects_to || []))}' style="border-left-color:${color}">
+    <div class="head">
+      <input type="text" class="p-name" value="${esc(l.name || "")}" placeholder="Name" oninput="refreshLinks()">
+      ${here ? '<span class="badge knows">scene is here</span>' : ""}
+      <button class="small danger" onclick="removePlace(this)">remove</button>
+    </div>
+    <div class="cid">${l.id && !l.id.startsWith("new-") ? "id: " + esc(l.id) : "new place"}</div>
+    <div class="field"><label>Brief (what you could say at a glance)</label>
+      <input type="text" class="p-brief" value="${esc(l.brief || "")}"></div>
+    <div class="field"><label>Description (what anyone there is told)</label>
+      <textarea class="p-desc multi">${esc(l.description || "")}</textarea></div>
+    <div class="field"><label>Condition right now<span class="changed p-ch-state"></span></label>
+      <input type="text" class="p-state" value="${esc(l.state || "")}" placeholder="kept current by the watcher: lighting, damage, crowd"></div>
+    <div class="field"><label>Nearby (connects to)</label><div class="p-links"></div></div>
+    <div class="field"><label><input type="checkbox" class="p-locked" ${l.locked ? "checked" : ""}
+        onchange="this.closest('.place-card').querySelector('.p-lockbox').style.display = this.checked ? 'block' : 'none'">
+        Locked: nobody can be taken here until it's opened</label>
+      <div class="p-lockbox" style="display:${l.locked ? "block" : "none"};margin-top:4px">
+        <input type="text" class="p-locknote" placeholder="What anyone nearby can see (public), e.g. a padlocked iron door" value="${esc(l.lock_note || "")}">
+        <input type="text" class="p-unlock" style="margin-top:4px" placeholder="Opens when… (hidden; judged against play), e.g. someone uses the harbourmaster's key" value="${esc(l.unlock || "")}">
+        <button class="small" style="margin-top:4px" onclick="unlockPlace(this)" ${l.id && !l.id.startsWith("new-") ? "" : "disabled"}
+          title="Opens it now; announced if it's next to the scene">unlock now</button>
+      </div></div>
+    <div class="field"><label>Hidden facts (in no prompt until discovered; shown here because you're the author)</label>
+      <div class="p-secrets">${(l.secrets || []).map(secretRowHtml).join("")}</div>
+      <button class="small" onclick="addSecret(this)">+ hidden fact</button></div>
+  </div>`;
+}
+let newSecretN = 0;
+function secretRowHtml(s) {
+  const knows = new Set(s.known_by || []);
+  const people = (W?.characters || []).map(c =>
+    `<label style="margin-right:10px;font-size:12px"><input type="checkbox" class="s-kb" value="${esc(c.id)}" ${knows.has(c.id) ? "checked" : ""}> ${esc(c.name)}</label>`).join("");
+  const id = s.id || ("new-" + (++newSecretN));
+  const saved = !id.startsWith("new-");
+  return `<div class="sec-row" data-id="${esc(id)}" data-revealed="${s.revealed ? "1" : ""}" data-at="${esc(s.revealed_at || "")}" data-shown="${s.hints_shown || 0}" data-lasthint="${s.last_hint_at ?? -999}"
+      style="border:1px solid var(--line);border-radius:6px;padding:6px;margin-bottom:6px">
+    <textarea class="s-text one" placeholder="The fact, as you know it">${esc(s.text || "")}</textarea>
+    <input type="text" class="s-how" placeholder="How it can be found (e.g. moving the barrels)" value="${esc(s.how || "")}" style="margin-top:4px">
+    <div style="display:flex;gap:6px;margin-top:4px">
+      <input type="text" class="s-hint" style="flex:1" placeholder="Hint: public atmosphere the director may let through (e.g. a faint draught from the back wall)" value="${esc(s.hint || "")}">
+      <button class="small" onclick="suggestHint(this)" title="Drafts one for you to edit. It sees the fact; the result is yours to review.">suggest</button></div>
+    ${s.hints_shown ? `<div style="font-size:11px;color:var(--dim)">hint has surfaced ${s.hints_shown} time(s)</div>` : ""}
+    <div style="margin-top:4px;font-size:12px;color:var(--dim)">Already known to: ${people || "<i>no characters</i>"}</div>
+    <div style="margin-top:4px">
+      ${s.revealed ? `<span class="badge create">discovered</span> <button class="small" onclick="hideSecret(this)" ${saved ? "" : "disabled"}>hide again</button>`
+                   : `<span class="badge secret">hidden</span> <button class="small" onclick="revealSecret(this)" ${saved ? "" : "disabled"}
+                        title="Needs the scene to be at this place; whoever is present learns it">reveal now</button>`}
+      <button class="small danger" onclick="this.closest('.sec-row').remove()">remove</button>
+    </div></div>`;
+}
+async function suggestHint(btn) {
+  const row = btn.closest(".sec-row");
+  const text = row.querySelector(".s-text").value.trim();
+  if (!text) { alert("Write the hidden fact first."); return; }
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    const res = await (await fetch("/api/suggest_hint", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, how: row.querySelector(".s-how").value, place: btn.closest(".place-card").querySelector(".p-name").value, models: models() }),
+    })).json();
+    if (res.error) { alert(res.error); } else { row.querySelector(".s-hint").value = res.hint; }
+  } finally { btn.disabled = false; btn.textContent = "suggest"; }
+}
+function addSecret(btn) {
+  btn.previousElementSibling.insertAdjacentHTML("beforeend", secretRowHtml({}));
+}
+async function unlockPlace(btn) {
+  const place = btn.closest(".place-card").dataset.id;
+  const res = await (await fetch("/api/unlock", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ place }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; if (res.announced) addMsg("sys", "", res.announced);
+  renderScene(); renderPlaces([]);
+}
+async function revealSecret(btn) {
+  const row = btn.closest(".sec-row"), place = btn.closest(".place-card").dataset.id;
+  const res = await (await fetch("/api/reveal", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ place, secret: row.dataset.id }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; addMsg("sys", "", res.discovered); renderScene(); renderPlaces([]);
+}
+async function hideSecret(btn) {
+  const row = btn.closest(".sec-row"), place = btn.closest(".place-card").dataset.id;
+  const res = await (await fetch("/api/reveal", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ place, secret: row.dataset.id, hide: true }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; renderPlaces([]);
+}
+function refreshLinks() {
+  const cards = [...document.querySelectorAll("#places .place-card")];
+  const info = cards.map(c => ({ id: c.dataset.id, name: c.querySelector(".p-name").value.trim() || "(unnamed)" }));
+  for (const card of cards) {
+    const box = card.querySelector(".p-links");
+    const checked = card.dataset.connects
+      ? new Set(JSON.parse(card.dataset.connects))
+      : new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
+    delete card.dataset.connects;
+    box.innerHTML = info.filter(o => o.id !== card.dataset.id).map(o =>
+      `<label style="margin-right:12px;font-size:12px"><input type="checkbox" value="${esc(o.id)}" ${checked.has(o.id) ? "checked" : ""}> ${esc(o.name)}</label>`).join("")
+      || `<span class="empty">no other places yet</span>`;
+  }
+}
+function renderPlaces(changes) {
+  if (!W) return;
+  const holder = document.getElementById("places");
+  if (holder.contains(document.activeElement) && !changes) return;
+  holder.innerHTML = (W.locations || []).map((l, i) => placeCardHtml(l, i)).join("");
+  refreshLinks();
+  for (const ch of changes || []) {
+    const card = holder.querySelector(`.place-card[data-id="${CSS.escape(ch.target)}"]`);
+    const mark = card && card.querySelector(".p-ch-" + ch.field);
+    if (mark) mark.textContent = "changed";
+  }
+}
+function addPlace() {
+  const holder = document.getElementById("places");
+  const idx = holder.querySelectorAll(".place-card").length;
+  holder.insertAdjacentHTML("beforeend", placeCardHtml({ id: "new-" + (++newPlaceN), name: "", connects_to: [] }, idx));
+  refreshLinks();
+  holder.lastElementChild.querySelector(".p-name").focus();
+}
+function removePlace(btn) {
+  if (document.querySelectorAll("#places .place-card").length <= 1) return;
+  btn.closest(".place-card").remove();
+  refreshLinks();
+}
+async function savePlaces() {
+  const locations = [...document.querySelectorAll("#places .place-card")].map(card => ({
+    id: card.dataset.id,
+    name: card.querySelector(".p-name").value,
+    brief: card.querySelector(".p-brief").value,
+    description: card.querySelector(".p-desc").value,
+    state: card.querySelector(".p-state").value,
+    connects_to: [...card.querySelectorAll(".p-links input:checked")].map(i => i.value),
+    locked: card.querySelector(".p-locked").checked,
+    lock_note: card.querySelector(".p-locknote").value,
+    unlock: card.querySelector(".p-unlock").value,
+    secrets: [...card.querySelectorAll(".sec-row")].map(r => ({
+      id: r.dataset.id, text: r.querySelector(".s-text").value, how: r.querySelector(".s-how").value,
+      hint: r.querySelector(".s-hint").value, hints_shown: +(r.dataset.shown || 0), last_hint_at: +(r.dataset.lasthint || -999),
+      known_by: [...r.querySelectorAll(".s-kb:checked")].map(i => i.value),
+      revealed: !!r.dataset.revealed, revealed_at: r.dataset.at,
+    })).filter(s => s.text.trim()),
+  })).filter(l => l.name.trim());
+  const res = await (await fetch("/api/locations", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locations }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world;
+  renderScene(); renderPlaces([]); renderCast(); renderCastStrip();
+  const s = document.getElementById("places-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+}
+async function saveScene() {
+  const body = Object.fromEntries(SCENE_FIELDS.map(f => [f, document.getElementById("sc-" + f).value]));
+  const res = await (await fetch("/api/scene", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  })).json();
+  W = res.world;
+  const s = document.getElementById("scene-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+}
+async function saveFixed() {
+  const body = {
+    core_instructions: document.getElementById("fx-core_instructions").value,
+    scenario: document.getElementById("fx-scenario").value,
+    invention: document.getElementById("fx-invention").value,
+  };
+  const res = await (await fetch("/api/fixed", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+  })).json();
+  W = res.world;
+  const s = document.getElementById("fixed-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+}
+
+/* ---------------- turn panel ---------------- */
+function renderDirector(d) {
+  const el = document.getElementById("director");
+  if (!d) { el.innerHTML = `<div class="empty">nothing yet</div>`; return; }
+  const lines = d.speakers.length
+    ? d.speakers.map((s, i) => `<div class="dir-line"><b style="color:${colorOf(s.id)}">${i + 1}. ${esc(s.name)}</b>
+        ${s.cue ? `<span class="cue"> — ${esc(s.cue)}</span>` : ""}</div>`).join("")
+    : `<div class="empty">no one replied</div>`;
+  el.innerHTML = lines + `<div class="note">${d.bypassed ? "bypassed: " : ""}${esc(d.reason)}</div>`;
+}
+function renderRecalled(replies) {
+  const el = document.getElementById("recalled");
+  if (!replies || !replies.length) { el.innerHTML = `<div class="empty">nothing yet</div>`; return; }
+  el.innerHTML = replies.map(r => {
+    const mems = [...(r.retrieved || []), ...(r.recalled_on_demand || [])];
+    const od = (r.recalled_on_demand || []).length
+      ? `<div class="note">looked up ${r.recalled_on_demand.length} more mid-reply</div>` : "";
+    return `<div class="speaker-block"><h3 style="color:${colorOf(r.speaker)}">${esc(r.name)}</h3>${od}`
+      + (mems.length ? mems.map(m => memCard(m)).join("") : `<div class="empty">nothing recalled</div>`) + `</div>`;
+  }).join("");
+}
+function renderChanges(changes) {
+  const el = document.getElementById("deltas");
+  el.innerHTML = (changes && changes.length)
+    ? changes.map(c => `<div class="delta"><b>${esc(c.target_name)}.${esc(c.field)}</b> → ${esc(c.value)}
+        <div class="why">${esc(c.why)}</div></div>`).join("")
+    : `<div class="empty">nothing changed</div>`;
+}
+function renderFormation(d) {
+  const pending = d.pending ?? 0, batch = d.batch ?? 10;
+  const ctx = d.context_messages != null ? ` · ${d.context_messages} message(s) in context` : "";
+  const el = document.getElementById("formstatus");
+  el.textContent = d.formed_count
+    ? `just formed from ${d.formed_count} aged-out message(s) · ${pending}/${batch} queued${ctx}`
+    : `${pending}/${batch} aged-out queued · ${d.messages ?? 0} in the conversation${ctx}`;
+  const f = document.getElementById("formed");
+  if (d.formed && d.formed.length) f.innerHTML = d.formed.map(m => memCard(m, { action: m.action })).join("");
+  else if (d.formed_count) f.innerHTML = `<div class="empty">pass ran, nothing worth keeping</div>`;
+}
+function renderUsage(u) {
+  if (!u) return;
+  const order = ["director", "retrieval", "character", "recall", "state", "formation", "offscreen", "discovery"];
+  document.getElementById("usage").textContent = order
+    .filter(k => u[k] && (u[k].input_tokens || u[k].output_tokens))
+    .map(k => `${k}: ${u[k].input_tokens}→${u[k].output_tokens}`).join("   ");
+  const cost = Object.values(u).reduce((a, x) => a + ((x && x.cost) || 0), 0);
+  if (cost > 0) document.getElementById("usage").textContent += `   · OpenRouter cost $${cost.toFixed(4)}`;
+}
+function renderSummaries(map) {
+  const el = document.getElementById("char-summaries");
+  const ids = Object.keys(map || {});
+  el.innerHTML = ids.length
+    ? ids.map(id => `<div class="card"><div class="id" style="color:${colorOf(id)}">${esc(nameOf(id))}</div>`
+        + `<div class="detail" style="white-space:pre-wrap">${esc(map[id])}</div></div>`).join("")
+    : `<div class="empty">none yet. They are written when memories are formed, in scenes with more than one character.</div>`;
+}
+function applySnapshot(s) {
+  if (s.world) { W = s.world; }
+  renderSummaries(s.summaries);
+  if (s.memories) setMemories(s.memories);
+  document.getElementById("archived-count").textContent = s.archived ?? 0;
+  const sum = document.getElementById("summary");
+  sum.textContent = s.session_summary || "nothing yet";
+  sum.className = s.session_summary ? "" : "empty";
+}
+
+/* ---------------- actions ---------------- */
+function cfg() {
+  return {
+    verbatim: +document.getElementById("cfg-verbatim").value,
+    batch: +document.getElementById("cfg-batch").value,
+    recall_cap: +document.getElementById("cfg-recall").value,
+    layout: document.getElementById("cfg-layout").value,
+    recall_tool: document.getElementById("cfg-tool").value === "true",
+    max_speakers: +document.getElementById("cfg-speakers").value,
+    life_every: +document.getElementById("cfg-life").value,
+    notice: document.getElementById("cfg-notice").value === "true",
+  };
+}
+async function send() {
+  const box = document.getElementById("msg");
+  const text = box.value.trim();
+  if (!text) return;
+  box.value = "";
+  document.getElementById("send").disabled = true;
+  const to = document.getElementById("say-to").value || null;
+  addSpoken("player", nameOf("player"), text, to);
+  const pending = addMsg("sys", "", "…the scene moves");
+  try {
+    const res = await fetch("/api/chat", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, models: models(), ...cfg(), to }),
+    });
+    const d = await res.json();
+    pending.remove();
+    if (d.error) { addMsg("err", "error", d.error); return; }
+    if (!d.replies.length) addMsg("sys", "", "(no one replies)");
+    for (const r of d.replies) addSpoken(r.speaker, r.name, r.content, r.private ? to : null);
+    if (d.moved) addMsg("sys", "", `(The scene moves to ${d.moved}.)`);
+    for (const n of d.arrived || []) addMsg("sys", "", `(${n} comes in.)`);
+    for (const t of d.discovered || []) addMsg("sys", "", t);
+    W = d.world;
+    setMemories(d.memories);
+    renderSummaries(d.summaries);
+    renderDirector(d.director);
+    renderRecalled(d.replies);
+    renderChanges(d.scene_changes);
+    renderScene(d.scene_changes);
+    renderCast(d.scene_changes);
+    renderFilter();
+    renderCastStrip();
+    renderFormation(d);
+    renderUsage(d.usage);
+    const sum = document.getElementById("summary");
+    sum.textContent = d.session_summary || "nothing yet";
+    sum.className = d.session_summary ? "" : "empty";
+  } catch (e) {
+    pending.remove();
+    addMsg("err", "error", String(e));
+  } finally {
+    document.getElementById("say-to").value = "";   // never stay private by accident
+    document.getElementById("send").disabled = false;
+    document.getElementById("msg").focus();
+  }
+}
+async function flushNow() {
+  const d = await (await fetch("/api/flush", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models() }),
+  })).json();
+  addMsg("sys", "", `Formed from ${d.formed_count} message(s).`);
+  applySnapshot(d);
+  renderFormation(d);
+}
+async function newSession() {
+  const d = await (await fetch("/api/new_session", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models() }),
+  })).json();
+  chat.innerHTML = "";
+  addMsg("sys", "", `Scene ended — ${d.formed_count} message(s) flushed to memory. The cast and the world carry on.`);
+  applySnapshot(d);
+  renderDirector(null); renderRecalled(null); renderChanges([]);
+  renderCastStrip();
+}
+// Native confirm() is auto-dismissed inside embedded browser panes, so this
+// uses a two-click arm/confirm on the button itself.
+let wipeArmed = false, wipeTimer = null;
+function disarmWipe() {
+  wipeArmed = false; clearTimeout(wipeTimer);
+  const b = document.getElementById("wipe");
+  b.textContent = "Wipe everything"; b.classList.remove("armed");
+}
+async function wipe() {
+  const b = document.getElementById("wipe");
+  if (!wipeArmed) {
+    wipeArmed = true; b.textContent = "Click again to confirm"; b.classList.add("armed");
+    wipeTimer = setTimeout(disarmWipe, 8000);
+    return;
+  }
+  disarmWipe();
+  const d = await (await fetch("/api/reset", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: "{}",
+  })).json();
+  chat.innerHTML = "";
+  addMsg("sys", "", "Wiped. Memories, conversation, cast and scene are back to their defaults.");
+  W = d.world;
+  applySnapshot(d);
+  loadFixed(); renderCast(); renderScene(); renderFilter(); renderCastStrip();
+  renderDirector(null); renderRecalled(null); renderChanges([]); renderFormation(d);
+}
+async function consolidate() {
+  const out = document.getElementById("consolidate-out");
+  out.textContent = "tidying…";
+  const d = await (await fetch("/api/consolidate", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models() }),
+  })).json();
+  if (d.error) { out.textContent = d.error; return; }
+  const bits = [];
+  for (const m of d.merged) bits.push(`merged ${m.merged_from.join(" + ")} → ${m.id}: ${m.why}`);
+  for (const c of d.core_changed) bits.push(`${c.id} ${c.core ? "promoted to" : "removed from"} core: ${c.why}`);
+  for (const s of d.skipped) bits.push(`skipped ${s.source_ids.join(", ")}: ${s.why}`);
+  out.textContent = bits.length ? bits.join("\n") : "already tidy: nothing to merge";
+  applySnapshot(d);
+}
+async function undoMerge(id) {
+  const d = await (await fetch("/api/unmerge", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }),
+  })).json();
+  if (d.error) { alert(d.error); return; }
+  applySnapshot(d);
+  document.getElementById("consolidate-out").textContent = `restored ${d.restored.join(", ")}`;
+}
+function loadFixed() {
+  if (!W) return;
+  document.getElementById("fx-core_instructions").value = W.fixed.core_instructions || "";
+  document.getElementById("fx-scenario").value = W.fixed.scenario || "";
+  document.getElementById("fx-invention").value = W.fixed.invention || "balanced";
+  describeInvention();
+}
+function describeInvention() {
+  const notes = {
+    balanced: "Colour, history, lore and a character's own past are free (what they say is kept as an unconfirmed claim you can confirm or delete). They may not make up where other people are or what they're doing now, who is here, or what is locked.",
+    strict: "Characters add nothing new: no invented backstory, history or details about other people. For a world you've fully authored.",
+    free: "Anything goes, even about other people. Characters stay consistent with what they've been told, but may also put others in places or doings the story hasn't set.",
+  };
+  document.getElementById("fx-invention-note").textContent = notes[document.getElementById("fx-invention").value] || "";
+}
+
+document.getElementById("msg").addEventListener("keydown", e => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+
+(async () => {
+  const s = await (await fetch("/api/state")).json();
+  W = s.world;
+  setMemories(s.memories);
+  renderSummaries(s.summaries);
+  renderFilter(); renderCast(); renderScene(); renderCastStrip(); loadFixed();
+  renderFormation(s);
+  document.getElementById("cfg-verbatim").value = s.verbatim;
+  document.getElementById("cfg-batch").value = s.batch;
+  document.getElementById("cfg-recall").value = s.recall_cap;
+  document.getElementById("cfg-layout").value = s.layout;
+  document.getElementById("cfg-tool").value = String(s.recall_tool);
+  document.getElementById("cfg-speakers").value = s.max_speakers;
+  document.getElementById("cfg-life").value = s.life_every ?? 6;
+  document.getElementById("archived-count").textContent = s.archived ?? 0;
+  if (s.session_summary) {
+    document.getElementById("summary").textContent = s.session_summary;
+    document.getElementById("summary").className = "";
+  }
+  for (const m of s.history) {
+    if (m.kind === "aside" || m.kind === "depart" || m.kind === "arrive") continue;   // what the others notice; the player saw it happen
+    if (m.kind === "move" || m.kind === "discover") { addMsg("sys", "", m.content); continue; }
+    addSpoken(m.speaker, m.name || nameOf(m.speaker), m.content, m.private_to);
+  }
+  if (!s.history.length) addMsg("sys", "", "Quiet night. Say or do something.");
+  document.getElementById("msg").focus();
+})();
+</script>
+</body>
+</html>

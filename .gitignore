@@ -1,0 +1,13 @@
+# secrets (API keys live here)
+.claude/settings.local.json
+
+# vendored dependencies (not committed; see README)
+vendor/
+
+__pycache__/
+*.pyc
+
+# live app state (regenerate with tests/experiments/demo_driver.py)
+world.json
+memories.json
+conversation.json
