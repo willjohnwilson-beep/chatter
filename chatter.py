@@ -99,6 +99,8 @@ def _dated(m: dict, dated: bool, here: str | None = None, names: dict | None = N
     bits = []
     if dated and m.get("as_of"):
         bits.append(f"noted {m['as_of']}")
+    if dated and m.get("stale"):
+        bits.append("short-lived, so it may have changed since")
     away = memory.place_text(m, names, exclude=here) if dated else ""
     if away:
         bits.append(f"at {away}")
@@ -548,6 +550,7 @@ class Chatter:
             viewer=mem_viewer,
             names=self.world.names(),
             place=self.world.scene.get("location"),
+            now=self.world.scene.get("fiction_time"),
         )
         have = {m["id"] for m in already}
         fresh = [m for m in found if m["id"] not in have]
@@ -984,7 +987,7 @@ class Chatter:
                 retrieved, ur = memory.retrieve(
                     self.store, self.latest_for(mem_viewer), self.recent_text(mem_viewer),
                     models["retrieval"], limit=self.recall_cap, viewer=mem_viewer, names=names,
-                    place=self.world.scene.get("location"),
+                    place=self.world.scene.get("location"), now=self.world.scene.get("fiction_time"),
                 )
                 u_retrieve = {k: u_retrieve[k] + ur[k] for k in u_retrieve}
             else:

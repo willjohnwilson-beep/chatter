@@ -36,7 +36,7 @@ DEFAULT_MODELS = {
 def snapshot() -> dict:
     names = world.names()
     return {
-        "memories": store.memories,
+        "memories": [{**m, "stale": store.stale(m, world.scene.get("fiction_time"))} for m in store.memories],
         "tags": store.all_tags(),
         "session_summary": store.session_summary,
         "summaries": store.summaries,
@@ -255,6 +255,7 @@ def start_scene():
     chat_engine.clear()
     store.session_summary = ""
     store.summaries = {}
+    store.end_scene()  # short-lived memories from the scene that just ended are now stale
     store.save()
     info = world.apply_preset(body["preset_id"])
     chat_engine.begin_scene(info["opening"])
@@ -266,6 +267,16 @@ def confirm_memory():
     """The author vouches for a memory, so a character's claim becomes plain fact."""
     if not store.confirm((request.get_json() or {}).get("memory_id", "")):
         return jsonify({"error": "no such memory"}), 400
+    store.save()
+    return jsonify({"ok": True, **snapshot()})
+
+
+@app.route("/api/memory/lifetime", methods=["POST"])
+def set_memory_lifetime():
+    """The author overrides how long a memory stays useful: moment, days or lasting."""
+    body = request.get_json() or {}
+    if not store.set_lifetime(body.get("memory_id", ""), body.get("lifetime", "")):
+        return jsonify({"error": "no such memory, or not a lifetime"}), 400
     store.save()
     return jsonify({"ok": True, **snapshot()})
 
@@ -371,6 +382,7 @@ def new_session():
     chat_engine.clear()
     store.session_summary = ""
     store.summaries = {}
+    store.end_scene()
     store.save()
     return jsonify({"ok": True, "formed": formed, "formed_count": count, **snapshot()})
 

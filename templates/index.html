@@ -530,6 +530,12 @@ function memCard(m, opts = {}) {
   const confirmedBadge = m.source === "confirmed" ? `<span class="badge create" title="You confirmed this">confirmed</span>` : "";
   const placeBadge = (m.places || []).length
     ? `<span class="badge knows" title="Where it was formed">at ${esc(m.places.map(nameOf).join(", "))}</span>` : "";
+  const life = m.lifetime || "lasting";
+  const lifeBadge = life === "lasting" ? "" : m.stale
+    ? `<span class="badge warn" title="Short-lived (${esc(life)}) and now out of date: a character is told it may have changed, and it ranks behind fresh memories">stale</span>`
+    : `<span class="badge knows" title="Judged short-lived (${esc(life)}). It goes stale at the next scene break or after a few story days">short-lived: ${esc(life)}</span>`;
+  const lifeSelect = `<select class="small" title="How long this stays useful" onchange="setLifetime('${m.id}', this.value)">`
+    + ["moment", "days", "lasting"].map(v => `<option value="${v}"${v === life ? " selected" : ""}>${v}</option>`).join("") + `</select> `;
   const kl = knownLabel(m);
   const knowsBadge = kl ? `<span class="badge secret" title="Only these characters know this">${esc(kl)}</span>` : "";
   const warn = m.verified === false
@@ -549,12 +555,12 @@ function memCard(m, opts = {}) {
          <button class="small" style="margin-left:6px" onclick="undoMerge('${m.id}')">undo</button></div>` : "";
   const canon = subj !== "player";
   return `<div class="card${m.core ? " is-core" : ""}${canon ? " is-canon" : ""}">
-    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${confirmedBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
+    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${confirmedBadge}${lifeBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
     <div class="summary">${esc(m.summary)}</div>
     <div class="detail">${esc(m.detail)}</div>
     <div class="tags">${(m.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
     ${asof}${merged}${evidence}${versions}${reason}
-    ${opts.noActions ? "" : `<div class="asof">${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
+    ${opts.noActions ? "" : `<div class="asof">${lifeSelect}${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
 }
 
 function visibleTo(m, who) {
@@ -575,6 +581,11 @@ function renderMemories() {
 }
 async function confirmMemory(id) {
   const d = await (await fetch("/api/memory/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }) })).json();
+  if (d.error) { alert(d.error); return; }
+  setMemories(d.memories);
+}
+async function setLifetime(id, lifetime) {
+  const d = await (await fetch("/api/memory/lifetime", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id, lifetime }) })).json();
   if (d.error) { alert(d.error); return; }
   setMemories(d.memories);
 }

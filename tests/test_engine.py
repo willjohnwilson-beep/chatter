@@ -2315,4 +2315,130 @@ tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
 assert 'id="fx-invention"' in tmpl and "describeInvention" in tmpl and "invention: document.getElementById" in tmpl
 print("   PASS")
 
+
+# ------------------------------------------------------------------ 80
+print("== 80. short-lived memories age out: lifetime, the story clock, retrieval, rendering, the override ==")
+sd = memory.story_day
+assert sd("Thursday 15 October 2026, 11:20pm") == (10, 15, 2026)
+assert sd("Saturday 17 October") == (10, 17, None) and sd("15th of March") == (3, 15, None) and sd("Mar 3") == (3, 3, None)
+assert sd("Thursday 11pm") is None and sd("") is None and sd(None) is None, "no date, no age by days"
+assert sd("10 minutes later") is None, "a number then a word that is not a month is not a date"
+sdb = memory.story_days_between
+assert sdb("Thursday 15 October 2026, 11pm", "Friday 16 October 2026, 9am") == 1
+assert sdb("Thursday 15 October", "Saturday 17 October") == 2, "no year on either: still counts"
+assert sdb("28 December", "2 January") == 5, "no year: December rolls into January"
+assert sdb("30 December 2026", "2 January 2027") == 3, "years known: plain subtraction"
+assert sdb("Thursday evening", "Friday 16 October") is None and sdb("30 February", "1 March") is None
+
+fresh_ = lambda **kw: {"lifetime": "days", "scene_no": 0, "as_of": "Thursday 15 October 2026, 9pm", **kw}
+stale_ = memory.is_stale
+assert not stale_({"lifetime": "lasting", "scene_no": 0}, 5, "Saturday 1 January 2030"), "lasting never ages"
+assert not stale_(fresh_(), 0, "Thursday 15 October 2026, 11pm") and not stale_(fresh_(), 0, "Wednesday 21 October 2026"), "days: 6 is fine"
+assert stale_(fresh_(), 0, "Thursday 22 October 2026"), "days: 7 story days"
+assert stale_(fresh_(lifetime="moment"), 0, "Friday 16 October 2026") and not stale_(fresh_(lifetime="moment"), 0, "Thursday 15 October 2026, 11:59pm")
+assert stale_(fresh_(), 1, "Thursday 15 October 2026, 11pm"), "a scene break ages it however recent"
+assert stale_(fresh_(as_of="Thursday evening"), 1, "Thursday") and not stale_(fresh_(as_of="Thursday evening"), 0, "Friday"), \
+    "no readable date: only a scene break can age it"
+assert not stale_(fresh_(core=True), 3, "Friday 1 January 2027"), "a core memory is never short-lived"
+assert not stale_({"lifetime": "moment"}, 4, None), "no scene stamp and no clock: left alone"
+
+# formation: the field, what is stored, and the rules
+f_ = install(form={"operations": [{"action": "create", "memory_id": "", "subject": "world", "tags": ["t"], "summary": "Sam away",
+                                   "detail": "Sam is away till Sunday", "core": False, "lifetime": "days",
+                                   "evidence": "he is away till Sunday"}], "session_summary": "s"}, summary="S", omni="O")
+store, world, c = make([WREN, MICK])
+c.history = [{"speaker": "player", "content": "Sam? He is away till Sunday", "present": ["wren", "mick"], "t": "Thursday 15 October 2026, 9pm"}]
+c.flush(MODELS["formation"], MODELS["formation"])
+prompt_ = next(kw for k, kw in f_.calls if k == "form")["messages"][0]["content"]
+assert "LIFETIME:" in prompt_ and "choose the longer one" in prompt_
+assert any(m["lifetime"] == "days" and m["scene_no"] == 0 for m in store.memories), "the model's lifetime is stored"
+sch = memory.formation_schema(["world"])["properties"]["operations"]["items"]
+assert "lifetime" in sch["required"] and sch["properties"]["lifetime"]["enum"] == ["moment", "days", "lasting"]
+
+store = memory.MemoryStore(os.path.join(tmp, "life.json"))
+store.scene_no = 2
+LB = [{"speaker": "wren", "content": "he is away till Sunday", "present": ["wren", "mick"], "t": "Thursday 15 October 2026, 9pm"}]
+lop = lambda **kw: {"action": "create", "memory_id": "", "subject": "world", "tags": ["t"], "summary": "s", "detail": "d",
+                    "core": False, "evidence": "he is away till Sunday", **kw}
+ap = lambda o: store.apply_operations([o], LB, all_ids=["wren", "mick"], subject_ids=["player", "world", "wren", "mick"], known_by=["*"])[0]
+a_ = ap(lop(lifetime="moment"))
+assert a_["lifetime"] == "moment" and a_["scene_no"] == 2 and a_["lifetime_by"] == ""
+assert ap(lop(lifetime="moment", core=True))["lifetime"] == "lasting", "core is always lasting"
+assert ap(lop())["lifetime"] == "lasting" and ap(lop(lifetime="forever"))["lifetime"] == "lasting", "missing or invalid: lasting"
+# an update never shortens, may lengthen, and restarts the clock
+store.end_scene()
+u_ = ap(lop(action="update", memory_id=a_["id"], lifetime="moment", detail="d2"))
+assert u_["action"] == "update" and u_["lifetime"] == "moment" and u_["scene_no"] == 3, "refreshed in the new scene"
+d_ = ap(lop(lifetime="days"))
+assert ap(lop(action="update", memory_id=d_["id"], lifetime="moment"))["lifetime"] == "days", "never shortened"
+assert ap(lop(action="update", memory_id=d_["id"], lifetime="lasting"))["lifetime"] == "lasting", "may be lengthened"
+# the author's word stands
+e_ = ap(lop(lifetime="days"))
+assert store.set_lifetime(e_["id"], "lasting") and store.by_id(e_["id"])["lifetime_by"] == "author"
+assert ap(lop(action="update", memory_id=e_["id"], lifetime="moment"))["lifetime"] == "lasting", "formation can't override the author"
+assert not store.set_lifetime(e_["id"], "soon") and not store.set_lifetime("mem_9999", "days")
+# a merge lasts as long as its longest-lived source
+m1, m2 = ap(lop(lifetime="moment", evidence="he is away till Sunday")), ap(lop(lifetime="days"))
+out = store.apply_merges([{"source_ids": [m1["id"], m2["id"]], "tags": ["t"], "summary": "s", "detail": "d", "core": False, "why": "w"}])
+assert out["merged"][0]["lifetime"] == "days"
+# it persists, and an older store loads as lasting
+store.save()
+back = memory.MemoryStore(store.path)
+assert back.scene_no == 3 and back.by_id(e_["id"])["lifetime_by"] == "author"
+json.dump({"memories": [{"id": "mem_0001", "kind": "canon", "tags": ["a"], "summary": "s", "detail": "d", "as_of": "Thursday 1 January"}],
+           "next_id": 2}, open(os.path.join(tmp, "old.json"), "w"))
+old = memory.MemoryStore(os.path.join(tmp, "old.json"))
+assert old.memories[0]["lifetime"] == "lasting" and not old.stale(old.memories[0], "Friday 1 December") and old.scene_no == 0
+store.reset()
+assert store.scene_no == 0
+
+# retrieval: a stale memory still comes back, but behind fresh ones
+store = memory.MemoryStore(os.path.join(tmp, "ret.json"))
+A = store.apply_operations([lop(summary="A", lifetime="days")], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])[0]
+B = store.apply_operations([lop(summary="B")], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])[0]
+C = store.apply_operations([lop(summary="C")], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])[0]
+store.end_scene()
+pick = {"retrieved": [{"memory_id": A["id"], "reason": "a"}, {"memory_id": B["id"], "reason": "b"}, {"memory_id": C["id"], "reason": "c"}]}
+install(retrieve=pick)
+got, _ = memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=2, viewer=None, now="Friday 16 October 2026")
+assert [g["id"] for g in got] == [B["id"], C["id"]] and not any(g["stale"] for g in got), "the cap drops the stale one first"
+got, _ = memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=3, viewer=None, now="Friday 16 October 2026")
+assert [g["id"] for g in got] == [B["id"], C["id"], A["id"]] and got[2]["stale"] is True, "stale goes last, flagged"
+
+# what a character is shown
+assert "may have changed" in ch._dated({"detail": "Sam is out", "as_of": "T", "stale": True}, dated=True)
+assert "may have changed" not in ch._dated({"detail": "Sam is out", "as_of": "T", "stale": False}, dated=True)
+assert "may have changed" not in ch._dated({"detail": "Sam is out", "as_of": "T", "stale": True}, dated=False), "core is shown plain"
+
+# a scene break, the override endpoint, the UI
+import app as appmod
+
+store, world, c = make([WREN, MICK])
+world.set_locations([{"id": "salt-line", "name": "The Salt Line"}, {"id": "cellar", "name": "The Cellar"}])
+world.set_presets([{"id": "new-1", "name": "Next", "location": "cellar", "cast": [{"id": "wren", "location": "cellar"}]}])
+world.scene["fiction_time"] = "Thursday 15 October 2026, 10pm"
+appmod.store, appmod.world, appmod.chat_engine = store, world, c
+cl = appmod.app.test_client()
+s_ = ap_store = store.apply_operations([lop(summary="Sam away", lifetime="days")], LB, all_ids=["wren", "mick"],
+                                       subject_ids=["world"], known_by=["*"])[0]
+l_ = store.apply_operations([lop(summary="Aunt left the bar", lifetime="lasting")], LB, all_ids=["wren", "mick"],
+                            subject_ids=["world"], known_by=["*"])[0]
+snap = {m["id"]: m for m in cl.get("/api/state").get_json()["memories"]}
+assert snap[s_["id"]]["stale"] is False and snap[s_["id"]]["lifetime"] == "days", "fresh within its scene"
+install(form={"operations": [], "session_summary": "x"})
+r = cl.post("/api/new_session", json={"models": MODELS})
+snap = {m["id"]: m for m in r.get_json()["memories"]}
+assert store.scene_no == 1 and snap[s_["id"]]["stale"] is True and snap[l_["id"]]["stale"] is False, "ending a scene ages the short-lived"
+r = cl.post("/api/memory/lifetime", json={"memory_id": s_["id"], "lifetime": "lasting"})
+assert r.status_code == 200 and {m["id"]: m for m in r.get_json()["memories"]}[s_["id"]]["stale"] is False, "the author can rescue it"
+assert cl.post("/api/memory/lifetime", json={"memory_id": s_["id"], "lifetime": "soon"}).status_code == 400
+assert cl.post("/api/memory/lifetime", json={"memory_id": "nope", "lifetime": "days"}).status_code == 400
+cl.post("/api/memory/lifetime", json={"memory_id": s_["id"], "lifetime": "days"})
+cl.post("/api/start_scene", json={"preset_id": "next", "flush": False})
+assert store.scene_no == 2, "starting a scene is a break too"
+assert json.load(open(store.path))["scene_no"] == 2, "saved"
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert "setLifetime" in tmpl and "/api/memory/lifetime" in tmpl and "short-lived" in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

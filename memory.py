@@ -86,6 +86,15 @@ def formation_schema(subject_ids: list[str]) -> dict:
                                 "False for episodic or situational memories."
                             ),
                         },
+                        "lifetime": {
+                            "type": "string",
+                            "enum": list(LIFETIMES),
+                            "description": (
+                                "How long this stays useful: moment (only now / this scene), "
+                                "days (a few days to a couple of weeks), or lasting (until "
+                                "something changes it). When unsure, choose the longer."
+                            ),
+                        },
                         "evidence": {
                             "type": "string",
                             "description": (
@@ -95,7 +104,7 @@ def formation_schema(subject_ids: list[str]) -> dict:
                         },
                     },
                     "required": ["action", "memory_id", "subject", "tags", "summary", "detail",
-                                 "core", "evidence"],
+                                 "core", "lifetime", "evidence"],
                     "additionalProperties": False,
                 },
             },
@@ -136,6 +145,75 @@ def claim_text(m: dict, names: dict | None, viewer: str | None = None) -> str:
     if viewer and who == viewer:
         return "you said so"
     return f"said by {(names or {}).get(who, who) or 'someone'}, unconfirmed"
+
+
+# How long a memory stays useful, judged by the formation model (the one step that has
+# just read the exact words). Aging never deletes: a stale memory is still shown to a
+# character, but as "may have changed", and it ranks below a fresh one in retrieval.
+#   moment  - only true now / this scene      days - a few days to a couple of weeks
+#   lasting - until something changes it (the default, and what every older memory is)
+LIFETIMES = ("moment", "days", "lasting")
+TTL_DAYS = {"moment": 1, "days": 7}  # story days after which a short-lived memory is stale
+_MONTHS = ("january february march april may june july august september october november "
+           "december").split()
+_DAY_MONTH = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([A-Za-z]{3,9})\b")  # 15 October
+_MONTH_DAY = re.compile(r"\b([A-Za-z]{3,9})\s+(\d{1,2})(?:st|nd|rd|th)?\b")            # October 15
+_YEAR = re.compile(r"\b(1\d{3}|2\d{3})\b")
+
+
+def _month(word: str) -> int | None:
+    w = word.lower()
+    for i, name in enumerate(_MONTHS, 1):
+        if w == name or w == name[:3] or (w == "sept" and i == 9):
+            return i
+    return None
+
+
+def story_day(t: str | None) -> tuple[int, int, int | None] | None:
+    """(month, day, year or None) read from an in-fiction time stamp such as
+    'Thursday 15 October 2026, 11:20pm'. None when it has no readable date (a bare
+    weekday or clock time), in which case age by days can't be told."""
+    if not t:
+        return None
+    y = _YEAR.search(t)
+    year = int(y.group(1)) if y else None
+    for pat, day_at, mon_at in ((_DAY_MONTH, 1, 2), (_MONTH_DAY, 2, 1)):
+        for m in pat.finditer(t):
+            month, day = _month(m.group(mon_at)), int(m.group(day_at))
+            if month and 1 <= day <= 31:
+                return month, day, year
+    return None
+
+
+def story_days_between(then: str | None, now: str | None) -> int | None:
+    """Whole story days from `then` to `now`, or None if either lacks a date. Without
+    a year on both, the calendar is read as one cycle (Dec to Jan wraps forward)."""
+    a, b = story_day(then), story_day(now)
+    if not a or not b:
+        return None
+    from datetime import date
+    try:
+        if a[2] and b[2]:
+            return (date(b[2], b[0], b[1]) - date(a[2], a[0], a[1])).days
+        return (date(2001, b[0], b[1]) - date(2001, a[0], a[1])).days % 365
+    except ValueError:  # 30 February and the like
+        return None
+
+
+def is_stale(m: dict, scene_no: int, now: str | None) -> bool:
+    """Has this short-lived memory aged out? Whichever comes first: the scene it was
+    noted in has ended, or enough story days have passed. Lasting (and core) never do."""
+    life = m.get("lifetime", "lasting")
+    if life == "lasting" or m.get("core"):
+        return False
+    if m.get("scene_no", scene_no) < scene_no:
+        return True
+    age = story_days_between(m.get("as_of"), now)
+    return age is not None and age >= TTL_DAYS.get(life, 7)
+
+
+def _longer(a: str, b: str) -> str:
+    return a if LIFETIMES.index(a) >= LIFETIMES.index(b) else b
 
 
 def _add_place(places: list[str] | None, loc: str | None) -> list[str]:
@@ -238,6 +316,7 @@ class MemoryStore:
         # character id -> running summary of the scene as THAT character saw it
         self.summaries: dict[str, str] = {}
         self.next_id: int = 1
+        self.scene_no: int = 0  # bumped at every scene break; short-lived memories age out across one
         self.load()
 
     # ---------- persistence ----------
@@ -251,7 +330,11 @@ class MemoryStore:
             self.next_id = data.get("next_id", len(self.memories) + 1)
             self.archive = data.get("archive", [])
             self.summaries = data.get("summaries", {})
+            self.scene_no = data.get("scene_no", 0)
         for m in self.memories + self.archive:  # migrate memories written before these fields existed
+            m.setdefault("lifetime", "lasting")  # older memories never age
+            m.setdefault("lifetime_by", "")      # "author" once the author has set it by hand
+            m.setdefault("scene_no", 0)
             m.setdefault("kind", "person")
             m.setdefault("subject", PLAYER if m["kind"] == "person" else WORLD)
             m.setdefault("known_by", [ANYONE])
@@ -271,6 +354,7 @@ class MemoryStore:
                     "next_id": self.next_id,
                     "archive": self.archive,
                     "summaries": self.summaries,
+                    "scene_no": self.scene_no,
                 },
                 f,
                 indent=2,
@@ -282,7 +366,25 @@ class MemoryStore:
         self.archive = []
         self.summaries = {}
         self.next_id = 1
+        self.scene_no = 0
         self.save()
+
+    # ---------- aging ----------
+
+    def end_scene(self) -> None:
+        """A scene break: every short-lived memory noted so far is now stale."""
+        self.scene_no += 1
+
+    def stale(self, m: dict, now: str | None) -> bool:
+        return is_stale(m, self.scene_no, now)
+
+    def set_lifetime(self, memory_id: str, lifetime: str) -> bool:
+        """The author's call, which formation never overrides afterwards."""
+        m = self.by_id(memory_id)
+        if m is None or lifetime not in LIFETIMES:
+            return False
+        m["lifetime"], m["lifetime_by"] = lifetime, "author"
+        return True
 
     # ---------- views ----------
 
@@ -407,6 +509,9 @@ class MemoryStore:
                 who = (names or {}).get(claimant, claimant)
                 if who.lower() not in (op.get("detail") or "").lower():
                     op = {**op, "detail": f"{who} said: {op.get('detail', '')}"}
+            lifetime = op.get("lifetime") if op.get("lifetime") in LIFETIMES else "lasting"
+            if op.get("core"):
+                lifetime = "lasting"  # a durable fact is never short-lived, whatever else was said
             existing = self.by_id(op["memory_id"]) if op["memory_id"] else None
             # A different audience means a different memory: updating in place
             # would tell the old knowers something only the new ones witnessed.
@@ -425,6 +530,9 @@ class MemoryStore:
                 existing["detail"] = op["detail"] or existing["detail"]
                 existing["core"] = op.get("core", existing.get("core", False))
                 existing["as_of"] = as_of
+                existing["scene_no"] = self.scene_no  # refreshed, so its clock restarts
+                if existing.get("lifetime_by") != "author":  # the author's setting stands; otherwise never shorten
+                    existing["lifetime"] = _longer(existing.get("lifetime", "lasting"), lifetime)
                 existing["places"] = _add_place(existing.get("places"), loc)
                 if PRIORITY.get(source, 0) > PRIORITY.get(existing.get("source", ""), 0):
                     existing["source"], existing["claimed_by"] = source, (claimant if source == "claim" else "")
@@ -442,6 +550,9 @@ class MemoryStore:
                     "summary": op["summary"],
                     "detail": op["detail"],
                     "core": op.get("core", False),
+                    "lifetime": lifetime,
+                    "lifetime_by": "",
+                    "scene_no": self.scene_no,
                     "as_of": as_of,
                     "places": _add_place([], loc),
                     "source": source,
@@ -487,6 +598,11 @@ class MemoryStore:
                 "summary": mg["summary"],
                 "detail": mg["detail"],
                 "core": mg["core"],
+                # a merge keeps what is still true of every source, so it lasts as long as the longest-lived
+                "lifetime": "lasting" if mg["core"] else max((s.get("lifetime", "lasting") for s in sources),
+                                                              key=LIFETIMES.index),
+                "lifetime_by": "author" if any(s.get("lifetime_by") == "author" for s in sources) else "",
+                "scene_no": max(s.get("scene_no", 0) for s in sources),
                 "as_of": newest.get("as_of", ""),
                 "places": [p for p in dict.fromkeys(p for s in sources for p in s.get("places") or [])][-MAX_PLACES:],
                 "source": best,
@@ -538,10 +654,14 @@ def retrieve(
     viewer: str | None = None,
     names: dict | None = None,
     place: str | None = None,
+    now: str | None = None,
 ) -> tuple[list[dict], dict]:
     """Pick which non-core memories this message calls for, from among those
     `viewer` knows. viewer=None is omniscient. `place` is where the scene is: a
-    memory marked 'at' that place is more likely to matter while it is there."""
+    memory marked 'at' that place is more likely to matter while it is there.
+    `now` is the in-fiction time: a memory that has aged out (see is_stale) is
+    still returned if picked, but behind any fresh one when the cap bites, and
+    flagged `stale` so it is shown as possibly out of date."""
     candidates = store.pool(viewer, exclude_core=True)
     if not candidates:
         return [], llm.zero_usage()
@@ -594,6 +714,10 @@ def retrieve(
     picked = json.loads(llm.text(response))["retrieved"]
     allowed = {m["id"] for m in candidates}
     picked = [p for p in picked if p["memory_id"] in allowed]  # never surface what they don't know
+    def aged(p):
+        m = store.by_id(p["memory_id"])
+        return bool(m) and store.stale(m, now)
+    picked = sorted(picked, key=aged)  # stable: fresh first, each group keeping the model's order
     if limit:
         picked = picked[:limit]
 
@@ -602,7 +726,7 @@ def retrieve(
         mem = store.by_id(item["memory_id"])
         if mem:
             mem["hits"] = mem.get("hits", 0) + 1
-            hydrated.append({**mem, "reason": item["reason"]})
+            hydrated.append({**mem, "reason": item["reason"], "stale": store.stale(mem, now)})
     return hydrated, llm.usage(response)
 
 
@@ -761,6 +885,19 @@ def form(
         "'they ordered a double tonight' is not. A character's own persona "
         "already holds what defines them, so memories about a character are "
         "rarely core.\n\n"
+        "LIFETIME: set `lifetime` on every entry, how long it will stay useful before it is "
+        "likely to be out of date.\n"
+        "  moment — only true right now or for this scene: what someone is doing, feeling or "
+        "holding this minute, the weather, who is sitting where.\n"
+        "  days — true for a few days to a couple of weeks and then probably stale: a short-term "
+        "plan or errand, where someone is today, a passing mood, a minor ailment, a pending "
+        "delivery, what someone has or has not yet found out about a passing situation.\n"
+        "  lasting — stays true until something changes it and is worth remembering for a long "
+        "time: history, character, habits and opinions, relationships, standing facts about the "
+        "world, debts and promises still outstanding, permanent changes.\n"
+        "If you are unsure between a shorter and a longer answer, choose the longer one: a "
+        "lasting memory wrongly marked short-lived is worse than the reverse. A memory that "
+        "is core is always lasting.\n\n"
         "TAGS: lowercase-kebab-case, concrete nouns for the actual subject "
         "matter, several per memory. Good: 'sister', 'production-outage', "
         "'whisky', 'mick'. Bad: abstract or meta labels like "
