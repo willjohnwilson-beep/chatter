@@ -257,6 +257,13 @@ def visible_to(mem: dict, viewer: str | None) -> bool:
     return ANYONE in kb or viewer in kb
 
 
+def known_to_all(mem: dict, audience, all_ids: list[str] | None) -> bool:
+    """Does every one of `audience` already know this memory?"""
+    kb = mem.get("known_by") or [ANYONE]
+    have = set(all_ids or []) if ANYONE in kb else set(kb)
+    return set(audience) <= have
+
+
 def _same_audience(a, b, all_ids: list[str] | None) -> bool:
     ka = a.get("known_by") if isinstance(a, dict) else a
     kb = b.get("known_by") if isinstance(b, dict) else b
@@ -325,6 +332,9 @@ class MemoryStore:
         self.summaries: dict[str, str] = {}
         self.next_id: int = 1
         self.scene_no: int = 0  # bumped at every scene break; short-lived memories age out across one
+        # Who has heard EVERYTHING in the shared session summary (None while it is empty). The summary is written
+        # omniscient, so it must not be shown to a pass writing memories for anyone outside this set.
+        self.summary_audience: list[str] | None = None
         self.load()
 
     # ---------- persistence ----------
@@ -339,6 +349,9 @@ class MemoryStore:
             self.archive = data.get("archive", [])
             self.summaries = data.get("summaries", {})
             self.scene_no = data.get("scene_no", 0)
+            sa = data.get("summary_audience")
+            # a store saved before this field existed: be careful and assume nobody can be shown a non-empty summary
+            self.summary_audience = sa if isinstance(sa, list) else ([] if self.session_summary else None)
         for m in self.memories + self.archive:  # migrate memories written before these fields existed
             m.setdefault("lifetime", "lasting")  # older memories never age
             m.setdefault("lifetime_by", "")      # "author" once the author has set it by hand
@@ -365,6 +378,7 @@ class MemoryStore:
                     "archive": self.archive,
                     "summaries": self.summaries,
                     "scene_no": self.scene_no,
+                    "summary_audience": self.summary_audience,
                 },
                 f,
                 indent=2,
@@ -377,7 +391,17 @@ class MemoryStore:
         self.summaries = {}
         self.next_id = 1
         self.scene_no = 0
+        self.summary_audience = None
         self.save()
+
+    def clear_session_summary(self) -> None:
+        """A scene ended: the shared summary starts again, with no one having heard it yet."""
+        self.session_summary = ""
+        self.summary_audience = None
+
+    def summary_safe_for(self, audience) -> bool:
+        """May a pass writing memories for `audience` be shown the shared summary?"""
+        return not self.session_summary or (self.summary_audience is not None and set(audience) <= set(self.summary_audience))
 
     # ---------- aging ----------
 
@@ -431,14 +455,7 @@ class MemoryStore:
         never handed (and then repeats) anything narrower than the group."""
         pool = self.memories
         if audience is not None:
-            need = set(audience)
-
-            def knows_all(m):
-                kb = m.get("known_by") or [ANYONE]
-                have = set(all_ids or []) if ANYONE in kb else set(kb)
-                return need <= have
-
-            pool = [m for m in pool if knows_all(m)]
+            pool = [m for m in pool if known_to_all(m, audience, all_ids)]
         if not pool:
             return "(no memories yet)"
         return "\n".join(
@@ -1085,6 +1102,48 @@ def form_offstage(store: MemoryStore, cid: str, notes: list[dict], model: str,
         if mem:
             mem["origin"] = a["origin"] = "offstage"
     return applied, llm.usage(response)
+
+
+CROSS_CONFLICT_SCHEMA = {
+    "type": "object",
+    "properties": {"conflicts": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"new_id": {"type": "string"}, "existing_id": {"type": "string"}},
+        "required": ["new_id", "existing_id"], "additionalProperties": False}}},
+    "required": ["conflicts"],
+    "additionalProperties": False,
+}
+
+
+def cross_conflicts(store: MemoryStore, new: list[dict], audience: list[str], all_ids: list[str] | None,
+                    model: str) -> tuple[int, dict]:
+    """Flag, for the author, new memories that contradict memories the audience they were written for
+    cannot see (a private memory against a public account, say). Formation can't notice these: it is only
+    shown what its audience knows. This call is shown both, but it answers in ids alone and its answer goes
+    only into the author's conflict flags, so no character can ever be told what it saw."""
+    fresh = [m for m in (store.by_id(n["id"]) for n in new) if m]
+    fresh_ids = {m["id"] for m in fresh}
+    hidden = [m for m in store.memories if m["id"] not in fresh_ids and not known_to_all(m, audience, all_ids)]
+    if not fresh or not hidden:
+        return 0, llm.zero_usage()
+    fmt = lambda ms: "\n".join(f"- {m['id']}: {m['detail']}" for m in ms)
+    prompt = (
+        "You help the author of a roleplay keep its facts consistent. Below are NEW memories and EXISTING memories. "
+        "List every pair (one new, one existing) that cannot both be true: two accounts of the same moment or the same "
+        "standing fact that disagree. A refinement, an addition, an agreement, or something that changed over time is not "
+        "a conflict, and different people knowing different things is not a conflict unless what they hold disagrees. "
+        "Answer with ids only. An empty list is normal.\n\n"
+        f"NEW:\n{fmt(fresh)}\n\nEXISTING:\n{fmt(hidden)}\n"
+    )
+    response = llm.client().messages.create(**llm.params(
+        model, max_tokens=500, messages=[{"role": "user", "content": prompt}],
+        output_config={"format": {"type": "json_schema", "schema": CROSS_CONFLICT_SCHEMA}}))
+    hidden_ids = {m["id"] for m in hidden}
+    linked = 0
+    for c in json.loads(llm.text(response))["conflicts"]:
+        if c["new_id"] in fresh_ids and c["existing_id"] in hidden_ids:
+            linked += len(store.link_conflicts(c["new_id"], [c["existing_id"]]))
+    return linked, llm.usage(response)
 
 
 CONSOLIDATION_SCHEMA = {

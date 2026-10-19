@@ -944,12 +944,20 @@ class Chatter:
 
         formed: list[dict] = []
         usage = llm.zero_usage()
-        if len(groups) <= 1:
+        # One combined pass is only safe when nothing private is in view: it shows the model EVERY memory and the
+        # shared (omniscient) summary, so if either holds something this audience didn't hear, whatever it writes for
+        # them could carry it. Then each group gets its own filtered pass instead.
+        solo = groups[0] if groups else None
+        combined = len(groups) <= 1 and (solo is None or (
+            all(memory.known_to_all(m, solo, char_ids) for m in self.store.memories) and self.store.summary_safe_for(solo)))
+        if combined:
             f, _, u = memory.form(
                 self.store, batch, model, names=names, subject_ids=subject_ids, all_ids=char_ids
             )
             formed += f
             usage = add(usage, u)
+            if solo is not None:  # the summary it just wrote was heard by exactly this group
+                self.store.summary_audience = sorted(solo)
         else:
             for g in groups:
                 lines = [m for m in batch if self._audience(m, char_ids) >= g]
@@ -960,6 +968,13 @@ class Chatter:
                 )
                 formed += f
                 usage = add(usage, u)
+                # That pass could not see what its group doesn't know. Check what it wrote against those memories,
+                # for the author only: the answer is ids alone and goes nowhere a character can read it.
+                try:
+                    _, u = memory.cross_conflicts(self.store, f, sorted(g), char_ids, model)
+                    usage = add(usage, u)
+                except Exception:  # noqa: BLE001 - a missed flag must never break formation
+                    log.exception("cross-audience conflict check failed")
             # The shared summary is omniscient by design (narrator only), so it
             # gets its own pass over everything rather than any one group's view.
             text, u = memory.summarize_for(
@@ -967,6 +982,14 @@ class Chatter:
                 summary_model or model, omniscient=True,
             )
             if text:
+                heard = None
+                for m in batch:
+                    if m.get("kind") != "aside":
+                        a = self._audience(m, char_ids)
+                        heard = a if heard is None else heard & a
+                prev = self.store.summary_audience if self.store.session_summary else None
+                if heard is not None:  # only those who heard every line in it, and everything before
+                    self.store.summary_audience = sorted(heard if prev is None else set(prev) & heard)
                 self.store.session_summary = text
             usage = add(usage, u)
             self.store.save()

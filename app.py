@@ -264,7 +264,7 @@ def start_scene():
     if body.get("flush", True) is not False:
         formed, count, _ = chat_engine.flush(_formation_model(body), _summary_model(body))
     chat_engine.clear()
-    store.session_summary = ""
+    store.clear_session_summary()
     store.summaries = {}
     store.end_scene()  # short-lived memories from the scene that just ended are now stale
     store.save()
@@ -402,7 +402,7 @@ def new_session():
     body = request.get_json() or {}
     formed, count, _ = chat_engine.flush(_formation_model(body), _summary_model(body))
     chat_engine.clear()
-    store.session_summary = ""
+    store.clear_session_summary()
     store.summaries = {}
     store.end_scene()
     store.save()

@@ -11,6 +11,7 @@ Scored per run:
 
 Run: M=<model> N=10 python tests/experiments/exp_conflicts.py
 """
+import copy
 import os
 import sys
 import tempfile
@@ -62,7 +63,7 @@ def one(args):
     label, i = args
     _, existing, lines, expect = next(c for c in CASES if c[0] == label)
     store = memory.MemoryStore(os.path.join(tempfile.mkdtemp(), "m.json"))
-    store.memories = [dict(m) for m in existing]
+    store.memories = [copy.deepcopy(m) for m in existing]
     store.next_id = len(existing) + 1
     before = {m["id"]: m["detail"] for m in store.memories}
     try:

@@ -61,6 +61,8 @@ class Fake:
             kind = "offscreen"
         elif "remembers from their time away" in first:
             kind = "offstage"
+        elif "keep its facts consistent" in first:
+            kind = "crossconf"
         elif "fact that was hidden at this place" in first:
             kind = "discover"
         else:
@@ -71,7 +73,8 @@ class Fake:
         if h is None:
             return text_resp(json.dumps({"updates": []}) if kind == "watch"
                              else json.dumps({"discovered": []}) if kind == "discover"
-                             else json.dumps({"memories": []}) if kind == "offstage" else f"reply-{self.n}")
+                             else json.dumps({"memories": []}) if kind == "offstage"
+                             else json.dumps({"conflicts": []}) if kind == "crossconf" else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
 
@@ -2688,6 +2691,113 @@ assert cl.post("/api/memory/not_conflict", json={"memory_id": fl["id"]}).status_
 assert cl.post("/api/memory/not_conflict", json={"memory_id": "nope"}).status_code == 400
 tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
 assert "notConflict" in tmpl and "conflicts with" in tmpl and "/api/memory/not_conflict" in tmpl
+print("   PASS")
+
+# ------------------------------------------------------------------ 84
+print("== 84. a pass that writes for a group is never shown what the group doesn't know ==")
+PRIV = "PRIVATE-FACT: Alex told Wren privately that he is leaving for Rotterdam."
+PUB = "PUBLIC-FACT: the cellar door sticks."
+
+
+def addmem(store, mid, detail, known_by):
+    store.memories.append({"id": mid, "subject": "world", "kind": "canon", "known_by": known_by, "tags": ["x"], "summary": detail[:20],
+                           "detail": detail, "core": False, "as_of": "", "versions": [], "places": [], "source": "player",
+                           "claimed_by": "", "evidence": "", "verified": True})
+    store.next_id = len(store.memories) + 1
+
+
+def lines(*specs):
+    return [{"speaker": sp, "content": txt, "t": "Thursday 15 October 2026, 9pm", "present": list(pres)} for sp, txt, pres in specs]
+
+
+FORM_OP = {"action": "create", "memory_id": "", "subject": "world", "tags": ["t"], "summary": "Sam on the docks", "detail": "Mick says Sam is on the docks",
+           "core": False, "lifetime": "lasting", "contradicts": [], "evidence": "Sam is on the docks"}
+ROOM = ("wren", "mick", "sam")
+
+# 1. nothing private in view: the single combined pass, as before
+store, world, c = trio()
+addmem(store, "mem_0001", PUB, ["*"])
+c.history = lines(("player", "Where is Sam?", ROOM), ("mick", "Sam is on the docks", ROOM))
+f = install(form={"operations": [FORM_OP], "session_summary": "SHARED-SUMMARY"}, omni="OMNI")
+c.flush("claude-haiku-5-5")
+assert "form" in f.kinds() and "omni" not in f.kinds() and "crossconf" not in f.kinds(), f.kinds()
+pr = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert PUB in pr and "WHO CAN KNOW THIS" not in pr, "all public: the old combined pass"
+assert store.session_summary == "SHARED-SUMMARY" and store.summary_audience == ["mick", "sam", "wren"]
+# it keeps being used while the group stays inside whoever has heard the summary
+c.history += lines(("player", "More?", ROOM), ("mick", "Sam is on the docks", ROOM))
+c.formed_upto = 2
+f = install(form={"operations": [], "session_summary": "SHARED-2"})
+c.flush("claude-haiku-5-5")
+assert "SHARED-SUMMARY" in next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"], "the summary is shown while it is safe to"
+
+# 2. a memory only Wren knows, and a public batch: the pass must not see it, the summary is written separately, the author is checked
+store, world, c = trio()
+addmem(store, "mem_0001", PUB, ["*"])
+addmem(store, "mem_0002", PRIV, ["wren"])
+c.history = lines(("player", "Where is Sam?", ROOM), ("mick", "Sam is on the docks", ROOM))
+f = install(form={"operations": [FORM_OP], "session_summary": "IGNORED-SUMMARY"}, omni="OMNI-SUMMARY",
+            crossconf={"conflicts": [{"new_id": "mem_0003", "existing_id": "mem_0002"}, {"new_id": "mem_0003", "existing_id": "mem_0001"},
+                                     {"new_id": "mem_9999", "existing_id": "mem_0002"}]})
+c.flush("claude-haiku-5-5")
+pr = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert PUB in pr and "PRIVATE-FACT" not in pr and "Rotterdam" not in pr, "the pass is not shown the private memory"
+assert "WHO CAN KNOW THIS" in pr and "(not provided for this pass)" in pr, "nor the omniscient summary"
+assert "omni" in f.kinds() and store.session_summary == "OMNI-SUMMARY", "the shared summary comes from its own pass"
+assert f.kinds().count("crossconf") == 1
+cp = next(kw for k, kw in f.calls if k == "crossconf")["messages"][0]["content"]
+assert "Rotterdam" in cp and "PUBLIC-FACT" not in cp and "Sam is on the docks" in cp, "the author-side check sees the hidden one and the new one only"
+assert store.by_id("mem_0003")["conflicts_with"] == ["mem_0002"] and store.by_id("mem_0002")["conflicts_with"] == ["mem_0003"], \
+    "only a hidden memory can be flagged, and unknown ids are ignored"
+assert store.by_id("mem_0001").get("conflicts_with", []) == [], "a memory the group already knew was in view of the pass: not this check's job"
+assert "Rotterdam" not in store.by_id("mem_0003")["detail"], "its answer was ids only"
+# it must not break formation when it fails
+store, world, c = trio()
+addmem(store, "mem_0002", PRIV, ["wren"])
+c.history = lines(("player", "Where is Sam?", ROOM), ("mick", "Sam is on the docks", ROOM))
+def boom(kw):
+    raise RuntimeError("down")
+f = install(form={"operations": [FORM_OP], "session_summary": "s"}, omni="OMNI", crossconf=boom)
+formed, count, _ = c.flush("claude-haiku-5-5")
+assert count == 2 and len(formed) == 1, "formation went ahead"
+
+# 3. who has heard the summary: a whisper narrows it, and a wider group is then kept away from it
+store, world, c = trio()
+c.history = lines(("player", "Everyone, hello", ROOM), ("player", "Wren, a secret", ("wren",)))
+f = install(form={"operations": [], "session_summary": "x"}, omni="OMNI-SUMMARY")
+c.flush("claude-haiku-5-5")
+assert store.summary_audience == ["wren"], "only Wren heard all of it"
+c.history += lines(("player", "Hello again", ROOM), ("mick", "Hi", ROOM))
+f = install(form={"operations": [], "session_summary": "x"}, omni="OMNI-2")
+c.flush("claude-haiku-5-5")
+pr = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert "OMNI-SUMMARY" not in pr and "omni" in f.kinds(), "the room is not shown a summary only Wren fully heard"
+assert store.summary_audience == ["wren"], "still only Wren heard everything in it"
+store.clear_session_summary()
+assert store.session_summary == "" and store.summary_audience is None and store.summary_safe_for(ROOM), "a new scene starts clean"
+# persistence, and an older store
+store.session_summary, store.summary_audience = "S", ["wren"]
+store.save()
+back = memory.MemoryStore(store.path)
+assert back.summary_audience == ["wren"] and back.summary_safe_for(["wren"]) and not back.summary_safe_for(ROOM)
+json.dump({"memories": [], "session_summary": "old summary", "next_id": 1}, open(os.path.join(tmp, "oldsa.json"), "w"))
+assert not memory.MemoryStore(os.path.join(tmp, "oldsa.json")).summary_safe_for(["wren"]), "an older store with a summary: assume the worst"
+json.dump({"memories": [], "session_summary": "", "next_id": 1}, open(os.path.join(tmp, "oldsb.json"), "w"))
+assert memory.MemoryStore(os.path.join(tmp, "oldsb.json")).summary_safe_for(ROOM), "an empty one is fine"
+# the check does nothing when nothing is hidden, and the routes reset it
+store, world, c = trio()
+addmem(store, "mem_0001", PUB, ["*"])
+f = install(crossconf={"conflicts": [{"new_id": "mem_0002", "existing_id": "mem_0001"}]})
+store.memories.append(dict(store.memories[0], id="mem_0002"))
+assert memory.cross_conflicts(store, [store.by_id("mem_0002")], list(ROOM), list(ROOM), "claude-haiku-5-5")[0] == 0 and f.calls == [], "nothing hidden: no call"
+import app as appmod
+
+store.session_summary, store.summary_audience = "S", ["wren"]
+appmod.store, appmod.world, appmod.chat_engine = store, world, c
+cl = appmod.app.test_client()
+install(form={"operations": [], "session_summary": "x"})
+cl.post("/api/new_session", json={"models": MODELS})
+assert store.session_summary == "" and store.summary_audience is None, "ending a scene clears it"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
