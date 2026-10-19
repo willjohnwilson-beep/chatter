@@ -1188,28 +1188,55 @@ def consolidate(store: MemoryStore, model: str, names: dict | None = None,
                 all_ids: list[str] | None = None) -> tuple[dict, dict]:
     """Merge memories that record the same underlying fact, and correct clearly
     wrong core flags. Merged originals are archived, not deleted. Memories are
-    only ever merged when they have the same subject AND the same audience."""
+    only ever merged when they have the same subject AND the same audience.
+
+    One call per audience group, each shown only the memories that group's people all
+    know and no others. The model writes the merged text, and code can't check text, so
+    the privacy is structural: it never sees a memory it must not draw on."""
     if len(store.memories) < 3:
         return {"merged": [], "core_changed": [], "skipped": []}, llm.zero_usage()
 
     names = names or {}
+    groups: dict[tuple, list[dict]] = {}
+    for m in store.memories:
+        kb = m.get("known_by") or [ANYONE]
+        key = tuple(sorted(set(all_ids or []) if ANYONE in kb else set(kb)))
+        groups.setdefault(key, []).append(m)
 
+    total = {"merged": [], "core_changed": [], "skipped": []}
+    usage = llm.zero_usage()
+    for members in groups.values():
+        if len(members) < 2:  # nothing to merge with
+            continue
+        outcome, u = _consolidate_group(store, members, model, names, all_ids)
+        for k in total:
+            total[k] += outcome[k]
+        usage = {k: usage[k] + u[k] for k in usage}
+    store.save()
+    return total, usage
+
+
+def _consolidate_group(store: MemoryStore, members: list[dict], model: str, names: dict,
+                       all_ids: list[str] | None) -> tuple[dict, dict]:
+    """One consolidation call over memories that all have the same audience."""
     def audience(m):
         kb = m.get("known_by") or [ANYONE]
         if ANYONE in kb:
             return "everyone knows"
         return "known by " + ", ".join(names.get(k, k) for k in kb) if kb else "known by nobody"
 
+    ids = {m["id"] for m in members}
     listing = "\n".join(
         f"- {m['id']} ({store._label(m, names)}; {audience(m)}{'; core' if m.get('core') else ''}) "
         f"[{', '.join(m['tags'])}] {m['summary']} — {m['detail']}"
         + (f" (noted {m['as_of']})" if m.get("as_of") else "")
-        for m in store.memories
+        for m in members
     )
 
     prompt = (
-        "You are tidying the long-term memory of a roleplay scene. Below is "
-        "every memory it holds, marked with who it is about and who knows it.\n\n"
+        "You are tidying the long-term memory of a roleplay scene. Below are "
+        "some of its memories, all known to the same people, marked with who each "
+        "is about and who knows it.\n\n"
         "MERGE sets of memories that record the SAME underlying fact, or "
         "overlap so heavily that keeping them separate is redundant — for "
         "instance an update and a near-duplicate created in the same pass. A "
@@ -1237,8 +1264,8 @@ def consolidate(store: MemoryStore, model: str, names: dict | None = None,
         )
     )
     result = json.loads(llm.text(response))
-    outcome = store.apply_merges(result["merges"], result["core_changes"], all_ids=all_ids)
-    store.save()
+    core_changes = [c for c in result["core_changes"] if c["memory_id"] in ids]  # only ones it was shown
+    outcome = store.apply_merges(result["merges"], core_changes, all_ids=all_ids)
     return outcome, llm.usage(response)
 
 

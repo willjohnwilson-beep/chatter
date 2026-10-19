@@ -2800,4 +2800,43 @@ cl.post("/api/new_session", json={"models": MODELS})
 assert store.session_summary == "" and store.summary_audience is None, "ending a scene clears it"
 print("   PASS")
 
+# ------------------------------------------------------------------ 85
+print("== 85. consolidation is shown one audience at a time ==")
+store, world, c = make([WREN, MICK])
+mkc = lambda i, kb, detail, subj="world": {"id": f"mem_{i:04d}", "subject": subj, "kind": memory.kind_of(subj), "known_by": kb, "tags": ["t"],
+                                           "summary": f"s{i}", "detail": detail, "core": False, "versions": [], "as_of": "", "evidence": "",
+                                           "hits": 0, "created_at": "", "updated_at": ""}
+store.memories = [mkc(1, ["*"], "PUB-ONE"), mkc(2, ["wren", "mick"], "PUB-TWO"),            # the same audience, spelt two ways
+                  mkc(3, ["wren"], "WREN-SECRET-ONE"), mkc(4, ["wren"], "WREN-SECRET-TWO"),
+                  mkc(5, ["mick"], "MICK-ALONE")]                                             # a group of one: nothing to merge with
+def per_group(kw):
+    p_ = kw["messages"][0]["content"]
+    if "PUB-ONE" in p_:   # the public call merges its pair and also names a memory it was never shown
+        return {"merges": [{"source_ids": ["mem_0001", "mem_0002"], "tags": [], "summary": "m", "detail": "m", "core": False, "why": "dup"}],
+                "core_changes": [{"memory_id": "mem_0003", "core": True, "why": "unseen"}]}
+    return {"merges": [], "core_changes": []}
+f = install(consolidate=per_group)
+out, usage = memory.consolidate(store, "claude-haiku-5-5", names=world.names(), all_ids=["wren", "mick"])
+ps = [kw["messages"][0]["content"] for k, kw in f.calls if k == "consolidate"]
+assert len(ps) == 2, "one call per audience group of two or more; the lone Mick memory gets none"
+pub = next(p for p in ps if "PUB-ONE" in p)
+sec = next(p for p in ps if "WREN-SECRET-ONE" in p)
+assert "PUB-TWO" in pub and "everyone knows" in pub, "'*' and the full list are one audience"
+assert not any(w in pub for w in ("WREN-SECRET", "MICK-ALONE")), "the public pass never sees a private memory"
+assert not any(w in sec for w in ("PUB-", "MICK-ALONE")) and "WREN-SECRET-TWO" in sec, "nor the private pass anything else"
+assert usage["input_tokens"] == 6, "usage adds up over the calls"
+assert [m["merged_from"] for m in out["merged"]] == [["mem_0001", "mem_0002"]], out
+assert not store.by_id("mem_0003")["core"], "a core change for a memory that call was never shown is ignored"
+# few memories: no call at all, as before
+store2, world2, c2 = make([WREN, MICK])
+store2.memories = [mkc(1, ["*"], "a"), mkc(2, ["*"], "b")]
+f = install(consolidate={"merges": [], "core_changes": []})
+assert memory.consolidate(store2, "claude-haiku-5-5", names=world2.names(), all_ids=["wren", "mick"])[0]["merged"] == [] and f.calls == []
+# one audience only: a single call, as before
+store2.memories = [mkc(i, ["*"], f"d{i}") for i in (1, 2, 3)]
+f = install(consolidate={"merges": [], "core_changes": []})
+memory.consolidate(store2, "claude-haiku-5-5", names=world2.names(), all_ids=["wren", "mick"])
+assert f.kinds() == ["consolidate"]
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")
