@@ -2480,9 +2480,9 @@ assert world.reserved_for("mick") == ["the old rumour"] and world.reserved_for("
 # what the speaker is actually given
 world.set_reserved([{"topic": "who built the Vault"}, {"topic": "Wren's brother", "characters": ["wren"]}])
 fw, fm, fn = world.render_fixed("wren"), world.render_fixed("mick"), world.render_fixed("narrator")
-assert "RESERVED:" in fw and "- who built the Vault" in fw and "- Wren's brother" in fw and "you simply don't know" in fw
+assert "RESERVED:" in fw and "- who built the Vault" in fw and "- Wren's brother" in fw and "genuinely has no idea" in fw
 assert "- who built the Vault" in fm and "Wren's brother" not in fm, "told only who it is tagged to"
-assert "- who built the Vault" in fn and "leave them unexplained" in fn and "you simply don't know" not in fn, "the narrator gets its own wording"
+assert "- who built the Vault" in fn and "leave them unexplained" in fn and "genuinely has no idea" not in fn, "the narrator gets its own wording"
 for mode in ("strict", "balanced", "free"):
     world.fixed["invention"] = mode
     assert "- who built the Vault" in world.render_fixed("wren"), f"applies in {mode}"
@@ -2508,6 +2508,19 @@ world.reset_all()
 assert world.reserved == [], "reset clears them"
 tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
 assert 'id="reserved"' in tmpl and "saveReserved" in tmpl and "/api/reserved" in tmpl and "renderReserved(true)" in tmpl
+
+# offscreen life is written by its own call, so it is told too (each character only their own topics)
+store, world, c = life_world()
+world.set_reserved([{"topic": "TOPIC-FOR-ALL"}, {"topic": "TOPIC-FOR-MICK", "characters": ["mick"]}])
+f = install(offscreen=lambda kw: LIFE("Counting kegs."))
+c.tick_offscreen("claude-haiku-5-5")
+op_ = {("Mick" if "Mick:" in kw["messages"][0]["content"] else "Sam"): kw["messages"][0]["content"] for _, kw in f.calls}
+assert "TOPIC-FOR-ALL" in op_["Mick"] and "TOPIC-FOR-ALL" in op_["Sam"] and "nothing in the note may invent" in op_["Sam"]
+assert "TOPIC-FOR-MICK" in op_["Mick"] and "TOPIC-FOR-MICK" not in op_["Sam"], "tagged topics follow the same audience rule"
+world.set_reserved([])
+f = install(offscreen=lambda kw: LIFE("Counting kegs."))
+c.tick_offscreen("claude-haiku-5-5")
+assert all("author keeps these topics open" not in kw["messages"][0]["content"] for _, kw in f.calls), "no topics, no rule"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

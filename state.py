@@ -332,9 +332,12 @@ def _norm_location(l: dict, taken: set[str]) -> dict:
 # a character who invented something would be making it up out of nothing, and a claim
 # the author never wanted. The list is a name for each topic, never an answer.
 RESERVED_CHARACTER = (
-    "RESERVED: the author keeps these topics to themselves, and nothing about them has been "
-    "decided. Do not invent, assert or hint at anything about them, even as rumour or opinion. "
-    "If one comes up, you simply don't know: say so plainly or stay vague in character.\n{topics}"
+    "RESERVED: nobody has decided anything about the topics below, so as far as you are concerned "
+    "there is nothing to know. Do not invent, assert or hint at anything about them, even as rumour or "
+    "opinion. If one comes up, answer as someone who genuinely has no idea and has never given it "
+    "a thought: a plain 'no idea', 'never heard', 'couldn't tell you' in your own voice, then move on. "
+    "Never act as if you are withholding something, are hurt by the question, or have a story you "
+    "won't tell.\n{topics}"
 )
 RESERVED_NARRATOR = (
     "RESERVED: the author keeps these topics to themselves, and nothing about them has been "

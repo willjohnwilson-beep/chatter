@@ -715,6 +715,11 @@ class Chatter:
         near = [w.location(x) for x in (place.get("connects_to", []) if place else [])]
         options = "; ".join(f"{n['id']} ({n['name']})" for n in near if n and not n.get("locked")) or "(none marked)"
         ids = [l["id"] for l in w.locations if l["id"] != w.scene.get("location") and not l.get("locked")]
+        reserved = w.reserved_for(cid)
+        reserved_rule = (
+            "- The author keeps these topics open, so nothing in the note may invent, explain or hint "
+            "at anything about them:\n" + "\n".join(f"    - {t}" for t in reserved) + "\n"
+        ) if reserved else ""
         prompt = (
             "You keep track of what a character does while they are out of sight in a "
             "roleplay world, so that the world feels lived in. Write ONE short line "
@@ -748,6 +753,7 @@ class Chatter:
             "the player, or react to the scene.\n"
             "- Use only what they could know, and don't invent facts about other "
             "people.\n"
+            f"{reserved_rule}"
             "Reply in the JSON format asked for."
         )
         schema = {
