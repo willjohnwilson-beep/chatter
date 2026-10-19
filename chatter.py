@@ -803,8 +803,10 @@ class Chatter:
             c = w.character(cid)
             if out["note"]:
                 c["offscreen"], c["offscreen_at"] = out["note"], stamp
-                c["offscreen_history"] = ((c.get("offscreen_history") or [])
-                                          + [{"at": stamp, "note": out["note"]}])[-3:]
+                # `loc` is where they were while this happened (before any move below), for the memory's place
+                full = (c.get("offscreen_history") or []) + [{"at": stamp, "note": out["note"], "loc": c.get("location") or ""}]
+                w._retire(c, full[:-3])  # a note rolling off the short history is kept for memory, not lost
+                c["offscreen_history"] = full[-3:]
             loc, heading = out.get("location", "unchanged"), bool(out.get("heading_here"))
             if loc == w.scene.get("location"):  # the scene's place is for arriving, not for moving
                 loc, heading = "unchanged", True
@@ -859,8 +861,48 @@ class Chatter:
         p = m.get("present")
         return frozenset(char_ids if (p is None or "*" in p) else p)
 
+    def form_offstage(self, model: str) -> tuple[list[dict], dict]:
+        """Turn the offstage notes that have been retired (see WorldState._retire) into memories,
+        one small call per character over only that character's own notes. A failed call leaves
+        its notes waiting for next time."""
+        w = self.world
+        todo = [c for c in w.characters if c.get("offscreen_retired")]
+        if not todo:
+            return [], llm.zero_usage()
+        names, char_ids = w.names(), w.character_ids()
+
+        def one(c):
+            try:
+                return c, memory.form_offstage(self.store, c["id"], c["offscreen_retired"], model, names=names,
+                                               all_ids=char_ids)
+            except Exception:  # noqa: BLE001 - leave the notes in place and try again later
+                log.exception("offstage formation failed for %s", c["id"])
+                return c, None
+
+        with ThreadPoolExecutor(max_workers=len(todo)) as ex:
+            results = list(ex.map(one, todo))
+        formed, total = [], llm.zero_usage()
+        for c, got in results:
+            if got is None:
+                continue
+            applied, usage = got
+            c["offscreen_retired"] = []
+            formed += applied
+            total = {k: total[k] + usage[k] for k in total}
+        self.store.save()
+        w.save()
+        return formed, total
+
     def maybe_form(self, model: str, force: bool = False,
                    summary_model: str | None = None) -> tuple[list[dict], int, dict]:
+        """Form memories from aged-out messages, if enough have piled up, and from any
+        offstage notes waiting to be kept."""
+        formed, count, usage = self._form_conversation(model, force, summary_model)
+        off, u_off = self.form_offstage(model)
+        return formed + off, count, {k: usage[k] + u_off[k] for k in usage}
+
+    def _form_conversation(self, model: str, force: bool = False,
+                           summary_model: str | None = None) -> tuple[list[dict], int, dict]:
         """Form memories from aged-out messages, if enough have piled up.
 
         Formation is done PER AUDIENCE. If everyone present heard everything, a

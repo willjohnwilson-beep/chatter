@@ -59,6 +59,8 @@ class Fake:
             kind = "summary"
         elif "what a character does while they are out of sight" in first:
             kind = "offscreen"
+        elif "remembers from their time away" in first:
+            kind = "offstage"
         elif "fact that was hidden at this place" in first:
             kind = "discover"
         else:
@@ -68,7 +70,8 @@ class Fake:
         h = self.script.get(kind)
         if h is None:
             return text_resp(json.dumps({"updates": []}) if kind == "watch"
-                             else json.dumps({"discovered": []}) if kind == "discover" else f"reply-{self.n}")
+                             else json.dumps({"discovered": []}) if kind == "discover"
+                             else json.dumps({"memories": []}) if kind == "offstage" else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
 
@@ -2521,6 +2524,99 @@ world.set_reserved([])
 f = install(offscreen=lambda kw: LIFE("Counting kegs."))
 c.tick_offscreen("claude-haiku-5-5")
 assert all("author keeps these topics open" not in kw["messages"][0]["content"] for _, kw in f.calls), "no topics, no rule"
+print("   PASS")
+
+# ------------------------------------------------------------------ 82
+print("== 82. offstage events become the character's own memories, just before the notes are lost ==")
+store, world, c = life_world()          # Wren here; Mick at the cellar and Sam off the map, both offstage
+seq = iter(range(1, 99))
+NOTES = {1: "Found the cellar's back door ajar and bolted it.", 2: "Counted the kegs twice.", 3: "Hauled a keg up the stairs.",
+         4: "Wiped down the shelves."}
+def tick(stamp, who=("mick",)):
+    world.scene["fiction_time"] = stamp
+    n = next(seq)
+    f_ = install(offscreen=lambda kw: LIFE(NOTES[n], "unchanged"))
+    c.tick_offscreen("claude-haiku-5-5")
+
+for i, st_ in enumerate(["Thursday 15 October 2026, 9pm", "Thursday 15 October 2026, 10pm", "Friday 16 October 2026, 8am",
+                          "Friday 16 October 2026, 9am"]):
+    tick(st_)
+mk = world.character("mick")
+assert [h["note"] for h in mk["offscreen_history"]] == [NOTES[2], NOTES[3], NOTES[4]], "the last three stay live"
+assert len(mk["offscreen_retired"]) == 1 and mk["offscreen_retired"][0]["note"].startswith("Found the cellar"), "the oldest rolled off and was kept"
+assert mk["offscreen_retired"][0]["loc"] == "cellar" and mk["offscreen_retired"][0]["at"] == "Thursday 15 October 2026, 9pm"
+assert len(world.character("sam")["offscreen_retired"]) == 1, "each offstage character keeps their own"
+# set aside twice is still once, and the pile is capped
+world._retire(mk, [dict(mk["offscreen_retired"][0])])
+assert len(mk["offscreen_retired"]) == 1, "no duplicates"
+world._retire(mk, [{"at": str(i), "note": f"n{i}"} for i in range(30)])
+assert len(mk["offscreen_retired"]) == st.MAX_RETIRED and mk["offscreen_retired"][-1]["note"] == "n29"
+mk["offscreen_retired"] = mk["offscreen_retired"][:0] + [{"at": "Thursday 15 October 2026, 9pm", "note": NOTES[1], "loc": "cellar"}]
+
+# arriving keeps everything the character had, then clears it
+world.character("mick")["arriving"] = True
+world.arrive_into_scene("mick")
+assert mk["offscreen_history"] == [] and mk["offscreen"] == "" and mk["status"] == NOTES[4]
+assert [h["note"] for h in mk["offscreen_retired"]] == [NOTES[1], NOTES[2], NOTES[3], NOTES[4]], mk["offscreen_retired"]
+# the cast form doesn't carry the waiting notes, so saving the cast must not lose them
+payload = [{k: v for k, v in ch_.items() if not k.startswith("offscreen")} for ch_ in world.characters]
+world.set_cast(payload)
+assert len(world.character("mick")["offscreen_retired"]) == 4, "kept across a cast save"
+sam = world.character("sam")
+assert sam["offscreen_history"] == [] and len(sam["offscreen_retired"]) == 4, "saving the cast drops live notes, so they are kept for memory"
+# a scene break retires what is left
+NOTES[5] = "Sat on the pier steps."
+tick("Friday 16 October 2026, 10am")
+assert [h["note"] for h in sam["offscreen_history"]] == [NOTES[5]] and len(sam["offscreen_retired"]) == 4
+world.set_presets([{"id": "new-1", "name": "Next", "location": "salt-line"}])
+world.apply_preset("next")
+assert sam["offscreen_history"] == [] and sam["offscreen"] == "" and len(sam["offscreen_retired"]) == 5 and sam["offscreen_retired"][-1]["note"] == NOTES[5], "the preset keeps Sam's notes too"
+assert json.load(open(world.path))["characters"][1]["offscreen_retired"], "persisted"
+
+# forming: only the character's own notes, quote verified, their own past
+store.memories.append({"id": "mem_0001", "subject": "sam", "kind": "canon", "known_by": ["sam"], "tags": ["x"], "summary": "SAM-ONLY-FACT",
+                       "detail": "SAM-ONLY-DETAIL", "core": False, "as_of": "", "versions": [], "places": [], "source": "self"})
+store.memories.append({"id": "mem_0002", "subject": "mick", "kind": "canon", "known_by": ["mick"], "tags": ["x"], "summary": "MICK-HAS-THIS",
+                       "detail": "MICK-ALREADY-KNOWS", "core": False, "as_of": "", "versions": [], "places": [], "source": "self"})
+store.next_id = 3
+GOOD = {"summary": "Found the cellar door ajar", "detail": "Mick found the cellar's back door ajar and bolted it.",
+        "tags": ["cellar-door"], "lifetime": "lasting", "evidence": "Found the cellar's back door ajar and bolted it."}
+BAD = {"summary": "Met a stranger", "detail": "Mick met a stranger", "tags": [], "lifetime": "days", "evidence": "Spoke to a smuggler at the door."}
+f = install(offstage=lambda kw: {"memories": [GOOD, BAD]})
+formed, usage = c.form_offstage("claude-haiku-5-5")
+prompts = [kw["messages"][0]["content"] for k, kw in f.calls if k == "offstage"]
+assert len(prompts) == 2, "one call per character with notes waiting"
+mp = next(p for p in prompts if "ALREADY REMEMBERS" in p and "Mick" in p.split("ALREADY")[0])
+assert "Counted the kegs twice" in mp and "MICK-HAS-THIS" in mp and "SAM-ONLY" not in mp, "Mick's prompt holds only Mick's notes and memories"
+assert len(formed) == 2, "Mick's good one, and Sam's (the same scripted reply, its own evidence check)"  # BAD is dropped for both
+mm = [m for m in store.memories if m.get("origin") == "offstage" and m["subject"] == "mick"]
+assert len(mm) == 1, [m["detail"] for m in mm]
+m_ = mm[0]
+assert m_["known_by"] == ["mick"] and m_["source"] == "self" and m_["verified"] is True and m_["lifetime"] == "lasting"
+assert m_["as_of"] == "Thursday 15 October 2026, 9pm" and m_["places"] == ["cellar"], "time and place come from the note"
+assert not memory.visible_to(m_, "sam") and not memory.visible_to(m_, "wren") and memory.visible_to(m_, "mick"), "nobody else knows it"
+assert not any(m.get("origin") == "offstage" and "stranger" in m["detail"] for m in store.memories), "an unverifiable quote is dropped"
+assert world.character("mick")["offscreen_retired"] == [] and usage["input_tokens"] > 0, "spent once formed"
+
+# a failure leaves the notes for next time; an empty answer clears them
+world.character("mick")["offscreen_retired"] = [{"at": "t", "note": "Fixed the latch.", "loc": ""}]
+def boom(kw):
+    raise RuntimeError("model down")
+f = install(offstage=boom)
+formed, _ = c.form_offstage("claude-haiku-5-5")
+assert formed == [] and world.character("mick")["offscreen_retired"], "a failed call keeps the notes"
+f = install(offstage=lambda kw: {"memories": []})
+c.form_offstage("claude-haiku-5-5")
+assert world.character("mick")["offscreen_retired"] == [], "nothing worth keeping: cleared"
+# it rides along with ordinary formation, even with no conversation to form
+world.character("mick")["offscreen_retired"] = [{"at": "t", "note": "Fixed the latch.", "loc": ""}]
+f = install(offstage=lambda kw: {"memories": [{"summary": "Fixed latch", "detail": "Mick fixed the cellar latch.", "tags": ["latch"],
+                                               "lifetime": "lasting", "evidence": "Fixed the latch."}]})
+c.history = []
+formed, count, _ = c.flush("claude-haiku-5-5")
+assert count == 0 and any("latch" in m["detail"] for m in formed), "flush forms offstage memories too"
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert 'm.origin === "offstage"' in tmpl
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

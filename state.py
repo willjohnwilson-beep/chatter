@@ -255,6 +255,9 @@ DEFAULT_SCENE = {
 }
 
 
+MAX_RETIRED = 12  # offstage notes kept per character while they wait to become memories
+
+
 def slugify(name: str, taken: set[str], fallback: str = "character") -> str:
     base = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or fallback
     cid, n = base, 2
@@ -274,6 +277,8 @@ def _norm_character(c: dict, taken: set[str], loc_ids: set[str], here: str) -> d
     out["arriving"] = bool(c.get("arriving", False))  # hidden: on their way to the scene
     hist = c.get("offscreen_history") or []
     out["offscreen_history"] = [h for h in hist if isinstance(h, dict) and h.get("note")][-3:]
+    ret = c.get("offscreen_retired") or []
+    out["offscreen_retired"] = [h for h in ret if isinstance(h, dict) and h.get("note")][-MAX_RETIRED:]
     out["name"] = (out.get("name") or "Character").strip() or "Character"
     cid = (c.get("id") or "").strip()
     out["id"] = cid if cid and cid not in taken and cid not in RESERVED_IDS else slugify(out["name"], taken)
@@ -633,10 +638,31 @@ class WorldState:
         return [c["id"] for c in self.characters if not self.is_present(c) and c.get("active", True)]
 
     @staticmethod
+    def _notes_of(c: dict) -> list[dict]:
+        """Every offscreen note a character has now, oldest first. The latest is always in the
+        history, but an older save may hold only the current line."""
+        hist = [h for h in (c.get("offscreen_history") or []) if isinstance(h, dict) and h.get("note")]
+        note = (c.get("offscreen") or "").strip()
+        if note and not any(h["note"] == note for h in hist):
+            hist = hist + [{"at": c.get("offscreen_at", ""), "note": note}]
+        return hist
+
+    @staticmethod
+    def _retire(c: dict, notes: list[dict]) -> None:
+        """Set offstage notes aside for memory before they are discarded (the character arrives, the
+        scene ends, or the note rolls off the short history). Chatter.form_offstage turns them into
+        memories; until then they only wait here, unseen by anyone."""
+        have = {(h.get("at"), h.get("note")) for h in c.get("offscreen_retired") or []}
+        fresh = [dict(n) for n in notes if (n.get("at"), n.get("note")) not in have]
+        if fresh:
+            c["offscreen_retired"] = ((c.get("offscreen_retired") or []) + fresh)[-MAX_RETIRED:]
+
+    @staticmethod
     def _arrive(c: dict) -> None:
         """Someone walks into the scene: what they were doing out of sight
         becomes what they are doing now, and the offscreen note is spent."""
         note = (c.get("offscreen") or "").strip()
+        WorldState._retire(c, WorldState._notes_of(c))
         if note:
             c["status"] = note
         c["offscreen"] = ""
@@ -790,6 +816,7 @@ class WorldState:
                 if e[f]:
                     c[f] = e[f]
         for c in self.characters:
+            self._retire(c, self._notes_of(c))  # what they did offstage is about to be discarded: keep it for memory
             c["offscreen"], c["offscreen_at"], c["offscreen_history"], c["arriving"] = "", "", [], False
         self.save()
         return {"id": p["id"], "name": p["name"], "opening": p["opening"], "present": self.present_ids()}
@@ -834,7 +861,14 @@ class WorldState:
         for c in characters:
             n = _norm_character(c, taken, set(self.location_ids()), self.scene.get("location", ""))
             taken.add(n["id"])
+            old = self.character(n["id"])
+            if old and "offscreen_retired" not in c:  # the cast form doesn't carry these: keep what is waiting
+                n["offscreen_retired"] = old.get("offscreen_retired", [])
+            if old and not c.get("offscreen_history"):  # ...nor the live notes, which saving would drop: keep them for memory
+                self._retire(n, self._notes_of(old))
             if self.is_present(n) and n["id"] not in was_here and c.get("id"):
+                if old:
+                    self._retire(n, self._notes_of(old))  # the form may not carry the notes the character had
                 self._arrive(n)  # moved into the scene by hand
             chars.append(n)
         self.characters = chars

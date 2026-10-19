@@ -334,6 +334,7 @@ class MemoryStore:
         for m in self.memories + self.archive:  # migrate memories written before these fields existed
             m.setdefault("lifetime", "lasting")  # older memories never age
             m.setdefault("lifetime_by", "")      # "author" once the author has set it by hand
+            m.setdefault("origin", "")           # "offstage" for a memory written from a character's offstage notes
             m.setdefault("scene_no", 0)
             m.setdefault("kind", "person")
             m.setdefault("subject", PLAYER if m["kind"] == "person" else WORLD)
@@ -938,6 +939,79 @@ def form(
         store.session_summary = result["session_summary"]
     store.save()
     return applied, result["session_summary"], llm.usage(response)
+
+
+OFFSTAGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "memories": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "detail": {"type": "string"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "lifetime": {"type": "string", "enum": list(LIFETIMES)},
+                    "evidence": {"type": "string", "description": "A short quote copied exactly from one note."},
+                },
+                "required": ["summary", "detail", "tags", "lifetime", "evidence"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["memories"],
+    "additionalProperties": False,
+}
+
+
+def form_offstage(store: MemoryStore, cid: str, notes: list[dict], model: str,
+                  names: dict | None = None, all_ids: list[str] | None = None) -> tuple[list[dict], dict]:
+    """Memories from a character's own offstage notes, which are about to be lost.
+
+    Written from ONLY that character's notes and the memories they already hold, so nothing
+    another character knows can enter. Each memory is the character's own past (subject and
+    audience are just them) and must quote a note exactly; one that doesn't is dropped, since
+    nobody in a scene exists to check it. Routine activity is skipped: most sets yield nothing."""
+    names = names or {}
+    who = names.get(cid, cid)
+    batch = [{"speaker": cid, "content": n["note"], "t": n.get("at", ""), "loc": n.get("loc") or None, "present": [cid]}
+             for n in notes if n.get("note")]
+    if not batch:
+        return [], llm.zero_usage()
+    listing = "\n".join(f"[{n['t'] or '?'}] {n['content']}" for n in batch)
+    prompt = (
+        f"You write down what a character remembers from their time away from the scene in a roleplay. "
+        f"{who} has been out of sight, living their own life. The notes below record what they did, oldest first, "
+        "each stamped with the in-fiction time. They are about to be thrown away.\n\n"
+        f"Keep only what {who} would plausibly still remember later and what a later scene could contradict: "
+        "something notable they did, found, finished, decided, were told or someone they met. Skip routine "
+        "activity (hauling stock, wiping tables, walking somewhere, waiting). Most sets of notes contain nothing "
+        "worth keeping, and an empty list is the normal answer. At most three.\n\n"
+        f"- Each memory is about {who}, in the past tense, from their own point of view. `detail` is the only text "
+        "they will be shown, so state the fact in full; `summary` is a short label; `tags` are concrete lowercase "
+        "kebab-case nouns.\n"
+        "- Use only what the notes say. Add nothing, infer nothing, and name no person or thing the notes don't.\n"
+        "- `evidence` is a short quote copied exactly from one note.\n"
+        "- `lifetime`: moment (only true then), days (a few days to a couple of weeks), or lasting (stays true until "
+        "something changes it). If unsure, choose the longer.\n"
+        f"- Don't repeat what {who} already remembers.\n\n"
+        f"WHAT {who.upper()} ALREADY REMEMBERS:\n{store.full_view(names, [cid], all_ids)}\n\n"
+        f"NOTES:\n{listing}\n"
+    )
+    response = llm.client().messages.create(**llm.params(
+        model, max_tokens=1000, messages=[{"role": "user", "content": prompt}],
+        output_config={"format": {"type": "json_schema", "schema": OFFSTAGE_SCHEMA}}))
+    result = json.loads(llm.text(response))
+    ops = [{"action": "create", "memory_id": "", "subject": cid, "tags": m["tags"], "summary": m["summary"],
+            "detail": m["detail"], "core": False, "lifetime": m["lifetime"], "evidence": m["evidence"]}
+           for m in result["memories"][:3] if match_evidence(m.get("evidence", ""), batch) is not None]
+    applied = store.apply_operations(ops, batch, all_ids=all_ids, subject_ids=[cid], known_by=[cid], names=names) if ops else []
+    for a in applied:
+        mem = store.by_id(a["id"])
+        if mem:
+            mem["origin"] = a["origin"] = "offstage"
+    return applied, llm.usage(response)
 
 
 CONSOLIDATION_SCHEMA = {
