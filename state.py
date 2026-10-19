@@ -30,6 +30,7 @@ import os
 import re
 
 import llm
+import schedule as sched
 
 WORLD_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "world.json")
 
@@ -60,7 +61,11 @@ GUIDANCE = {
         "Advance it by however long the exchange plausibly took in the fiction — "
         "usually a couple of minutes of talk, more if something time-consuming "
         "happened. Honour any skip the conversation implies ('an hour later', "
-        "'after closing', 'next morning'). Judge only by what happens in the "
+        "'after closing', 'next morning'). A skip over days ('the next morning', "
+        "'three days later', 'a week later') changes the DATE: count forward from the "
+        "current date and write the new date with its weekday, not only a later hour. "
+        "If the story reaches a morning while the clock says it is night, that morning "
+        "is on the NEXT day: roll the date over. Judge only by what happens in the "
         "story; real-world gaps between messages mean nothing here.\n"
         "  IMPORTANT: anything anyone says about the time OVERRIDES your "
         "estimate. If they say 'it's gone midnight' or 'the sun's up', set the "
@@ -383,6 +388,20 @@ def _norm_reserved(r: dict, taken: set[str]) -> dict | None:
     return {"id": rid, "topic": topic, "characters": tags("characters"), "places": tags("places")}
 
 
+def _norm_event(e: dict, taken: set[str]) -> dict | None:
+    """One scheduled event, or None if it has no text. `when` is plain text (see schedule.py), `where` an optional place
+    id: the event is seen by whoever is there, or by whoever is in the scene when it is blank. `since` (the day the count
+    for 'every N days' starts from) and `last` (the last day it fired) are the story's own bookkeeping, not the author's."""
+    text = " ".join(str((e or {}).get("text") or "").split())
+    if not text:
+        return None
+    eid = str(e.get("id") or "").strip()
+    if not eid or eid.startswith("new-") or eid in taken:
+        eid = slugify(" ".join(text.split()[:4]), taken, "event")
+    return {"id": eid, "text": text, "when": " ".join(str(e.get("when") or "").split()),
+            "where": str(e.get("where") or "").strip(), "since": str(e.get("since") or ""), "last": str(e.get("last") or "")}
+
+
 def _norm_preset(p: dict, taken: set[str], loc_ids: set[str], char_ids: set[str]) -> dict:
     """A scene preset. Per-character `location` is a place id, "none" (offstage)
     or "keep" (leave them where they are)."""
@@ -424,6 +443,7 @@ class WorldState:
         self.characters: list[dict] = [dict(DEFAULT_CHARACTER)]
         self.presets: list[dict] = []
         self.reserved: list[dict] = []
+        self.schedule: list[dict] = []
         self.narrator = dict(DEFAULT_NARRATOR)
         self.player = dict(DEFAULT_PLAYER)
         self.load()
@@ -450,6 +470,7 @@ class WorldState:
             self.player.update(data.get("player", {}))
             self._load_presets(data.get("presets") or [])
             self._load_reserved(data.get("reserved") or [])
+            self._load_schedule(data.get("schedule") or [])
         else:
             self._migrate_legacy(data)
 
@@ -471,6 +492,16 @@ class WorldState:
                 taken.add(n["id"])
                 out.append(n)
         self.reserved = out
+
+    def _load_schedule(self, raw: list) -> None:
+        taken: set[str] = set()
+        out = []
+        for e in raw:
+            n = _norm_event(e, taken)
+            if n:
+                taken.add(n["id"])
+                out.append(n)
+        self.schedule = out
 
     def _load_places(self, data: dict) -> None:
         """Pre-places worlds kept the location as one free-text line in the
@@ -539,7 +570,9 @@ class WorldState:
         starts the next playthrough just there."""
         d = copy.deepcopy({"fixed": self.fixed, "scene": self.scene, "locations": self.locations,
                            "characters": self.characters, "presets": self.presets, "reserved": self.reserved,
-                           "narrator": self.narrator, "player": self.player})
+                           "schedule": self.schedule, "narrator": self.narrator, "player": self.player})
+        for e in d["schedule"]:
+            e.update({"since": "", "last": ""})
         for place in d["locations"]:
             place["state"] = ""
             for sec in place.get("secrets", []):
@@ -558,6 +591,7 @@ class WorldState:
                     "characters": self.characters,
                     "presets": self.presets,
                     "reserved": self.reserved,
+                    "schedule": self.schedule,
                     "narrator": self.narrator,
                     "player": self.player,
                 },
@@ -567,6 +601,7 @@ class WorldState:
 
     def reset_all(self) -> None:
         self.reserved = []
+        self.schedule = []
         self.fixed = dict(DEFAULT_FIXED)
         self.scene = copy.deepcopy(DEFAULT_SCENE)
         self.locations = [copy.deepcopy(DEFAULT_LOCATION)]
@@ -784,6 +819,47 @@ class WorldState:
             return ""
         tmpl = RESERVED_NARRATOR if viewer == NARRATOR_ID else RESERVED_CHARACTER
         return tmpl.format(topics="\n".join(f"- {t}" for t in topics))
+
+    # ---------- schedule ----------
+
+    def set_schedule(self, events: list[dict]) -> None:
+        """Replace the scheduled events wholesale (the UI saves them as one unit). An event that is kept as it was keeps
+        its bookkeeping (where its count started, the last day it fired); changing when it happens starts it afresh."""
+        old = {e["id"]: e for e in self.schedule}
+        self._load_schedule([
+            {**e, "since": old[e.get("id")]["since"], "last": old[e.get("id")]["last"]}
+            if e.get("id") in old and (e.get("when") or "").split() == old[e["id"]]["when"].split() else {**e, "since": "", "last": ""}
+            for e in events
+        ])
+        self.save()
+
+    def event_audience(self, ev: dict) -> tuple[list[str], bool]:
+        """Who sees an event, and whether the player is among them. An event tied to a place is seen by whoever is at it
+        (the scene, if that is where it is); one tied to no place, or to a place that has since been deleted, is
+        seen by the scene."""
+        where = ev.get("where")
+        if where and where in self.location_ids() and where != self.scene.get("location"):
+            return [c["id"] for c in self.characters if c.get("location") == where], False
+        return self.present_ids(), True
+
+    def due_events(self, before: str | None, after: str | None) -> list[dict]:
+        """Scheduled events the clock has passed between two time stamps, each at most once per day. The count for
+        'every N days' starts at the first stamp the story gave it. Records what fired, so a clock that wobbles back
+        and forth cannot fire the same day twice."""
+        days = sched.days_crossed(before, after)
+        fired = []
+        for ev in self.schedule:
+            if not ev["since"] and before:
+                ev["since"] = before
+            last = int(ev["last"]) if ev["last"].isdigit() else None
+            hit = sched.matching_day(ev["when"], days, since=ev["since"], after_ord=last)
+            if hit:
+                if hit["ord"] is not None:
+                    ev["last"] = str(hit["ord"])
+                fired.append(ev)
+        if self.schedule:
+            self.save()
+        return fired
 
     # ---------- scene presets ----------
 
@@ -1032,6 +1108,7 @@ class WorldState:
             "locations": self.locations,
             "presets": self.presets,
             "reserved": self.reserved,
+            "schedule": [{**e, "readable": sched.parse_when(e["when"]) is not None} for e in self.schedule],
             "characters": [{**c, "present": self.is_present(c)} for c in self.characters],
             "narrator": self.narrator,
             "player": self.player,

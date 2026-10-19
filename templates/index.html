@@ -492,6 +492,7 @@ function renderScene(changes) {
   renderOffstage();
   renderPresets();
   renderReserved();
+  renderSchedule();
 }
 
 
@@ -530,10 +531,10 @@ async function startPreset(btn) {
   if (d.error) { alert(d.error); btn.textContent = "start"; return; }
   chat.innerHTML = "";
   addMsg("sys", "", `Scene started: ${d.started.name}` + (d.formed_count ? ` (${d.formed_count} message(s) saved to memory first)` : ""));
-  for (const m of d.history) if (m.kind === "move" || m.kind === "discover") addMsg("sys", "", m.content);
+  for (const m of d.history) if (m.kind === "move" || m.kind === "discover" || (m.kind === "event" && m.seen !== false)) addMsg("sys", "", m.content);
   applySnapshot(d);
   renderDirector(null); renderRecalled(null); renderChanges([]);
-  renderScene(); renderCast(); renderFilter(); renderCastStrip(); renderPresets(true); renderReserved(true);
+  renderScene(); renderCast(); renderFilter(); renderCastStrip(); renderPresets(true); renderReserved(true); renderSchedule(true);
 }
 function renderOffstage() {
   const el = document.getElementById("offstage");
@@ -721,6 +722,7 @@ async function send() {
     if (d.moved) addMsg("sys", "", `(The scene moves to ${d.moved}.)`);
     for (const n of d.arrived || []) addMsg("sys", "", `(${n} comes in.)`);
     for (const t of d.discovered || []) addMsg("sys", "", t);
+    for (const t of d.happened || []) addMsg("sys", "", t);
     W = d.world;
     setMemories(d.memories);
     renderSummaries(d.summaries);
@@ -843,7 +845,8 @@ document.getElementById("msg").addEventListener("keydown", e => {
   }
   for (const m of s.history) {
     if (m.kind === "aside" || m.kind === "depart" || m.kind === "arrive") continue;   // what the others notice; the player saw it happen
-    if (m.kind === "move" || m.kind === "discover") { addMsg("sys", "", m.content); continue; }
+    if (m.kind === "event" && m.seen === false) continue;                                  // it happened where the player wasn't
+    if (m.kind === "move" || m.kind === "discover" || m.kind === "event") { addMsg("sys", "", m.content); continue; }
     addSpoken(m.speaker, m.name || nameOf(m.speaker), m.content, m.private_to);
   }
   if (!s.history.length) addMsg("sys", "", "Quiet night. Say or do something.");

@@ -43,3 +43,17 @@
       </div>
 {% endif %}
     </div>
+    <div class="section">
+      <h2>Schedule <span id="schedule-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Things that happen on the story's clock, like a food drop every Wednesday. When the story's date passes a day an event
+        falls on, it happens in front of whoever is there, and they remember it. Write when in plain words: "every Wednesday",
+        "daily", "every other day", "every 3 days", "15 October". Leave the place blank for an event that reaches the scene
+        wherever it is. An event only fires if the story's time has a date or a weekday in it; the watcher keeps that moving.
+      </div>
+      <div id="schedule"></div>
+      <div style="margin-top:8px">
+        <button onclick="addEvent()">+ New event</button>
+        <button onclick="saveSchedule()">Save schedule</button>
+      </div>
+    </div>

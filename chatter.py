@@ -65,8 +65,10 @@ log = logging.getLogger(__name__)
 # scene going somewhere (or someone coming in); "depart" is what the people left
 # behind see when someone goes, and "arrive" what those present see when someone walks
 # in (the dialogue has already narrated both, so neither is shown to the player).
+# "event" is something on the world's schedule happening (a food drop, a vote called); it is shown to
+# the player when it happened where the scene is.
 # All are shown to a model without a speaker label.
-NOTICE_KINDS = ("move", "depart", "arrive", "discover")
+NOTICE_KINDS = ("move", "depart", "arrive", "discover", "event")
 LAYOUTS = ("system", "tail")
 MAX_RECALL_CALLS = 2     # most on-demand recall calls within one reply
 
@@ -224,6 +226,29 @@ class Chatter:
             self.store.save()
         self.save()
         return text
+
+    def _announce(self, ev: dict) -> dict | None:
+        """A scheduled event happens: a stage direction its witnesses have seen, which formation turns into a memory for
+        each group of them like any other line. Seen by whoever is at its place (the scene, if it has none). Returns what
+        happened, or None when nobody was there to see it."""
+        audience, shown = self.world.event_audience(ev)
+        if not audience:
+            return None
+        text = ev["text"].strip()
+        if not text.startswith("("):
+            text = f"({text})"
+        m = self._append(NARRATOR_ID, text, audience, kind="event", loc=ev.get("where") or self.world.scene.get("location"),
+                         seen=shown, event=ev["id"])
+        m["t"] = self.world.scene.get("fiction_time", "")
+        return {"id": ev["id"], "text": text, "seen": shown, "witnesses": [self._name(c) for c in audience]}
+
+    def fire_event(self, eid: str) -> dict | None:
+        """Make a scheduled event happen now, whatever the clock says (the author's call, to try it out)."""
+        ev = next((e for e in self.world.schedule if e["id"] == eid), None)
+        out = self._announce(ev) if ev else None
+        if out:
+            self.save()
+        return out
 
     def _discover(self, said: list[dict], place_id: str, audience: list[str], model: str) -> tuple[list[str], dict]:
         """Did this exchange uncover anything hidden at the place it happened?
@@ -1017,6 +1042,7 @@ class Chatter:
         names = self.world.names()
         public = self.world.present_ids()
         old_loc = self.world.scene.get("location")
+        clock_before = self.world.scene.get("fiction_time", "")
         came_from = {c["id"]: c.get("location") or "" for c in self.world.characters}
         if to is not None and to not in public:
             raise ValueError(f"{names.get(to, to)} is not in the scene")
@@ -1102,6 +1128,17 @@ class Chatter:
             self._append(NARRATOR_ID, f"(The scene moves to {moved['value']}.)",
                          self.world.present_ids(), kind="move")
 
+        # If the story's clock has passed a day something is scheduled for, it happens now, after what was said: whoever
+        # is there has it in front of them at the next line.
+        happened = []
+        try:
+            for ev in self.world.due_events(clock_before, self.world.scene.get("fiction_time", "")):
+                out = self._announce(ev)
+                if out:
+                    happened.append(out)
+        except Exception:
+            log.exception("scheduled events failed")
+
         # Stamp the whole turn with the in-fiction time it ended at, so
         # formation can resolve 'tomorrow' / 'Saturday' against when they were said.
         stamp = self.world.scene.get("fiction_time", "")
@@ -1153,6 +1190,7 @@ class Chatter:
             "moved": moved["value"] if moved else None,
             "arrived": arrived,
             "discovered": found,
+            "happened": [h["text"] for h in happened if h["seen"]],
             "offstage": self.offstage_view(),
             "world": self.world.snapshot(),
             "formed": formed,

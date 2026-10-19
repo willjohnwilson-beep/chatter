@@ -188,6 +188,6 @@ async function init() {
   const model = document.getElementById("ed-model");
   try { model.value = localStorage.getItem(DRAFT_MODEL_KEY) || DEFAULTS.character; } catch (e) { model.value = DEFAULTS.character; }
   model.addEventListener("change", () => { try { localStorage.setItem(DRAFT_MODEL_KEY, model.value.trim()); } catch (e) { /* private window: not kept */ } });
-  renderCast(); renderPlaces(); renderPresets(true); renderReserved(true); loadFixed(); fillStartScene();
+  renderCast(); renderPlaces(); renderPresets(true); renderReserved(true); renderSchedule(true); loadFixed(); fillStartScene();
 }
 init();

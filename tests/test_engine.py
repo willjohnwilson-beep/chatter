@@ -3632,4 +3632,149 @@ tmpl = ui_text()
 assert "notContradicted" in tmpl and "contradicted in play" in tmpl and "/api/memory/not_contradicted" in tmpl
 print("   PASS")
 
+print("== 93. a schedule: things happen on the story's clock, decided in code ==")
+import schedule as sc
+
+# reading `when`
+assert sc.parse_when("every Wednesday") == {"kind": "weekdays", "days": [2]} == sc.parse_when("Wednesdays") == sc.parse_when("Wednesday")
+assert sc.parse_when("weekly on Monday and Friday") == {"kind": "weekdays", "days": [0, 4]}
+assert sc.parse_when("daily") == sc.parse_when("every day") == {"kind": "every", "n": 1}
+assert sc.parse_when("every other day") == {"kind": "every", "n": 2} == sc.parse_when("every 2 days") == sc.parse_when("every two days")
+assert sc.parse_when("every 3 days") == {"kind": "every", "n": 3}
+assert sc.parse_when("15 October") == {"kind": "date", "month": 10, "day": 15, "year": None}
+assert sc.parse_when("Wednesday 21 October 2026")["kind"] == "date", "a date beats the weekday beside it"
+for bad in ("", "soon", "every second Wednesday", "monthly on Friday", "whenever"):
+    assert sc.parse_when(bad) is None, bad
+# reading the clock
+assert sc.read_clock("Thursday 15 October 2026, 11:10pm") == {"ord": 739904, "wd": 3, "year": True}
+assert sc.read_clock("late evening, the sun low") is None, "'sun' is not Sunday"
+assert sc.read_clock("Tuesday evening") == {"ord": None, "wd": 1, "year": False}
+assert sc.read_clock("15 October")["wd"] is None and sc.read_clock("15 October")["ord"] is not None
+# which days the clock crossed
+d_ = sc.days_crossed("Tuesday 20 October 2026, 11pm", "Thursday 22 October 2026, 1am")
+assert [(x["wd"]) for x in d_] == [2, 3] and d_[1]["ord"] - d_[0]["ord"] == 1
+assert sc.days_crossed("Thursday 15 October 2026, 9pm", "Thursday 15 October 2026, 11pm") == [], "later the same day"
+assert sc.days_crossed("Thursday 15 October 2026", "Wednesday 14 October 2026") == [], "backwards"
+assert sc.days_crossed("Tuesday evening", "Thursday morning") == [{"ord": None, "wd": 2}, {"ord": None, "wd": 3}], "weekdays alone"
+assert sc.days_crossed("Thursday evening", "Thursday night") == [], "no time passed"
+assert sc.days_crossed("late evening", "Wednesday 21 October 2026") == [], "no day to start from"
+assert [x["ord"] for x in sc.days_crossed("31 December 2026", "1 January 2027")] == [sc.read_clock("1 January 2027")["ord"]]
+assert sc.days_crossed("31 December, 9pm", "1 January, 1am")[0]["ord"] is not None, "December into January with no year"
+assert len(sc.days_crossed("1 January 2026", "20 March 2026")) == sc.CAP_DAYS, "a long jump looks only at its last fortnight"
+assert sc.days_crossed("1 January 2026", "1 March 2028") == [], "a jump of years is not a schedule's business"
+# which of them an event falls on
+wed_ = sc.days_crossed("Tuesday 20 October 2026, 11pm", "Wednesday 21 October 2026, 8am")
+assert sc.matching_day("every Wednesday", wed_)["wd"] == 2 and sc.matching_day("every Friday", wed_) is None
+assert sc.matching_day("21 October", wed_) is not None and sc.matching_day("21 October 2025", wed_) is None and sc.matching_day("22 October", wed_) is None
+week_ = sc.days_crossed("Sunday 18 October 2026", "Sunday 25 October 2026")
+assert sc.matching_day("every Wednesday", week_)["wd"] == 2
+two_ = sc.days_crossed("Thursday 15 October 2026, 9pm", "Saturday 17 October 2026, 1am")
+assert sc.matching_day("every other day", two_, since="Thursday 15 October 2026, 9pm")["wd"] == 5
+assert sc.matching_day("every other day", sc.days_crossed("Thursday 15 October 2026, 9pm", "Friday 16 October 2026, 1am"), since="Thursday 15 October 2026") is None
+assert sc.matching_day("every other day", two_, since="") is None, "a count needs somewhere to start from"
+assert sc.matching_day("every Wednesday", wed_, after_ord=wed_[0]["ord"]) is None, "a day already fired is skipped"
+
+# the world keeps them
+nev = st._norm_event
+assert nev({"text": "  "}, set()) is None and nev({}, set()) is None
+e_ = nev({"id": "new-1", "text": "A crate  of food\nis dropped.", "when": " every   Wednesday ", "where": "gate"}, set())
+assert e_ == {"id": "a-crate-of-food", "text": "A crate of food is dropped.", "when": "every Wednesday", "where": "gate", "since": "", "last": ""}, e_
+store, world, c = make([WREN, MICK], narrator=True)
+world.set_locations([{"id": "salt-line", "name": "The Salt Line"}, {"id": "pier", "name": "The Pier"}])
+world.character("wren")["location"] = "salt-line"
+world.character("mick")["location"] = "pier"
+world.scene["location"] = "salt-line"
+world.scene["fiction_time"] = "Tuesday 20 October 2026, 11pm"
+assert world.schedule == [] and world.snapshot()["schedule"] == []
+world.set_schedule([{"id": "new-1", "text": "A crate of food is dropped at the gate.", "when": "every Wednesday"},
+                    {"id": "new-2", "text": "The ferry horn sounds.", "when": "somewhen", "where": "pier"}, {"text": ""}])
+assert [e["id"] for e in world.schedule] == ["a-crate-of-food", "the-ferry-horn-sounds"]
+assert [e["readable"] for e in world.snapshot()["schedule"]] == [True, False], "the editor is told which it can't read"
+assert st.WorldState(world.path).schedule == world.schedule, "persisted"
+json.dump({"fixed": {"core_instructions": "C", "scenario": "S"}, "scene": {}, "characters": [{"name": "Wren"}], "narrator": {}, "player": {}},
+          open(os.path.join(tmp, "oldsched.json"), "w"))
+assert st.WorldState(os.path.join(tmp, "oldsched.json")).schedule == [], "a world saved before schedules existed"
+
+# it happens in a turn, from the clock the watcher moved, with no model call of its own
+DIR93 = {"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}
+WATCH_WED = {"updates": [{"target": "scene", "field": "fiction_time", "value": "Wednesday 21 October 2026, 8am", "why": "slept"}]}
+f = install(director=DIR93, watch=WATCH_WED)
+r = c.turn("We sleep through the night.", MODELS)
+assert f.kinds().count("watch") == 1 and not any(k not in ("character", "watch", "director", "retrieve", "form", "summary", "crosslines", "offstage", "omni", "discover") for k in f.kinds()), f.kinds()
+ev = [m for m in c.history if m.get("kind") == "event"]
+assert len(ev) == 1 and ev[0]["content"] == "(A crate of food is dropped at the gate.)" and ev[0]["speaker"] == "narrator", ev
+assert ev[0]["present"] == ["wren"] and ev[0]["seen"] is True and ev[0]["t"] == "Wednesday 21 October 2026, 8am"
+assert r["happened"] == ["(A crate of food is dropped at the gate.)"], "the player is told, since it happened where the scene is"
+assert world.schedule[0]["since"] == "Tuesday 20 October 2026, 11pm" and world.schedule[0]["last"] == str(sc.read_clock("Wednesday 21 October 2026")["ord"])
+assert not any(m.get("event") == "the-ferry-horn-sounds" for m in c.history), "an event whose when can't be read never fires"
+assert ev[0]["content"] in [x["content"] for x in c.viewer_messages("wren")], "Wren has it in front of her"
+assert ev[0]["content"] not in [x["content"] for x in c.viewer_messages("mick")], "Mick was at the pier"
+# the same day again, or a wobble back and forth, doesn't repeat it
+f = install(director=DIR93, watch={"updates": [{"target": "scene", "field": "fiction_time", "value": "Wednesday 21 October 2026, 9am", "why": "x"}]})
+r = c.turn("Another coffee.", MODELS)
+assert r["happened"] == [] and len([m for m in c.history if m.get("kind") == "event"]) == 1
+f = install(director=DIR93, watch={"updates": [{"target": "scene", "field": "fiction_time", "value": "Tuesday 20 October 2026, 9pm", "why": "slip"}]})
+c.turn("Hm.", MODELS)
+f = install(director=DIR93, watch={"updates": [{"target": "scene", "field": "fiction_time", "value": "Wednesday 21 October 2026, 10am", "why": "back"}]})
+r = c.turn("Right.", MODELS)
+assert r["happened"] == [] and len([m for m in c.history if m.get("kind") == "event"]) == 1, "the clock going back and forth doesn't fire the same day twice"
+# a week on
+f = install(director=DIR93, watch={"updates": [{"target": "scene", "field": "fiction_time", "value": "Wednesday 28 October 2026, 8am", "why": "week"}]})
+r = c.turn("A week later.", MODELS)
+assert len(r["happened"]) == 1 and len([m for m in c.history if m.get("kind") == "event"]) == 2
+
+# tied to a place the scene isn't at: whoever is there sees it, the player and Wren do not
+world.set_schedule([{"id": "ferry", "text": "The ferry horn sounds.", "when": "daily", "where": "pier"}])
+f = install(director=DIR93, watch={"updates": [{"target": "scene", "field": "fiction_time", "value": "Thursday 29 October 2026, 8am", "why": "d"}]})
+r = c.turn("Morning.", MODELS)
+horn = [m for m in c.history if m.get("event") == "ferry"]
+assert len(horn) == 1 and horn[0]["present"] == ["mick"] and horn[0]["seen"] is False and r["happened"] == []
+assert not c._visible(horn[0], "wren") and c._visible(horn[0], "mick"), "private to the place it happened at"
+assert horn[0]["content"] not in [x["content"] for x in c.viewer_messages("wren")] + [x["content"] for x in c.viewer_messages("narrator") if False]
+assert c.recent_text("wren").count("ferry horn") == 0 and "ferry horn" in c.recent_text("mick")
+# nobody there, nothing happens
+world.character("mick")["location"] = ""
+f = install(director=DIR93, watch={"updates": [{"target": "scene", "field": "fiction_time", "value": "Friday 30 October 2026, 8am", "why": "d"}]})
+r = c.turn("Morning again.", MODELS)
+assert len([m for m in c.history if m.get("event") == "ferry"]) == 1, "an empty pier sees nothing"
+# a place that has since been deleted falls back to the scene
+world.set_schedule([{"id": "ghost", "text": "A bell rings.", "when": "daily", "where": "nowhere"}])
+assert world.event_audience(world.schedule[0]) == (["wren"], True)
+# the author can make one happen now
+out = c.fire_event("ghost")
+assert out["seen"] is True and out["witnesses"] == ["Wren"] and c.history[-1]["content"] == "(A bell rings.)"
+assert c.fire_event("nope") is None
+# changing when starts it afresh; keeping it keeps its bookkeeping
+world.set_schedule([{"id": "ghost", "text": "A bell rings.", "when": "daily", "where": "nowhere"}])
+world.schedule[0]["since"] = "S"; world.schedule[0]["last"] = "5"
+world.set_schedule([{"id": "ghost", "text": "A bell rings loudly.", "when": "daily"}])
+assert (world.schedule[0]["since"], world.schedule[0]["last"]) == ("S", "5"), "same when: kept"
+world.set_schedule([{"id": "ghost", "text": "A bell rings loudly.", "when": "every other day"}])
+assert (world.schedule[0]["since"], world.schedule[0]["last"]) == ("", ""), "new when: afresh"
+# a scenario carries the schedule but not its bookkeeping
+world.schedule[0]["since"] = "S"; world.schedule[0]["last"] = "5"
+sc_ = world.as_scenario()
+assert sc_["schedule"][0]["when"] == "every other day" and sc_["schedule"][0]["since"] == "" and world.schedule[0]["since"] == "S"
+world.save()
+assert st.WorldState(world.path).schedule[0]["since"] == "S", "the live world keeps its bookkeeping"
+# the endpoints
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine = store, world, c
+cl = appmod.app.test_client()
+r = cl.post("/api/schedule", json={"schedule": [{"id": "new-1", "text": "A crate of food is dropped.", "when": "every Wednesday"}, "junk"]})
+assert r.status_code == 200 and [x["when"] for x in r.get_json()["world"]["schedule"]] == ["every Wednesday"]
+assert cl.post("/api/schedule", json={"schedule": "no"}).status_code == 400
+r = cl.post("/api/schedule/fire", json={"id": r.get_json()["world"]["schedule"][0]["id"]})
+assert r.status_code == 200 and r.get_json()["happened"]["seen"] is True and r.get_json()["history"][-1]["kind"] == "event"
+assert cl.post("/api/schedule/fire", json={"id": "nope"}).status_code == 400
+assert cl.post("/api/schedule", json={"schedule": []}).get_json()["world"]["schedule"] == []
+world.set_schedule([{"text": "x", "when": "daily"}])
+world.reset_all()
+assert world.schedule == [], "reset clears them"
+tmpl = ui_text()
+assert 'id="schedule"' in tmpl and "saveSchedule" in tmpl and 'editUrl("schedule")' in tmpl and "renderSchedule(true)" in tmpl and "/api/schedule/fire" in tmpl
+assert 'm.kind === "event" && m.seen === false' in tmpl and "d.happened" in tmpl, "the play page shows it only when it happened where the player is"
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

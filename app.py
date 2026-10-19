@@ -196,7 +196,7 @@ def chat():
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 
-EDIT_KINDS = ("fixed", "scene", "cast", "locations", "presets", "reserved")
+EDIT_KINDS = ("fixed", "scene", "cast", "locations", "presets", "reserved", "schedule")
 
 
 def _apply_edit(w: state_mod.WorldState, kind: str, body: dict, scenario: bool = False) -> str | None:
@@ -237,6 +237,11 @@ def _apply_edit(w: state_mod.WorldState, kind: str, body: dict, scenario: bool =
         if not isinstance(topics, list):
             return "reserved must be a list"
         w.set_reserved([t for t in topics if isinstance(t, dict)])
+    elif kind == "schedule":
+        events = body.get("schedule")
+        if not isinstance(events, list):
+            return "schedule must be a list"
+        w.set_schedule([e for e in events if isinstance(e, dict)])
     else:
         return "unknown edit"
     return None
@@ -311,6 +316,21 @@ def save_reserved():
     """Replace the reserved topics: lore the author keeps for themselves, which no character
     is allowed to invent anything about. Each is a name for the topic, with optional tags."""
     return _edit_live("reserved")
+
+
+@app.route("/api/schedule", methods=["POST"])
+def save_schedule():
+    """Replace the scheduled events: things that happen on the story's clock ('every Wednesday')."""
+    return _edit_live("schedule")
+
+
+@app.route("/api/schedule/fire", methods=["POST"])
+def fire_schedule():
+    """Make one scheduled event happen now, whatever the clock says, to try it out."""
+    out = chat_engine.fire_event(str((request.get_json() or {}).get("id") or ""))
+    if out is None:
+        return jsonify({"error": "no such event, or nobody is there to see it"}), 400
+    return jsonify({"ok": True, "happened": out, **snapshot()})
 
 
 @app.route("/api/presets/capture", methods=["POST"])

@@ -164,6 +164,72 @@ async function saveReserved() {
   s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
 }
 
+let scheduleSig = "", newEventN = 0;
+
+function eventCardHtml(e, idx) {
+  const places = `<option value="">(wherever the scene is)</option>`
+    + (W.locations || []).map(l => `<option value="${esc(l.id)}" ${l.id === e.where ? "selected" : ""}>${esc(l.name)}</option>`).join("");
+  const unread = e.when && e.readable === false;
+  return `<div class="char-card event-card" data-id="${esc(e.id || "")}" style="border-left-color:${PALETTE[(idx + 3) % PALETTE.length]}">
+    <div class="head">
+      <input type="text" class="ev-when" value="${esc(e.when || "")}" placeholder="when: every Wednesday" style="max-width:240px">
+      ${EDIT.live && e.id && !String(e.id).startsWith("new-") ? `<button class="small" onclick="fireEvent(this)" title="Make it happen now, whatever the clock says">happen now</button>` : ""}
+      <button class="small danger" onclick="this.closest('.event-card').remove()">remove</button>
+    </div>
+    ${unread ? `<div class="note" style="color:var(--danger,#c0392b)">Can't read "${esc(e.when)}": it won't fire. Try "every Wednesday", "daily", "every other day" or "15 October".</div>` : ""}
+    <div class="field"><label>What happens (a stage direction everyone there sees)</label>
+      <textarea class="ev-text multi" placeholder="A crate of food is dropped at the gate.">${esc(e.text || "")}</textarea></div>
+    <div class="field"><label>Where</label><select class="ev-where">${places}</select></div>
+  </div>`;
+}
+
+function renderSchedule(force) {
+  if (!W) return;
+  const holder = document.getElementById("schedule");
+  const sig = JSON.stringify([W.schedule || [], (W.locations || []).map(l => l.id + l.name)]);
+  if (!force && (sig === scheduleSig || holder.contains(document.activeElement))) return;
+  scheduleSig = sig;
+  holder.innerHTML = (W.schedule || []).map((e, i) => eventCardHtml(e, i)).join("") || `<div class="empty">nothing scheduled</div>`;
+}
+
+function addEvent() {
+  const holder = document.getElementById("schedule");
+  if (!holder.querySelector(".event-card")) holder.innerHTML = "";
+  const idx = holder.querySelectorAll(".event-card").length;
+  holder.insertAdjacentHTML("beforeend", eventCardHtml({ id: "new-" + (++newEventN), when: "", text: "", where: "" }, idx));
+  holder.lastElementChild.querySelector(".ev-when").focus();
+}
+
+function collectSchedule() {
+  return [...document.querySelectorAll("#schedule .event-card")].map(card => ({
+    id: card.dataset.id,
+    when: card.querySelector(".ev-when").value,
+    text: card.querySelector(".ev-text").value,
+    where: card.querySelector(".ev-where").value,
+  })).filter(e => e.text.trim());
+}
+
+async function saveSchedule() {
+  const res = await (await fetch(editUrl("schedule"), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schedule: collectSchedule() }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; renderSchedule(true);
+  const s = document.getElementById("schedule-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+}
+
+async function fireEvent(btn) {
+  const id = btn.closest(".event-card").dataset.id;
+  const res = await (await fetch("/api/schedule/fire", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  if (res.happened.seen && typeof addMsg === "function") addMsg("sys", "", res.happened.text);   // the play page's transcript
+  const s = document.getElementById("schedule-saved");
+  s.textContent = res.happened.seen ? "happened" : "happened where you aren't"; setTimeout(() => (s.textContent = ""), 2500);
+}
+
 let presetsSig = "", newPresetN = 0;
 
 function presetCardHtml(p, idx) {
