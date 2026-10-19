@@ -95,6 +95,14 @@ def formation_schema(subject_ids: list[str]) -> dict:
                                 "something changes it). When unsure, choose the longer."
                             ),
                         },
+                        "contradicts": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": (
+                                "Ids of EXISTING memories that cannot both be true alongside this "
+                                "one. Empty for a refinement, an addition or an agreement."
+                            ),
+                        },
                         "evidence": {
                             "type": "string",
                             "description": (
@@ -104,7 +112,7 @@ def formation_schema(subject_ids: list[str]) -> dict:
                         },
                     },
                     "required": ["action", "memory_id", "subject", "tags", "summary", "detail",
-                                 "core", "lifetime", "evidence"],
+                                 "core", "lifetime", "contradicts", "evidence"],
                     "additionalProperties": False,
                 },
             },
@@ -335,6 +343,7 @@ class MemoryStore:
             m.setdefault("lifetime", "lasting")  # older memories never age
             m.setdefault("lifetime_by", "")      # "author" once the author has set it by hand
             m.setdefault("origin", "")           # "offstage" for a memory written from a character's offstage notes
+            m.setdefault("conflicts_with", [])   # ids of memories that cannot both be true with this one (author-facing only)
             m.setdefault("scene_no", 0)
             m.setdefault("kind", "person")
             m.setdefault("subject", PLAYER if m["kind"] == "person" else WORLD)
@@ -461,6 +470,45 @@ class MemoryStore:
         if m is None:
             return False
         self.memories.remove(m)
+        self._unlink(memory_id)
+        return True
+
+    # ---------- conflicts (for the author; no character is ever told) ----------
+
+    def link_conflicts(self, memory_id: str, others: list[str] | None) -> list[str]:
+        """Record that `memory_id` cannot be true alongside each of `others`, on both sides.
+        Unknown ids and the memory itself are ignored. Returns the ids actually linked."""
+        m = self.by_id(memory_id)
+        if m is None:
+            return []
+        linked = []
+        for oid in dict.fromkeys(others or []):
+            o = self.by_id(oid)
+            if o is None or oid == memory_id:
+                continue
+            for a, b in ((m, oid), (o, memory_id)):
+                if b not in a.setdefault("conflicts_with", []):
+                    a["conflicts_with"].append(b)
+            linked.append(oid)
+        return linked
+
+    def _unlink(self, memory_id: str) -> None:
+        """Forget a memory in everyone's conflict list (it was deleted or merged away)."""
+        for m in self.memories:
+            if memory_id in m.get("conflicts_with", []):
+                m["conflicts_with"] = [i for i in m["conflicts_with"] if i != memory_id]
+
+    def clear_conflict(self, a: str, b: str | None = None) -> bool:
+        """The author says it isn't a conflict: drop the link between `a` and `b`, or all of a's."""
+        m = self.by_id(a)
+        if m is None or not m.get("conflicts_with"):
+            return False
+        for oid in ([b] if b else list(m["conflicts_with"])):
+            if oid in m["conflicts_with"]:
+                m["conflicts_with"].remove(oid)
+            o = self.by_id(oid)
+            if o and a in o.get("conflicts_with", []):
+                o["conflicts_with"].remove(a)
         return True
 
     def by_id(self, memory_id: str) -> dict | None:
@@ -540,6 +588,7 @@ class MemoryStore:
                 existing["evidence"] = op.get("evidence", "")
                 existing["verified"] = verified
                 existing["updated_at"] = _now()
+                self.link_conflicts(existing["id"], op.get("contradicts"))
                 applied.append({"action": "update", **existing})
             else:
                 mem = {
@@ -553,6 +602,7 @@ class MemoryStore:
                     "core": op.get("core", False),
                     "lifetime": lifetime,
                     "lifetime_by": "",
+                    "conflicts_with": [],
                     "scene_no": self.scene_no,
                     "as_of": as_of,
                     "places": _add_place([], loc),
@@ -567,6 +617,7 @@ class MemoryStore:
                 }
                 self.next_id += 1
                 self.memories.append(mem)
+                self.link_conflicts(mem["id"], op.get("contradicts"))
                 applied.append({"action": "create", **mem})
         return applied
 
@@ -604,6 +655,7 @@ class MemoryStore:
                                                               key=LIFETIMES.index),
                 "lifetime_by": "author" if any(s.get("lifetime_by") == "author" for s in sources) else "",
                 "scene_no": max(s.get("scene_no", 0) for s in sources),
+                "conflicts_with": list(dict.fromkeys(c for s in sources for c in s.get("conflicts_with", []) if c not in ids)),
                 "as_of": newest.get("as_of", ""),
                 "places": [p for p in dict.fromkeys(p for s in sources for p in s.get("places") or [])][-MAX_PLACES:],
                 "source": best,
@@ -622,6 +674,10 @@ class MemoryStore:
                 self.memories.remove(s)
                 self.archive.append({**s, "merged_into": mem["id"]})
             self.memories.append(mem)
+            for o in self.memories:  # whatever disagreed with a source now disagrees with the merged memory
+                cw = o.get("conflicts_with") or []
+                if o is not mem and any(i in cw for i in ids):
+                    o["conflicts_with"] = list(dict.fromkeys(mem["id"] if i in ids else i for i in cw))
             merged.append({**mem, "why": mg["why"]})
 
         for ch in core_changes or []:
@@ -642,6 +698,12 @@ class MemoryStore:
             self.archive.remove(a)
             a.pop("merged_into", None)
             self.memories.append(a)
+        self._unlink(merged_id)
+        for a in restored:  # the sources' own conflicts come back, on both sides
+            for oid in a.get("conflicts_with", []):
+                o = self.by_id(oid)
+                if o and a["id"] not in o.setdefault("conflicts_with", []):
+                    o["conflicts_with"].append(a["id"])
         self.memories.sort(key=lambda x: x["id"])
         return [a["id"] for a in restored]
 
@@ -871,6 +933,17 @@ def form(
         "private', 'shared some news'): say what it was. `summary` is just a "
         "short label used to find the memory.\n\n"
         "Skip pleasantries and anything already captured.\n\n"
+        "CONFLICTS: set `contradicts` on an entry to the ids of EXISTING memories that cannot both be "
+        "true alongside it: two accounts of the same moment or the same standing fact that disagree "
+        "(where someone is, what happened, what is locked or open, who did what, what someone is). "
+        "Check against EVERY existing memory, whoever it is filed under: a claim about the player is "
+        "filed under the speaker, while what the player said about themselves is filed under the "
+        "player, and the two can still disagree.\n"
+        "Leave it empty for a refinement, an addition, an agreement, or something that CHANGED over "
+        "time: 'Sam was in Hull on Thursday' and 'Sam is back from Hull on Saturday' are both true "
+        "and do not conflict. A character's new claim that disagrees with another memory must be "
+        "recorded as its own entry and name the memory it disagrees with; never overwrite that "
+        "memory with it.\n\n"
         "ONE MEMORY = ONE FACT. Update an existing memory only when the new "
         "information is about that same underlying fact — refining it, "
         "correcting it, or moving it forward — and carry over anything in it "

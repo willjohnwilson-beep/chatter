@@ -2619,4 +2619,75 @@ tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
 assert 'm.origin === "offstage"' in tmpl
 print("   PASS")
 
+# ------------------------------------------------------------------ 83
+print("== 83. conflicting memories are flagged for the author, in the same pass that forms them ==")
+store = memory.MemoryStore(os.path.join(tmp, "conf.json"))
+CB = [{"speaker": "wren", "content": "Sam's gone to his mother's in Hull", "present": ["wren", "mick"], "t": "T1"},
+      {"speaker": "mick", "content": "Sam's on the docks, I saw him", "present": ["wren", "mick"], "t": "T2"}]
+cop = lambda **kw: {"action": "create", "memory_id": "", "subject": "world", "tags": ["t"], "summary": "s", "detail": "d", "core": False,
+                    "lifetime": "lasting", "evidence": "Sam's gone to his mother's in Hull", **kw}
+capp = lambda o, b=CB: store.apply_operations([o], b, all_ids=["wren", "mick"], subject_ids=["world", "wren", "mick"], known_by=["*"])[0]
+c1 = capp(cop(summary="Sam in Hull"))
+assert c1["conflicts_with"] == [] and store.by_id(c1["id"])["conflicts_with"] == []
+c2 = capp(cop(summary="Sam on the docks", evidence="Sam's on the docks, I saw him", contradicts=[c1["id"], "mem_9999", "nonsense"]))
+assert c2["conflicts_with"] == [c1["id"]], "unknown ids are ignored"
+assert store.by_id(c1["id"])["conflicts_with"] == [c2["id"]], "recorded on both sides"
+c3 = capp(cop(summary="Sam is on shift", evidence="Sam's on the docks, I saw him", contradicts=[c1["id"], c1["id"]]))
+assert store.by_id(c1["id"])["conflicts_with"] == [c2["id"], c3["id"]] and store.by_id(c3["id"])["conflicts_with"] == [c1["id"]], "no duplicates"
+assert store.link_conflicts(c3["id"], [c3["id"]]) == [], "never with itself"
+# an update can raise one too
+up = capp(cop(action="update", memory_id=c3["id"], detail="Sam is on shift at the docks", evidence="Sam's on the docks, I saw him", contradicts=[c2["id"]]))
+assert up["action"] == "update" and c2["id"] in store.by_id(c3["id"])["conflicts_with"] and c3["id"] in store.by_id(c2["id"])["conflicts_with"]
+# the field is part of the formation call, and the prompt explains it
+sch = memory.formation_schema(["world"])["properties"]["operations"]["items"]
+assert "contradicts" in sch["required"] and sch["properties"]["contradicts"]["type"] == "array"
+f = install(form={"operations": [], "session_summary": "s"})
+memory.form(store, CB, "claude-haiku-5-5", names={"wren": "Wren", "mick": "Mick"}, subject_ids=["world", "wren", "mick"], all_ids=["wren", "mick"])
+pr = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert "CONFLICTS:" in pr and "never overwrite that memory" in pr and c1["id"] in pr, "it is shown the existing memories to compare"
+# an older store and a form that omits the field both work
+json.dump({"memories": [{"id": "mem_0001", "kind": "canon", "tags": [], "summary": "s", "detail": "d"}], "next_id": 2}, open(os.path.join(tmp, "oldc.json"), "w"))
+assert memory.MemoryStore(os.path.join(tmp, "oldc.json")).memories[0]["conflicts_with"] == []
+capp(cop(summary="no field at all"))
+
+# resolving: say it's not a conflict, or delete one
+assert store.clear_conflict(c1["id"], c3["id"]) and store.by_id(c1["id"])["conflicts_with"] == [c2["id"]] and c1["id"] not in store.by_id(c3["id"])["conflicts_with"]
+assert store.clear_conflict(c1["id"]) and store.by_id(c1["id"])["conflicts_with"] == [] and c1["id"] not in store.by_id(c2["id"])["conflicts_with"], "all of one memory's flags"
+assert not store.clear_conflict(c1["id"]), "nothing left to clear"
+store.link_conflicts(c1["id"], [c2["id"]])
+store.delete(c2["id"])
+assert store.by_id(c1["id"])["conflicts_with"] == [] and all(c2["id"] not in m["conflicts_with"] for m in store.memories), "deleting clears the flag on the other side"
+# merging carries the flags to the merged memory, and unmerging restores them
+a_, b_ = capp(cop(summary="A")), capp(cop(summary="B"))
+x_ = capp(cop(summary="X", contradicts=[a_["id"]]))
+out = store.apply_merges([{"source_ids": [a_["id"], b_["id"]], "tags": ["t"], "summary": "AB", "detail": "AB", "core": False, "why": "w"}])
+mid = out["merged"][0]["id"]
+assert store.by_id(x_["id"])["conflicts_with"] == [mid] and store.by_id(mid)["conflicts_with"] == [x_["id"]], "re-pointed at the merged memory"
+store.unmerge(mid)
+assert store.by_id(x_["id"])["conflicts_with"] == [a_["id"]] and store.by_id(a_["id"])["conflicts_with"] == [x_["id"]], "back on the original"
+store.save()
+assert memory.MemoryStore(store.path).by_id(x_["id"])["conflicts_with"] == [a_["id"]], "persisted"
+
+# nobody in the fiction is told: a character shown a flagged memory sees no trace of it
+store2, world2, ch2 = make([WREN, MICK])
+fl = capp(cop(summary="flagged"))
+store.link_conflicts(fl["id"], [x_["id"]])
+shown = {**store.by_id(fl["id"]), "stale": False}
+system, _ = ch2.build_context("wren", [shown])
+assert "conflict" not in system.lower() and "disagree" not in system.lower() and x_["id"] not in system, "conflicts are author-only"
+# the endpoint and the UI
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine = store, world2, ch2
+cl = appmod.app.test_client()
+snap = {m["id"]: m for m in cl.get("/api/state").get_json()["memories"]}
+assert snap[fl["id"]]["conflicts_with"] == [x_["id"]], "the author's view carries the flags"
+r = cl.post("/api/memory/not_conflict", json={"memory_id": fl["id"], "other_id": x_["id"]})
+assert r.status_code == 200 and {m["id"]: m for m in r.get_json()["memories"]}[fl["id"]]["conflicts_with"] == []
+assert cl.post("/api/memory/not_conflict", json={"memory_id": fl["id"]}).status_code == 400, "nothing to clear"
+assert cl.post("/api/memory/not_conflict", json={"memory_id": "nope"}).status_code == 400
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert "notConflict" in tmpl and "conflicts with" in tmpl and "/api/memory/not_conflict" in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

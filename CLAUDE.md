@@ -1,6 +1,6 @@
 # Chatter
 
-Python/Flask harness for roleplay chat with several AI characters, built to test how character memory forms and is retrieved. A director model picks who speaks; characters only know what they were present for. The web UI is both the game and the author's tool. See `docs/HANDOVER.md` for a dated snapshot of design and status (it may be stale; trust the code and tests).
+Python/Flask harness for roleplay chat with several AI characters, built to test how character memory forms and is retrieved. A director model picks who speaks; characters only know what they were present for. The web UI is both the game and the author's tool. See `docs/HANDOVER.md` for a dated snapshot of design and status (it may be stale; trust the code and tests). **Only update the handover at the point of handover**, when the user asks for one: it is a document to pass information to the next session, not a living log, so don't refresh it as features land.
 
 ## Run
 

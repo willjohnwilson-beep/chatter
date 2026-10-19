@@ -292,6 +292,17 @@ def set_memory_lifetime():
     return jsonify({"ok": True, **snapshot()})
 
 
+@app.route("/api/memory/not_conflict", methods=["POST"])
+def memory_not_conflict():
+    """The author says two flagged memories don't actually conflict: drop the flag between them
+    (or, with no `other_id`, every flag on this memory)."""
+    body = request.get_json() or {}
+    if not store.clear_conflict(body.get("memory_id", ""), body.get("other_id") or None):
+        return jsonify({"error": "no such conflict"}), 400
+    store.save()
+    return jsonify({"ok": True, **snapshot()})
+
+
 @app.route("/api/memory/delete", methods=["POST"])
 def delete_memory():
     """Drop one memory (an invention you don't want kept)."""
