@@ -388,6 +388,24 @@ def _norm_reserved(r: dict, taken: set[str]) -> dict | None:
     return {"id": rid, "topic": topic, "characters": tags("characters"), "places": tags("places")}
 
 
+MAX_TIME = 60   # characters: a clock stamp is a short line, and what the schedule reads dates from
+_STAMP_HEAD = re.compile(r"^(?:[A-Z][a-z]+day,? )?(?:\d{1,2}(?:st|nd|rd|th)? [A-Z][a-z]+|[A-Z][a-z]+ \d{1,2}(?:st|nd|rd|th)?)"
+                         r"(?:,? \d{4})?(?:,? (?:\d{1,2}(?::\d{2})? ?[ap]\.?m\.?|noon|midnight))?")
+
+
+def tidy_time(value) -> str:
+    """The watcher's clock value as a short stamp. It sometimes writes its own reasoning into the field, or hangs a
+    parenthetical off the time; both are cut (first line only, nothing after a bracket, semicolon, colon-space or
+    dash). A value still too long is cut back to a leading date if it starts with one, else dropped (empty), and the
+    caller keeps the clock as it was."""
+    v = " ".join(str(value or "").split("\n")[0].split())
+    v = re.split(r"\s+\(|;|: | — | - ", v)[0].strip(" ,.")
+    if len(v) <= MAX_TIME:
+        return v
+    m = _STAMP_HEAD.match(v)
+    return m.group(0).strip(" ,") if m else ""
+
+
 def _norm_event(e: dict, taken: set[str]) -> dict | None:
     """One scheduled event, or None if it has no text. `when` is plain text (see schedule.py), `where` an optional place
     id: the event is seen by whoever is there, or by whoever is in the scene when it is blank. `since` (the day the count
@@ -1295,6 +1313,10 @@ class WorldState:
                 if field not in SCENE_FIELDS:
                     continue
                 before = self.scene.get(field, "")
+                if field == "fiction_time":
+                    value = tidy_time(value)
+                    if not value:
+                        continue
                 if value.strip() == before.strip():
                     continue
                 if field == "open_threads":

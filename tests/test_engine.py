@@ -3777,4 +3777,30 @@ assert 'id="schedule"' in tmpl and "saveSchedule" in tmpl and 'editUrl("schedule
 assert 'm.kind === "event" && m.seen === false' in tmpl and "d.happened" in tmpl, "the play page shows it only when it happened where the player is"
 print("   PASS")
 
+print("== 94. the clock stays a short stamp, whatever the watcher writes into it ==")
+assert st.tidy_time("Thursday 15 October 2026, 11:20pm") == "Thursday 15 October 2026, 11:20pm"
+assert st.tidy_time("  Tuesday   evening ") == "Tuesday evening" and st.tidy_time("late evening") == "late evening"
+assert st.tidy_time("Wednesday 28 October 2026, 8:00am (assumed morning hatch time)") == "Wednesday 28 October 2026, 8:00am"
+assert st.tidy_time("Wednesday 21 October 2026, 8:15am\nWait, the player said seven days later") == "Wednesday 21 October 2026, 8:15am", "first line only"
+assert st.tidy_time("Friday 23 October 2026, 7am; the cellar is clear") == "Friday 23 October 2026, 7am"
+assert st.tidy_time("Friday 23 October 2026, 7am - late") == "Friday 23 October 2026, 7am"
+long_ = ("Wednesday 21 October 2026, 8:15am at the latest Wait, looking at the actual statement and the open threads "
+         "which are now resolved and the player says seven days later so this rolls over")
+assert len(long_) > st.MAX_TIME and st.tidy_time(long_) == "Wednesday 21 October 2026, 8:15am", "cut back to the date it starts with"
+assert st.tidy_time("Thinking about it, the time is probably about eight in the morning, give or take, because the van came") == "", "no date to keep: dropped"
+assert st.tidy_time("") == "" and st.tidy_time(None) == ""
+store, world, c = make([WREN])
+world.scene["fiction_time"] = "Tuesday 20 October 2026, 11pm"
+for said, want in (("Wednesday 21 October 2026, 8:15am (later, the cellar is clear)", "Wednesday 21 October 2026, 8:15am"),
+                   ("Hmm so it has been a whole week since then and the answer depends on a lot of things said above", "Wednesday 21 October 2026, 8:15am"),
+                   ("", "Wednesday 21 October 2026, 8:15am")):
+    install(watch={"updates": [{"target": "scene", "field": "fiction_time", "value": said, "why": "x"}]})
+    ch_, _ = world.watch([{"speaker": "player", "content": "hi"}], "m")
+    assert world.scene["fiction_time"] == want, (said, world.scene["fiction_time"])
+assert ch_ == [], "an unusable value changes nothing, and is not reported as a change"
+# a hand edit is the author's own and is kept as written
+world.set_scene({"fiction_time": "A very long and rambling hand-written time that the author wants exactly as it is, no matter what"})
+assert world.scene["fiction_time"].startswith("A very long")
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")
