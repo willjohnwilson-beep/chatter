@@ -328,6 +328,34 @@ def _norm_location(l: dict, taken: set[str]) -> dict:
     return out
 
 
+# Reserved topics: lore the author keeps for themselves. Nothing is written about them, so
+# a character who invented something would be making it up out of nothing, and a claim
+# the author never wanted. The list is a name for each topic, never an answer.
+RESERVED_CHARACTER = (
+    "RESERVED: the author keeps these topics to themselves, and nothing about them has been "
+    "decided. Do not invent, assert or hint at anything about them, even as rumour or opinion. "
+    "If one comes up, you simply don't know: say so plainly or stay vague in character.\n{topics}"
+)
+RESERVED_NARRATOR = (
+    "RESERVED: the author keeps these topics to themselves, and nothing about them has been "
+    "decided. Do not describe, explain or invent anything about them; leave them unexplained.\n{topics}"
+)
+
+
+def _norm_reserved(r: dict, taken: set[str]) -> dict | None:
+    """One reserved topic, or None if it has no text. `characters` and `places` are
+    optional tags: a tagged topic is only told to those characters, and to anyone
+    in a scene at those places."""
+    topic = " ".join(str((r or {}).get("topic") or "").split())
+    if not topic:
+        return None
+    rid = str(r.get("id") or "").strip()
+    if not rid or rid.startswith("new-") or rid in taken:
+        rid = slugify(" ".join(topic.split()[:4]), taken, "topic")
+    tags = lambda k: [str(x) for x in dict.fromkeys(r.get(k) or [])] if isinstance(r.get(k), list) else []
+    return {"id": rid, "topic": topic, "characters": tags("characters"), "places": tags("places")}
+
+
 def _norm_preset(p: dict, taken: set[str], loc_ids: set[str], char_ids: set[str]) -> dict:
     """A scene preset. Per-character `location` is a place id, "none" (offstage)
     or "keep" (leave them where they are)."""
@@ -368,6 +396,7 @@ class WorldState:
         self.locations: list[dict] = [copy.deepcopy(DEFAULT_LOCATION)]
         self.characters: list[dict] = [dict(DEFAULT_CHARACTER)]
         self.presets: list[dict] = []
+        self.reserved: list[dict] = []
         self.narrator = dict(DEFAULT_NARRATOR)
         self.player = dict(DEFAULT_PLAYER)
         self.load()
@@ -393,6 +422,7 @@ class WorldState:
             self.narrator.update(data.get("narrator", {}))
             self.player.update(data.get("player", {}))
             self._load_presets(data.get("presets") or [])
+            self._load_reserved(data.get("reserved") or [])
         else:
             self._migrate_legacy(data)
 
@@ -404,6 +434,16 @@ class WorldState:
             taken.add(n["id"])
             out.append(n)
         self.presets = out
+
+    def _load_reserved(self, raw: list) -> None:
+        taken: set[str] = set()
+        out = []
+        for r in raw:
+            n = _norm_reserved(r, taken)
+            if n:
+                taken.add(n["id"])
+                out.append(n)
+        self.reserved = out
 
     def _load_places(self, data: dict) -> None:
         """Pre-places worlds kept the location as one free-text line in the
@@ -473,6 +513,7 @@ class WorldState:
                     "locations": self.locations,
                     "characters": self.characters,
                     "presets": self.presets,
+                    "reserved": self.reserved,
                     "narrator": self.narrator,
                     "player": self.player,
                 },
@@ -481,6 +522,7 @@ class WorldState:
             )
 
     def reset_all(self) -> None:
+        self.reserved = []
         self.fixed = dict(DEFAULT_FIXED)
         self.scene = copy.deepcopy(DEFAULT_SCENE)
         self.locations = [copy.deepcopy(DEFAULT_LOCATION)]
@@ -640,6 +682,44 @@ class WorldState:
             self.scene["location"] = self.locations[0]["id"]
         self.save()
 
+    # ---------- reserved topics ----------
+
+    def set_reserved(self, topics: list[dict]) -> None:
+        """Replace the reserved topics wholesale (the UI saves them as one unit)."""
+        self._load_reserved(topics)
+        self.save()
+
+    def reserved_for(self, viewer: str) -> list[str]:
+        """The reserved topics this speaker is told. An untagged topic is told to
+        everyone. A tagged one goes to the characters tagged, and to anyone while the scene
+        is at a tagged place; the narrator also gets it while a tagged character is in the
+        scene. A tag naming something since deleted is ignored, and a topic left with no
+        live tag is told to everyone: better over-told than silently dropped."""
+        chars, places = set(self.character_ids()), set(self.location_ids())
+        here = self.scene.get("location")
+        out = []
+        for r in self.reserved:
+            rc = [c for c in r["characters"] if c in chars]
+            rp = [p for p in r["places"] if p in places]
+            if not rc and not rp:
+                hit = True
+            elif here in rp:
+                hit = True
+            elif viewer == NARRATOR_ID:
+                hit = any(self.is_present(self.character(c)) for c in rc)
+            else:
+                hit = viewer in rc
+            if hit:
+                out.append(r["topic"])
+        return out
+
+    def _reserved_text(self, viewer: str) -> str:
+        topics = self.reserved_for(viewer)
+        if not topics:
+            return ""
+        tmpl = RESERVED_NARRATOR if viewer == NARRATOR_ID else RESERVED_CHARACTER
+        return tmpl.format(topics="\n".join(f"- {t}" for t in topics))
+
     # ---------- scene presets ----------
 
     def preset(self, pid: str | None) -> dict | None:
@@ -769,11 +849,12 @@ class WorldState:
         premise = (self.scene.get("premise") or "").strip()
         scene_part = ("THIS SCENE: " + premise) if premise else ""
         if viewer == NARRATOR_ID:
-            parts = [self.narrator.get("persona", ""), self.fixed.get("scenario", ""), scene_part, self._grounding(NARRATOR_ID)]
+            parts = [self.narrator.get("persona", ""), self.fixed.get("scenario", ""), scene_part, self._grounding(NARRATOR_ID),
+                     self._reserved_text(NARRATOR_ID)]
         else:
             c = self.character(viewer) or {}
             parts = [self.fixed.get("core_instructions", ""), c.get("persona", ""),
-                     self.fixed.get("scenario", ""), scene_part, self._grounding(viewer)]
+                     self.fixed.get("scenario", ""), scene_part, self._grounding(viewer), self._reserved_text(viewer)]
             if self.multi_party():
                 parts.append(
                     f"This is a scene with several people. You are {c.get('name', 'a character')}, "
@@ -870,6 +951,7 @@ class WorldState:
             "scene": self.scene,
             "locations": self.locations,
             "presets": self.presets,
+            "reserved": self.reserved,
             "characters": [{**c, "present": self.is_present(c)} for c in self.characters],
             "narrator": self.narrator,
             "player": self.player,

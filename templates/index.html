@@ -379,6 +379,20 @@
         <div class="note" id="fx-invention-note" style="margin-top:4px"></div></div>
       <button onclick="saveFixed()">Save prompt</button>
     </div>
+    <div class="section">
+      <h2>Reserved topics <span id="reserved-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Lore you are keeping for yourself. Name a topic (for example "who built the Vault") and nobody
+        will invent anything about it: characters are told they don't know and the narrator leaves it
+        unexplained. Write the topic, never the answer. Tag characters or places to tell only them (or
+        anyone in a scene at those places); leave both blank to tell everyone.
+      </div>
+      <div id="reserved"></div>
+      <div style="margin-top:8px">
+        <button onclick="addReserved()">+ New topic</button>
+        <button onclick="saveReserved()">Save topics</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -749,6 +763,57 @@ function renderScene(changes) {
   renderPlaces(changes);
   renderOffstage();
   renderPresets();
+  renderReserved();
+}
+
+/* ---------------- reserved topics ---------------- */
+let reservedSig = "", newReservedN = 0;
+function reservedCardHtml(r, idx) {
+  const box = (cls, id, label, on) =>
+    `<label style="display:inline-block;margin:0 10px 2px 0"><input type="checkbox" class="${cls}" value="${esc(id)}" ${on ? "checked" : ""}> ${esc(label)}</label>`;
+  const chars = W.characters.map(c => box("rs-char", c.id, c.name, (r.characters || []).includes(c.id))).join("");
+  const places = (W.locations || []).map(l => box("rs-place", l.id, l.name, (r.places || []).includes(l.id))).join("");
+  return `<div class="char-card reserved-card" data-id="${esc(r.id || "")}" style="border-left-color:${PALETTE[idx % PALETTE.length]}">
+    <div class="head">
+      <input type="text" class="rs-topic" value="${esc(r.topic || "")}" placeholder="a topic to keep open, e.g. who built the Vault">
+      <button class="small danger" onclick="this.closest('.reserved-card').remove()">remove</button>
+    </div>
+    <div class="field"><label>Told to these characters (blank = everyone)</label>${chars}</div>
+    <div class="field"><label>Or to anyone while the scene is at these places</label>${places}</div>
+  </div>`;
+}
+function renderReserved(force) {
+  if (!W) return;
+  const holder = document.getElementById("reserved");
+  const sig = JSON.stringify([W.reserved || [], (W.locations || []).map(l => l.id + l.name), W.characters.map(c => c.id + c.name)]);
+  if (!force && (sig === reservedSig || holder.contains(document.activeElement))) return;
+  reservedSig = sig;
+  holder.innerHTML = (W.reserved || []).map((r, i) => reservedCardHtml(r, i)).join("")
+    || `<div class="empty">no reserved topics</div>`;
+}
+function addReserved() {
+  const holder = document.getElementById("reserved");
+  if (!holder.querySelector(".reserved-card")) holder.innerHTML = "";
+  const idx = holder.querySelectorAll(".reserved-card").length;
+  holder.insertAdjacentHTML("beforeend", reservedCardHtml({ id: "new-" + (++newReservedN), topic: "", characters: [], places: [] }, idx));
+  holder.lastElementChild.querySelector(".rs-topic").focus();
+}
+function collectReserved() {
+  return [...document.querySelectorAll("#reserved .reserved-card")].map(card => ({
+    id: card.dataset.id,
+    topic: card.querySelector(".rs-topic").value,
+    characters: [...card.querySelectorAll(".rs-char:checked")].map(x => x.value),
+    places: [...card.querySelectorAll(".rs-place:checked")].map(x => x.value),
+  })).filter(r => r.topic.trim());
+}
+async function saveReserved() {
+  const res = await (await fetch("/api/reserved", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reserved: collectReserved() }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; renderReserved(true);
+  const s = document.getElementById("reserved-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
 }
 
 /* ---------------- scene presets ---------------- */
@@ -866,7 +931,7 @@ async function startPreset(btn) {
   for (const m of d.history) if (m.kind === "move" || m.kind === "discover") addMsg("sys", "", m.content);
   applySnapshot(d);
   renderDirector(null); renderRecalled(null); renderChanges([]);
-  renderScene(); renderCast(); renderFilter(); renderCastStrip(); renderPresets(true);
+  renderScene(); renderCast(); renderFilter(); renderCastStrip(); renderPresets(true); renderReserved(true);
 }
 function renderOffstage() {
   const el = document.getElementById("offstage");

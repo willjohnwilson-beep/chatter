@@ -233,6 +233,17 @@ def save_presets():
     return jsonify({"ok": True, "world": world.snapshot()})
 
 
+@app.route("/api/reserved", methods=["POST"])
+def save_reserved():
+    """Replace the reserved topics: lore the author keeps for themselves, which no character
+    is allowed to invent anything about. Each is a name for the topic, with optional tags."""
+    topics = (request.get_json() or {}).get("reserved")
+    if not isinstance(topics, list):
+        return jsonify({"error": "reserved must be a list"}), 400
+    world.set_reserved([t for t in topics if isinstance(t, dict)])
+    return jsonify({"ok": True, "world": world.snapshot()})
+
+
 @app.route("/api/presets/capture", methods=["POST"])
 def capture_preset():
     """Save the scene as it stands as a new preset."""

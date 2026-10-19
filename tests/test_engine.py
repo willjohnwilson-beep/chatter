@@ -2441,4 +2441,73 @@ tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
 assert "setLifetime" in tmpl and "/api/memory/lifetime" in tmpl and "short-lived" in tmpl
 print("   PASS")
 
+# ------------------------------------------------------------------ 81
+print("== 81. reserved topics: lore the author keeps open, told to the right speakers ==")
+nr = st._norm_reserved
+assert nr({"topic": "   "}, set()) is None and nr({}, set()) is None, "no text, no topic"
+a_ = nr({"id": "new-3", "topic": "Who  built\nthe Vault", "characters": ["wren", "wren"], "places": "cellar"}, set())
+assert a_ == {"id": "who-built-the-vault", "topic": "Who built the Vault", "characters": ["wren"], "places": []}, a_
+assert nr({"id": "x", "topic": "t"}, {"x"})["id"] != "x", "an id already taken is replaced"
+
+store, world, c = make([WREN, MICK], narrator=True)
+world.set_locations([{"id": "salt-line", "name": "The Salt Line"}, {"id": "cellar", "name": "The Cellar"}, {"id": "pier", "name": "The Pier"}])
+world.character("wren")["location"] = "salt-line"
+world.character("mick")["location"] = "pier"       # offstage
+world.scene["location"] = "salt-line"
+assert world.reserved == [] and "RESERVED" not in world.render_fixed("wren") and "RESERVED" not in world.render_fixed("narrator")
+world.set_reserved([
+    {"id": "new-1", "topic": "who built the Vault"},                                        # everyone
+    {"id": "new-2", "topic": "what became of Wren's brother", "characters": ["wren"]},      # Wren (and the narrator while she's here)
+    {"id": "new-3", "topic": "where the harbour's name comes from", "places": ["pier"]},   # anyone while the scene is at the pier
+    {"id": "new-4", "topic": "   "},
+])
+assert [r["id"] for r in world.reserved] == ["who-built-the-vault", "what-became-of-wren-s", "where-the-harbour-s-name"]
+assert world.reserved_for("wren") == ["who built the Vault", "what became of Wren's brother"]
+assert world.reserved_for("mick") == ["who built the Vault"], "a topic tagged to Wren is not told to Mick"
+assert world.reserved_for("narrator") == ["who built the Vault", "what became of Wren's brother"], "the narrator, with Wren in the scene"
+world.character("wren")["location"] = "pier"
+world.character("mick")["location"] = "salt-line"
+assert world.reserved_for("narrator") == ["who built the Vault"], "Wren has left, so her topic is not the narrator's concern"
+world.scene["location"] = "pier"
+assert "where the harbour's name comes from" in world.reserved_for("mick") and "where the harbour's name comes from" in world.reserved_for("narrator"), \
+    "a place-tagged topic reaches everyone while the scene is there"
+world.scene["location"] = "salt-line"
+assert "where the harbour's name comes from" not in world.reserved_for("mick")
+# a tag naming something since deleted must not silently drop the topic
+world.set_reserved([{"topic": "the old rumour", "characters": ["ghost"], "places": ["nowhere"]}])
+assert world.reserved_for("mick") == ["the old rumour"] and world.reserved_for("narrator") == ["the old rumour"], "stale tags: told to everyone"
+
+# what the speaker is actually given
+world.set_reserved([{"topic": "who built the Vault"}, {"topic": "Wren's brother", "characters": ["wren"]}])
+fw, fm, fn = world.render_fixed("wren"), world.render_fixed("mick"), world.render_fixed("narrator")
+assert "RESERVED:" in fw and "- who built the Vault" in fw and "- Wren's brother" in fw and "you simply don't know" in fw
+assert "- who built the Vault" in fm and "Wren's brother" not in fm, "told only who it is tagged to"
+assert "- who built the Vault" in fn and "leave them unexplained" in fn and "you simply don't know" not in fn, "the narrator gets its own wording"
+for mode in ("strict", "balanced", "free"):
+    world.fixed["invention"] = mode
+    assert "- who built the Vault" in world.render_fixed("wren"), f"applies in {mode}"
+system, _ = c.build_context("wren", [])
+assert "- who built the Vault" in system, "it reaches the context a character is really given"
+# persistence, reset, an older world
+assert st.WorldState(world.path).reserved == world.reserved, "persisted"
+json.dump({"fixed": {"core_instructions": "C", "scenario": "S"}, "scene": {}, "characters": [{"name": "Wren"}], "narrator": {}, "player": {}},
+          open(os.path.join(tmp, "oldres.json"), "w"))
+assert st.WorldState(os.path.join(tmp, "oldres.json")).reserved == [], "a world saved before reserved topics existed"
+# the endpoint
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine = store, world, c
+cl = appmod.app.test_client()
+r = cl.post("/api/reserved", json={"reserved": [{"id": "new-1", "topic": "the founding of the town", "places": ["cellar"]}, "junk"]})
+assert r.status_code == 200 and [x["topic"] for x in r.get_json()["world"]["reserved"]] == ["the founding of the town"]
+assert cl.get("/api/state").get_json()["world"]["reserved"][0]["places"] == ["cellar"]
+assert cl.post("/api/reserved", json={"reserved": "no"}).status_code == 400
+assert cl.post("/api/reserved", json={"reserved": []}).get_json()["world"]["reserved"] == []
+world.set_reserved([{"topic": "x"}])
+world.reset_all()
+assert world.reserved == [], "reset clears them"
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert 'id="reserved"' in tmpl and "saveReserved" in tmpl and "/api/reserved" in tmpl and "renderReserved(true)" in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")
