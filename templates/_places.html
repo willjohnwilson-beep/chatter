@@ -10,5 +10,18 @@
       </div>
       <div id="places"></div>
       <button onclick="addPlace()">+ Add place</button>
+      {% if not live %}
+      <div class="draftbar">
+        <input type="text" id="draft-places-note" placeholder="optional: what kind of place? e.g. a locked cellar under the kitchen">
+        <button onclick="draftSection('places', this)">Draft a place</button>
+        <div id="draft-places-out" class="note"></div>
+      </div>
+      <div class="draftbar">
+        <input type="text" id="draft-secrets-note" placeholder="optional: what kind of hidden fact? e.g. something the keeper's niece is hiding">
+        <button onclick="draftSection('secrets', this)">Draft a hidden fact</button>
+        <div id="draft-secrets-out" class="note"></div>
+        <div class="note">It is written after reading the hidden facts you already have (so it won't repeat them), and added to the place it belongs to. The hint is written to carry no information; read it.</div>
+      </div>
+      {% endif %}
     </div>
     <button onclick="savePlaces()">Save places</button>

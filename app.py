@@ -553,6 +553,34 @@ def edit_world(sid):
     return jsonify({"ok": True, "world": w.snapshot(), "meta": lib.scenario_meta(sid)})
 
 
+@app.route("/api/edit/<sid>/draft/<kind>", methods=["POST"])
+def edit_draft(sid, kind):
+    """Draft one more character, place, preset, set of kept-open topics or hidden fact for a scenario, with the
+    model reading the scenario as the editor shows it (`context`, which may hold edits not yet saved; the saved
+    scenario if it is left out). Returns entries shaped for the editor's cards. Nothing is saved: the editor
+    puts them in its forms for the author to read, edit and save."""
+    if kind not in scenario_mod.SECTION_KINDS:
+        return jsonify({"error": "unknown section"}), 400
+    w, lib = _scenario_world(sid)
+    if w is None:
+        return jsonify({"error": "no such scenario"}), 404
+    body = request.get_json() or {}
+    ctx = body.get("context")
+    world_like = ctx if isinstance(ctx, dict) else w.snapshot()
+    model = (body.get("models") or {}).get("character") or llm.CHARACTER_MODEL
+    try:
+        items, warnings, usage = scenario_mod.draft_section(kind, world_like, str(body.get("instruction") or ""), model)
+    except json.JSONDecodeError as exc:  # the model's reply, not the request (JSONDecodeError is a ValueError too)
+        app.logger.exception("section draft wasn't JSON")
+        return jsonify({"error": f"the model's reply wasn't valid JSON ({exc}); try again"}), 500
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        app.logger.exception("section draft failed")
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+    return jsonify({"ok": True, "kind": kind, "items": items, "warnings": warnings, "usage": usage})
+
+
 @app.route("/api/edit/<sid>/<kind>", methods=["POST"])
 def edit_scenario(sid, kind):
     """The same authoring edits as the live world's, applied to a saved scenario. Playthroughs already

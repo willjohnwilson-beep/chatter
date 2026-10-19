@@ -151,3 +151,10 @@
   body.page .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
   @media (max-width: 800px) { body.page .cols { grid-template-columns: 1fr; } }
   a.btn.small { padding: 1px 8px; font-size: 11px; }
+
+  /* ---------- drafting from the editor ---------- */
+  .draftbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 10px; padding-top: 10px;
+              border-top: 1px dashed var(--line); }
+  .draftbar input[type=text] { flex: 1 1 260px; }
+  .draftbar .note { flex: 1 1 100%; }
+  .drafted { box-shadow: inset 0 0 0 1px var(--green); }

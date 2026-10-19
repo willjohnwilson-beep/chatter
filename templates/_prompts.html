@@ -35,4 +35,11 @@
         <button onclick="addReserved()">+ New topic</button>
         <button onclick="saveReserved()">Save topics</button>
       </div>
+{% if not live %}
+      <div class="draftbar">
+        <input type="text" id="draft-reserved-note" placeholder="optional: what should be left open? e.g. something about the keeper's past">
+        <button onclick="draftSection('reserved', this)">Draft topics</button>
+        <div id="draft-reserved-out" class="note"></div>
+      </div>
+{% endif %}
     </div>

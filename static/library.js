@@ -121,4 +121,11 @@ async function draftScenario() {
   }
 }
 
+// The model that drafts is remembered in this browser, and shared with the editor page's Draft buttons.
+(function () {
+  const el = document.getElementById("lib-model"), key = "chatter.draftModel";
+  try { const v = localStorage.getItem(key); if (v) el.value = v; } catch (e) { /* private window */ }
+  el.addEventListener("change", () => { try { localStorage.setItem(key, el.value.trim()); } catch (e) { /* not kept */ } });
+})();
+
 loadLibrary();

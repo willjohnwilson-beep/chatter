@@ -74,8 +74,8 @@ function removeCharacter(btn) {
   card.remove();
 }
 
-async function saveCast() {
-  const characters = [...document.querySelectorAll("#chars .char-card")].map(card => ({
+function collectCast() {
+  return [...document.querySelectorAll("#chars .char-card")].map(card => ({
     id: card.dataset.id || "",
     name: card.querySelector(".c-name").value,
     brief: card.querySelector(".c-brief").value,
@@ -88,6 +88,9 @@ async function saveCast() {
     view_of_player: card.querySelector(".c-view").value,
     relationship: card.querySelector(".c-rel").value,
   })).filter(c => c.name.trim());
+}
+async function saveCast() {
+  const characters = collectCast();
   const res = await (await fetch(editUrl("cast"), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -366,8 +369,8 @@ function removePlace(btn) {
   refreshLinks();
 }
 
-async function savePlaces() {
-  const locations = [...document.querySelectorAll("#places .place-card")].map(card => ({
+function collectPlaces() {
+  return [...document.querySelectorAll("#places .place-card")].map(card => ({
     id: card.dataset.id,
     name: card.querySelector(".p-name").value,
     brief: card.querySelector(".p-brief").value,
@@ -384,6 +387,9 @@ async function savePlaces() {
       revealed: !!r.dataset.revealed, revealed_at: r.dataset.at,
     })).filter(s => s.text.trim()),
   })).filter(l => l.name.trim());
+}
+async function savePlaces() {
+  const locations = collectPlaces();
   const res = await (await fetch(editUrl("locations"), {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locations }),
   })).json();

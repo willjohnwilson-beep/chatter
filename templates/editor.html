@@ -33,6 +33,17 @@
       <div class="field"><label for="ed-desc">A line about it (shown in the library)</label><input type="text" id="ed-desc"></div>
       <button onclick="saveMeta()">Save details</button>
     </div>
+    <div class="section">
+      <h2>Drafting</h2>
+      <div class="note" style="margin-bottom:10px">
+        The Draft buttons on the other tabs ask a model to add one entry that fits this scenario, reading it as the forms show it now,
+        unsaved edits included. A character, place, preset or topic is written without ever seeing your hidden facts, so none can leak
+        into text that every character is told. Drafts land in the form, highlighted, and nothing is saved until you save that tab.
+      </div>
+      <div class="field"><label for="ed-model">Model for drafting</label>
+        <input type="text" id="ed-model" list="ed-model-list" title="A bare id goes direct to Anthropic; vendor/model goes through OpenRouter. Remembered in this browser.">
+        <datalist id="ed-model-list"><option value="deepseek/deepseek-v4.1-flash"><option value="{{ defaults.character }}"></datalist></div>
+    </div>
   </div>
 
   <div id="p-cast" class="pane">

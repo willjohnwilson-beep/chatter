@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import sys
 import tempfile
@@ -73,6 +74,8 @@ class Fake:
             kind = "crossconf"
         elif "You draft a complete scenario" in first:
             kind = "draft"
+        elif "You add to a roleplay scenario" in first:
+            kind = "draft_section"
         elif "fact that was hidden at this place" in first:
             kind = "discover"
         else:
@@ -3307,6 +3310,188 @@ for f_, marker in (("common.js", "function esc("), ("editors.js", "function edit
     assert r.status_code == 200 and marker in r.get_data(as_text=True), f_
 # leftovers from the split are gone
 assert not os.path.exists("D:/Claude/Chatter/templates/index.before_split.html")
+print("   PASS")
+
+# ------------------------------------------------------------------ 91
+print("== 91. drafting one section in the editor: it reads the form, never shows a secret to a public draft ==")
+import scenario as scen
+
+SEC91 = "A ledger of wrecked ships is hidden under a loose floorboard in the stairwell."
+CTX = {"fixed": {"scenario": "A fog-bound lighthouse on a tidal island."}, "player": {"name": "Alex"},
+       "locations": [
+           {"id": "kitchen", "name": "The Kitchen", "brief": "warm", "description": "A stove and a long table.", "connects_to": ["stairs"], "secrets": []},
+           {"id": "stairs", "name": "The Stairs", "brief": "iron steps", "description": "Cold and echoing.", "connects_to": ["kitchen"], "locked": False,
+            "secrets": [{"text": SEC91, "how": "lifting the boards", "hint": "a faint draught", "known_by": ["mara"]}]}],
+       "characters": [{"id": "mara", "name": "Mara", "brief": "the keeper's niece", "persona": "You are Mara, quiet and watchful.", "location": "kitchen", "status": "stirring a pot"}],
+       "presets": [{"name": "Dawn", "premise": "The boat is late."}], "reserved": [{"topic": "who the keeper really was"}]}
+REPLIES = {
+    "characters": {"characters": [{"name": "Tobias", "brief": "a deckhand", "persona": "You are Tobias, a deckhand.", "reminder": "You are Tobias.", "place": "the kitchen",
+                                    "status": "drying his socks", "view_of_player": "a stranger", "relationship": "wary"}, {"name": "Extra", "brief": "", "persona": "x", "reminder": "", "place": "", "status": "", "view_of_player": "", "relationship": ""}]},
+    "places": {"places": [{"name": "The Jetty", "brief": "slick stone", "description": "Fog hides the far end.", "connects_to": ["the stairs", "Atlantis"], "locked": True,
+                           "lock_note": "a chained gate", "unlock": "someone has the key"}]},
+    "presets": {"presets": [{"name": "Supper", "premise": "Everyone is hungry.", "opening": "(Plates clatter.)", "place": "The Kitchen",
+                             "cast": [{"name": "Mara", "place": "The Kitchen", "status": "serving"}, {"name": "Nobody", "place": "The Kitchen", "status": "x"}]}]},
+    "reserved": {"reserved_topics": ["why the lamp was lit", "Who the keeper really was", "why the lamp was lit", "what the tide tables hide", "a fourth"]},
+    "secrets": {"secrets": [{"place": "The Kitchen", "text": "The stove hides a bundle of letters.", "how": "tilting it", "hint": "a warm smell of old paper's absence",
+                             "known_by": ["Mara", "Ghost"]}, {"place": "Atlantis", "text": "x", "how": "y", "hint": "z", "known_by": []}]},
+}
+seen_models = []
+
+
+def sect(kw):
+    p_ = kw["messages"][0]["content"]
+    seen_models.append(kw["model"])
+    kind_ = next(k for k, w_ in scen.SECTION_WRITE.items() if w_ in p_)
+    return REPLIES[kind_]
+
+
+for kind in scen.SECTION_KINDS:
+    f = install(draft_section=sect)
+    items, warns, use = scen.draft_section(kind, CTX, "", "claude-sonnet-5-5")
+    pr = next(kw for k, kw in f.calls if k == "draft_section")["messages"][0]["content"]
+    assert "SCENARIO: A fog-bound lighthouse" in pr and "The Kitchen (warm)" in pr and "You are Mara" in pr and "The author gave no steer" in pr, kind
+    if kind == "secrets":
+        assert SEC91 in pr and "HIDDEN FACTS ALREADY WRITTEN" in pr and "(known by Mara)" in pr, "a new hidden fact reads the existing ones"
+    else:
+        assert SEC91 not in pr and "loose floorboard" not in pr and "ledger" not in pr and "HIDDEN FACTS" not in pr, f"{kind}: a public draft is never shown a hidden fact"
+    f = install(draft_section=sect)
+    scen.draft_section(kind, CTX, "  a rival who owes Mara money  ", "claude-sonnet-5-5")
+    assert "THE AUTHOR ASKS FOR: a rival who owes Mara money" in next(kw for k, kw in f.calls if k == "draft_section")["messages"][0]["content"]
+assert set(seen_models) == {"claude-sonnet-5-5"}
+# the entries come back shaped for the editor's cards, names mapped to ids
+install(draft_section=sect)
+it, wn, _ = scen.draft_section("characters", CTX, "", "m")
+assert len(it) == 1 and it[0]["name"] == "Tobias" and it[0]["location"] == "kitchen" and it[0]["active"] is True and wn == [], "one character, 'the kitchen' found"
+it, wn, _ = scen.draft_section("places", CTX, "", "m")
+assert it[0]["connects_to"] == ["stairs"] and it[0]["locked"] is True and it[0]["lock_note"] == "a chained gate" and any("'Atlantis'" in w_ for w_ in wn)
+it, wn, _ = scen.draft_section("presets", CTX, "", "m")
+assert it[0]["location"] == "kitchen" and [e["id"] for e in it[0]["cast"]] == ["mara"] and it[0]["cast"][0]["location"] == "kitchen", "an unknown name in the cast is dropped"
+it, wn, _ = scen.draft_section("reserved", CTX, "", "m")
+assert [r["topic"] for r in it] == ["why the lamp was lit", "what the tide tables hide", "a fourth"] and len(wn) == 2, "repeats of kept-open topics and of each other are dropped"
+it, wn, _ = scen.draft_section("secrets", CTX, "", "m")
+assert len(it) == 1 and it[0]["place"] == "kitchen" and it[0]["known_by"] == ["mara"] and it[0]["text"].startswith("The stove") and any("Atlantis" in w_ for w_ in wn)
+# warnings for the things the author should look at
+install(draft_section={"characters": [{"name": "Mara", "brief": "", "persona": "x", "reminder": "", "place": "Nowhere", "status": "", "view_of_player": "", "relationship": ""}]})
+it, wn, _ = scen.draft_section("characters", CTX, "", "m")
+assert it[0]["location"] == "" and any("already a name" in w_ for w_ in wn) and any("'Nowhere'" in w_ for w_ in wn)
+install(draft_section={"places": [{"name": "The Kitchen", "brief": "", "description": "d", "connects_to": [], "locked": False, "lock_note": "", "unlock": ""}]})
+it, wn, _ = scen.draft_section("places", CTX, "", "m")
+assert it[0]["connects_to"] == ["kitchen"] and any("joined to nothing" in w_ for w_ in wn) and any("already a name" in w_ for w_ in wn)
+# it can't draft into an empty scenario, and an empty answer is refused rather than returned
+for kind, ctx_, msg in (("places", {**CTX, "locations": []}, "add a place first"), ("secrets", {**CTX, "characters": []}, "add a character first"),
+                        ("presets", {**CTX, "characters": []}, "add a character first")):
+    install(draft_section=sect)
+    try:
+        scen.draft_section(kind, ctx_, "", "m")
+        raise SystemExit("drafted into an empty scenario")
+    except ValueError as e_:
+        assert msg in str(e_)
+f = install(draft_section={"characters": []})
+try:
+    scen.draft_section("characters", CTX, "", "m")
+    raise SystemExit("returned nothing")
+except ValueError as e_:
+    assert "anything usable" in str(e_) and len(f.calls) == 3, "a thin answer is retried, then refused"
+try:
+    scen.draft_section("everything", CTX, "", "m")
+    raise SystemExit("unknown kind")
+except ValueError:
+    pass
+
+# the route: it reads the form as sent (unsaved edits included), falls back to the saved scenario, and saves nothing
+store, world, c = make([WREN, MICK])
+tmp6 = tempfile.mkdtemp()
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine, appmod.LIBRARY_BASE = store, world, c, tmp6
+cl = appmod.app.test_client()
+cl.post("/api/scenarios/new", json={"name": "Draft trial"})
+cl.post("/api/edit/draft-trial/locations", json={"locations": [{"id": "new-1", "name": "Saved Place", "description": "d", "connects_to": []}]})
+saved_before = json.dumps(appmod._library().load_scenario("draft-trial"), sort_keys=True)
+f = install(draft_section=sect)
+r = cl.post("/api/edit/draft-trial/draft/characters", json={"instruction": "a rival", "context": CTX, "models": {"character": "claude-opus-5-5"}})
+j = r.get_json()
+assert r.status_code == 200 and j["kind"] == "characters" and j["items"][0]["name"] == "Tobias" and j["items"][0]["location"] == "kitchen" and "usage" in j
+pr = next(kw for k, kw in f.calls if k == "draft_section")["messages"][0]["content"]
+assert "The Kitchen" in pr and "Saved Place" not in pr, "it read the form it was sent, not the saved file"
+assert next(kw for k, kw in f.calls if k == "draft_section")["model"] == "claude-opus-5-5"
+f = install(draft_section={"characters": [{"name": "Zed", "brief": "", "persona": "x", "reminder": "", "place": "Saved Place", "status": "", "view_of_player": "", "relationship": ""}]})
+j = cl.post("/api/edit/draft-trial/draft/characters", json={}).get_json()
+assert "Saved Place" in next(kw for k, kw in f.calls if k == "draft_section")["messages"][0]["content"] and j["items"][0]["location"] == "saved-place", "no context: the saved scenario"
+assert json.dumps(appmod._library().load_scenario("draft-trial"), sort_keys=True) == saved_before, "drafting never saves anything"
+# a context with secrets still can't reach a public draft through the route
+f = install(draft_section=sect)
+cl.post("/api/edit/draft-trial/draft/places", json={"context": CTX})
+assert SEC91 not in next(kw for k, kw in f.calls if k == "draft_section")["messages"][0]["content"]
+assert cl.post("/api/edit/draft-trial/draft/everything", json={}).status_code == 400
+assert cl.post("/api/edit/nope/draft/places", json={}).status_code == 404
+assert cl.post("/api/edit/draft-trial/draft/secrets", json={"context": {**CTX, "characters": []}}).status_code == 400
+install(draft_section=lambda kw: "not json")
+assert cl.post("/api/edit/draft-trial/draft/places", json={"context": CTX}).status_code == 500
+# a hand-written context can't break it
+install(draft_section=sect)
+assert cl.post("/api/edit/draft-trial/draft/characters", json={"context": {"locations": "no", "characters": [1, {"name": "A"}], "fixed": None}}).status_code in (200, 400)
+
+# the editor page's Draft buttons and the code that lands a draft in the forms
+ed91 = cl.get("/editor/draft-trial").get_data(as_text=True)
+play91 = cl.get("/play").get_data(as_text=True)
+for kind in scen.SECTION_KINDS:
+    assert f'id="draft-{kind}-note"' in ed91 and f'id="draft-{kind}-out"' in ed91 and f"draftSection('{kind}', this)" in ed91, f"a Draft button for {kind}"
+    assert f'id="draft-{kind}-note"' not in play91, "the game page has no drafting"
+assert 'id="ed-model"' in ed91 and 'id="ed-model"' not in play91
+ejs91 = open("D:/Claude/Chatter/static/editor.js", encoding="utf-8").read()
+assert "/api/edit/${EDIT.sid}/draft/${kind}" in ejs91 and "context: currentWorld()" in ejs91 and "const LAND = {" in ejs91
+for kind in scen.SECTION_KINDS:
+    assert re.search(r"\n  " + kind + r"\(items\) \{", ejs91), f"LAND knows how to put {kind} in its form"
+assert "collectPlaces()" in ejs91 and "collectCast()" in ejs91 and "collectPresets()" in ejs91 and "collectReserved()" in ejs91, "it reads the forms, not the saved copy"
+assert "drafted, not saved" in ejs91 and ".drafted {" in open("D:/Claude/Chatter/static/app.css", encoding="utf-8").read()
+assert "chatter.draftModel" in ejs91 and "chatter.draftModel" in open("D:/Claude/Chatter/static/library.js", encoding="utf-8").read(), "one remembered model for both pages"
+assert "function collectCast(" in open("D:/Claude/Chatter/static/editors.js", encoding="utf-8").read()
+
+# a draft that matches nothing in the scenario is asked for again, not handed over
+OFF = {"name": "Aquila", "brief": "a legion commander", "persona": "You are Aquila, of the Black Sun legion. You address Baran as an equal.", "reminder": "",
+       "place": "The Imperator's encampment", "status": "sparring with Baran", "view_of_player": "", "relationship": ""}
+ON = {**REPLIES["characters"]["characters"][0]}
+turn_ = {"n": 0}
+
+
+def second_time_lucky(kw):
+    turn_["n"] += 1
+    return {"characters": [OFF if turn_["n"] == 1 else ON]}
+
+
+f = install(draft_section=second_time_lucky)
+it, wn, _ = scen.draft_section("characters", CTX, "a rival", "m")
+assert it[0]["name"] == "Tobias" and len(f.calls) == 2 and wn == [], "the off-world draft was retried, and the grounded one kept"
+f = install(draft_section={"characters": [OFF]})
+it, wn, _ = scen.draft_section("characters", CTX, "a rival", "m")
+assert it[0]["name"] == "Aquila" and len(f.calls) == 3 and any("may not belong" in w_ for w_ in wn), "out of retries: handed over, with a plain warning"
+# one real mention is enough, even when the place isn't found
+MENTIONS = {**OFF, "persona": "You are Aquila, who has come looking for Mara.", "status": "waiting for Mara"}
+f = install(draft_section={"characters": [MENTIONS]})
+it, wn, _ = scen.draft_section("characters", CTX, "", "m")
+assert len(f.calls) == 1 and not any("may not belong" in w_ for w_ in wn), "it names someone who is here"
+for kind, off in (("places", {"places": [{"name": "Far Keep", "brief": "", "description": "d", "connects_to": ["The Citadel"], "locked": False, "lock_note": "", "unlock": ""}]}),
+                  ("presets", {"presets": [{"name": "Siege", "premise": "p", "opening": "(o)", "place": "The Citadel", "cast": []}]}),
+                  ("secrets", {"secrets": [{"place": "The Citadel", "text": "t", "how": "h", "hint": "x", "known_by": []}]})):
+    f = install(draft_section=off)
+    try:
+        scen.draft_section(kind, CTX, "", "m")
+    except ValueError:
+        pass
+    assert len(f.calls) == 3, f"{kind}: nothing it names is here, so it is asked three times"
+f = install(draft_section=sect)
+scen.draft_section("reserved", CTX, "", "m")
+assert len(f.calls) == 1, "kept-open topics are free text: never retried"
+# repeating a name already in the scenario counts as repeating it: asked again, and warned if it persists
+for kind, dup in (("presets", {"presets": [{"name": "Dawn", "premise": "p", "opening": "(o)", "place": "The Kitchen", "cast": []}]}),
+                  ("characters", {"characters": [{**ON, "name": "Mara"}]}),
+                  ("places", {"places": [{"name": "The Kitchen", "brief": "", "description": "d", "connects_to": ["The Stairs"], "locked": False, "lock_note": "", "unlock": ""}]})):
+    f = install(draft_section=dup)
+    it, wn, _ = scen.draft_section(kind, CTX, "", "m")
+    assert len(f.calls) == 3 and any("already" in w_ for w_ in wn) and any("may not belong" in w_ for w_ in wn), f"{kind}: a reused name is retried, then flagged"
+f = install(draft_section={"presets": [{"name": "Dusk", "premise": "p", "opening": "(o)", "place": "The Kitchen", "cast": []}]})
+assert scen.draft_section("presets", CTX, "", "m")[0][0]["name"] == "Dusk" and len(f.calls) == 1, "a new name is fine"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

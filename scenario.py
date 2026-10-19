@@ -298,3 +298,215 @@ def draft(premise: str, model: str) -> tuple[dict, list[str], dict]:
         warnings.append("a hidden fact named a place that isn't one of the places; dropped")
     total = {k: u1[k] + u2[k] + u3[k] for k in u1}
     return result, warnings, {**total, "title": str(world.get("title") or "").strip()}
+
+
+# ------------------------------------------------------------------ one section at a time, inside the editor
+#
+# The editor can add to an existing scenario: one more character, place, preset, set of kept-open topics, or hidden
+# fact. The model reads the scenario AS THE EDITOR SHOWS IT, including edits not yet saved. Hidden facts are the one
+# thing the public kinds are never shown: a character, place, preset or topic written knowing a secret could carry it
+# into text every character is told, so those drafts get the public world only. Only a new hidden fact is drafted
+# from the existing ones (author-only text), so it doesn't repeat or contradict one.
+
+SECTION_KINDS = ("characters", "places", "presets", "reserved", "secrets")
+
+_PLACE_ITEM = WORLD_SCHEMA["properties"]["places"]["items"]
+_CHAR_ITEM = CAST_SCHEMA["properties"]["characters"]["items"]
+_PRESET_ITEM = CAST_SCHEMA["properties"]["presets"]["items"]
+SECTION_SCHEMAS = {
+    "characters": _obj({"characters": {"type": "array", "items": _CHAR_ITEM}}),
+    "places": _obj({"places": {"type": "array", "items": _PLACE_ITEM}}),
+    "presets": _obj({"presets": {"type": "array", "items": _PRESET_ITEM}}),
+    "reserved": _obj({"reserved_topics": _STRS}),
+    "secrets": SECRETS_SCHEMA,
+}
+
+SECTION_OPENING = (
+    "You add to a roleplay scenario that is already written. A player takes part in a scene with several AI characters; the "
+    "scenario is everything the author wrote before play. Add to it so the new entry fits what is already there and does not "
+    "repeat it. Refer to places and characters by their exact NAMES.\n\n"
+)
+SECTION_WRITE = {
+    "characters": (
+        "WRITE: EXACTLY ONE new character, with a voice unlike the existing ones. `persona` begins 'You are NAME, ...' and gives who "
+        "they are and how they speak; `reminder` is a short voice cue ('You are NAME. Stay in your own voice. ...') and says nothing "
+        "about format; `place` is one of the existing places; `status` is what they are doing right now (one short line); "
+        "`view_of_player` what they make of the player; `relationship` their footing with the player."),
+    "places": (
+        "WRITE: EXACTLY ONE new place. `connects_to` lists existing places it joins (at least one, exact names). `brief` is a few "
+        "words; `description` one or two concrete sensory sentences. Leave it unlocked, with empty `lock_note` and `unlock`, unless "
+        "the author asks for a locked place; then `lock_note` is public (what anyone nearby can see) and `unlock` is a hidden "
+        "condition judged against play."),
+    "presets": (
+        "WRITE: EXACTLY ONE alternative scene the player could start from: `premise` a sentence, `opening` a stage direction in "
+        "parentheses, `place` an existing place, and `cast` where each existing character is and what they are doing."),
+    "reserved": (
+        "WRITE: 2 or 3 topics the author keeps open (for example 'who built the vault'), each a name for something the scenario "
+        "raises and leaves unanswered. Name the topic only; never write an answer. None may repeat a topic already kept open."),
+    "secrets": (
+        "WRITE: EXACTLY ONE hidden fact that nobody knows yet and that play could uncover, tied to one of the places (`place`, exact "
+        "name). `text` is the fact, stated plainly; `how` how it could be found in play; `known_by` the existing characters who "
+        "already know it (may be empty); `hint` a faint public atmospheric detail that carries NO information: it must not name or "
+        "describe the thing, only a mood or a sensation ('a cold draught along the back wall'). It must follow from what is "
+        "written and neither repeat nor contradict a hidden fact already listed."),
+}
+
+
+def view_of(world: dict) -> dict:
+    """The parts of a world dict the section drafts read, with the places' and characters' ids kept for later mapping."""
+    fixed = world.get("fixed") or {}
+    return {
+        "scenario": str(fixed.get("scenario") or ""),
+        "player": str((world.get("player") or {}).get("name") or ""),
+        "places": [p for p in world.get("locations") or [] if isinstance(p, dict) and str(p.get("name") or "").strip()],
+        "characters": [c for c in world.get("characters") or [] if isinstance(c, dict) and str(c.get("name") or "").strip()],
+        "presets": [p for p in world.get("presets") or [] if isinstance(p, dict) and str(p.get("name") or "").strip()],
+        "reserved": [r for r in world.get("reserved") or [] if isinstance(r, dict) and str(r.get("topic") or "").strip()],
+    }
+
+
+def describe_view(view: dict, secrets: bool = False) -> str:
+    """The scenario as plain text for a draft to read. Hidden facts are included only when `secrets` is true."""
+    pname = {p.get("id"): p["name"] for p in view["places"]}
+    lines = [f"SCENARIO: {view['scenario']}", f"PLAYER: {view['player']}", "PLACES:"]
+    for p in view["places"]:
+        near = ", ".join(pname.get(t, t) for t in p.get("connects_to") or [])
+        lock = f" [LOCKED: {p.get('lock_note', '')}]" if p.get("locked") else ""
+        lines.append(f"- {p['name']} ({p.get('brief', '')}){lock}: {p.get('description', '')} Connects to: {near or 'nothing yet'}.")
+    lines.append("CAST:")
+    for c in view["characters"]:
+        lines.append(f"- {c['name']} ({c.get('brief', '')}), at {pname.get(c.get('location'), 'no place')}: "
+                     f"{str(c.get('persona', ''))[:300]} Doing: {c.get('status', '')}.")
+    if view["presets"]:
+        lines.append("PRESETS: " + "; ".join(f"{p['name']} ({p.get('premise', '')})" for p in view["presets"]))
+    if view["reserved"]:
+        lines.append("KEPT OPEN: " + "; ".join(r["topic"] for r in view["reserved"]))
+    if secrets:
+        lines.append("HIDDEN FACTS ALREADY WRITTEN (author only):")
+        cname = {c.get("id"): c["name"] for c in view["characters"]}
+        for p in view["places"]:
+            for s in p.get("secrets") or []:
+                if str(s.get("text") or "").strip():
+                    who = ", ".join(cname.get(k, k) for k in s.get("known_by") or []) or "nobody"
+                    lines.append(f"- at {p['name']}: {s['text']} (known by {who})")
+    return "\n".join(lines)
+
+
+def section_prompt(kind: str, view: dict, steer: str) -> str:
+    return (SECTION_OPENING + SECTION_WRITE[kind] + "\n\n"
+            + (f"THE AUTHOR ASKS FOR: {steer}\n\n" if steer else "The author gave no steer: choose what the scenario most needs.\n\n")
+            + "THE SCENARIO SO FAR:\n" + describe_view(view, secrets=(kind == "secrets")) + "\n")
+
+
+def draft_section(kind: str, world: dict, instruction: str, model: str) -> tuple[list[dict], list[str], dict]:
+    """Draft one more entry of `kind` for the scenario `world` (as the editor shows it): (items, warnings, usage).
+    Items are shaped for the editor's cards, with names already mapped to the ids the world uses. Nothing is saved."""
+    if kind not in SECTION_KINDS:
+        raise ValueError("unknown section")
+    view = view_of(world)
+    if not view["places"]:
+        raise ValueError("add a place first")
+    if kind in ("secrets", "presets") and not view["characters"]:
+        raise ValueError("add a character first")
+    prompt = section_prompt(kind, view, (instruction or "").strip())
+    key = {"characters": "characters", "places": "places", "presets": "presets", "reserved": "reserved_topics", "secrets": "secrets"}[kind]
+    # A draft that matches nothing in the scenario (a character who starts in a place that doesn't exist and mentions nobody
+    # here) is the model having lost the thread, so it is asked again rather than handed over.
+    data, usage = _call(prompt, SECTION_SCHEMAS[kind], model, lambda d: any(_grounded(kind, r, view) for r in (d.get(key) or [])[:2]))
+    raw = data.get(key) or []
+    items, warnings = _shape(kind, raw, view)
+    if not items:
+        raise ValueError("the model didn't come back with anything usable; try again")
+    if not any(_grounded(kind, r, view) for r in raw[:2]):
+        warnings.append("nothing in it matches a place or character in this scenario, or it reuses a name already taken, so it may not belong: "
+                        "read it before keeping it")
+    return items, warnings, usage
+
+
+def _grounded(kind: str, r, view: dict) -> bool:
+    """Does a raw drafted entry connect to the scenario it was written for? (Topics are free text, so they always do.)"""
+    if kind == "reserved":
+        return bool(str(r or "").strip())
+    if not isinstance(r, dict):
+        return False
+    places = {p["name"].strip().lower() for p in view["places"]} | {re.sub(r"^the\s+", "", p["name"].strip().lower()) for p in view["places"]}
+    people = {c["name"].strip().lower() for c in view["characters"]}
+
+    def known(name) -> bool:
+        n = str(name or "").strip().lower()
+        return bool(n) and (n in places or re.sub(r"^the\s+", "", n) in places)
+
+    taken = {"characters": people, "places": places, "presets": {p["name"].strip().lower() for p in view["presets"]}}.get(kind, set())
+    if str(r.get("name") or "").strip().lower() in taken:
+        return False                                    # it reuses a name already in the scenario: it repeats something
+    if kind == "places":
+        return any(known(n) for n in r.get("connects_to") or [])
+    if kind == "presets":
+        return known(r.get("place"))
+    if kind == "secrets":
+        return known(r.get("place"))
+    text = " ".join(str(r.get(k) or "") for k in ("persona", "status", "view_of_player", "relationship")).lower()
+    return known(r.get("place")) or any(n and n in text for n in people | {p for p in places if len(p) >= 4})
+
+
+def _shape(kind: str, raw: list, view: dict) -> tuple[list[dict], list[str]]:
+    pid = {}
+    for p in view["places"]:
+        pid[p["name"].strip().lower()] = p["id"]
+        pid.setdefault(re.sub(r"^the\s+", "", p["name"].strip().lower()), p["id"])
+    cid = {c["name"].strip().lower(): c["id"] for c in view["characters"]}
+    have = {c["name"].strip().lower() for c in view["characters"]} | {p["name"].strip().lower() for p in view["places"]}
+    warnings, out = [], []
+    if kind == "characters":
+        for c in raw[:1]:
+            name = str(c.get("name") or "").strip()
+            where = _find(c.get("place", ""), pid)
+            if name.lower() in have:
+                warnings.append(f"{name!r} is already a name in this scenario; rename them")
+            if where is None:
+                warnings.append(f"{name} was to start at {c.get('place')!r}, which isn't a place; left offstage")
+            out.append({"name": name, "brief": c.get("brief", ""), "persona": c.get("persona", ""), "reminder": c.get("reminder", ""),
+                        "location": where or "", "status": c.get("status", ""), "view_of_player": c.get("view_of_player", ""),
+                        "relationship": c.get("relationship", ""), "active": True})
+    elif kind == "places":
+        for p in raw[:1]:
+            name = str(p.get("name") or "").strip()
+            near = [t for t in (_find(n, pid) for n in p.get("connects_to") or []) if t]
+            for n in p.get("connects_to") or []:
+                if _find(n, pid) is None:
+                    warnings.append(f"{name} connects to {n!r}, which isn't a place; dropped")
+            if name.lower() in have:
+                warnings.append(f"{name!r} is already a name in this scenario; rename it")
+            if not near:
+                near = [view["places"][0]["id"]]
+                warnings.append(f"{name} joined to nothing; connected it to {view['places'][0]['name']}")
+            out.append({"name": name, "brief": p.get("brief", ""), "description": p.get("description", ""), "connects_to": near,
+                        "locked": bool(p.get("locked")), "lock_note": p.get("lock_note", ""), "unlock": p.get("unlock", "")})
+    elif kind == "presets":
+        for p in raw[:1]:
+            cast = [{"id": cid[str(e.get("name") or "").strip().lower()], "location": _find(e.get("place", ""), pid) or "keep",
+                     "status": e.get("status", "")} for e in p.get("cast") or [] if str(e.get("name") or "").strip().lower() in cid]
+            name = str(p.get("name") or "").strip()
+            if name.lower() in {x["name"].strip().lower() for x in view["presets"]}:
+                warnings.append(f"{name!r} is already a preset in this scenario; rename it")
+            out.append({"name": name, "premise": p.get("premise", ""), "opening": p.get("opening", ""),
+                        "location": _find(p.get("place", ""), pid) or view["places"][0]["id"], "cast": cast})
+    elif kind == "reserved":
+        said = {r["topic"].strip().lower() for r in view["reserved"]}
+        for t in raw:  # repeats are dropped first, so they can't use up the quota of three
+            topic = " ".join(str(t or "").split())
+            if topic and topic.lower() not in said:
+                if len(out) < 3:
+                    said.add(topic.lower())
+                    out.append({"topic": topic, "characters": [], "places": []})
+            elif topic:
+                warnings.append(f"{topic!r} is already kept open; dropped")
+    else:  # secrets
+        for s in raw[:2]:
+            where = _find(s.get("place", ""), pid)
+            if where is None:
+                warnings.append(f"a hidden fact named {s.get('place')!r}, which isn't a place; dropped")
+                continue
+            out.append({"place": where, "text": s.get("text", ""), "how": s.get("how", ""), "hint": s.get("hint", ""),
+                        "known_by": [k for k in (cid.get(str(n).strip().lower()) for n in s.get("known_by") or []) if k]})
+    return [o for o in out if any(str(v).strip() for v in o.values() if isinstance(v, str))], warnings

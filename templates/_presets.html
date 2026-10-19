@@ -14,6 +14,13 @@
         <button onclick="addPreset()">+ New preset</button>
         <button onclick="savePresets()">Save presets</button>
       </div>
+{% if not live %}
+      <div class="draftbar">
+        <input type="text" id="draft-presets-note" placeholder="optional: what kind of scene? e.g. late at night, after the guests have gone">
+        <button onclick="draftSection('presets', this)">Draft a preset</button>
+        <div id="draft-presets-out" class="note"></div>
+      </div>
+{% endif %}
 {% if live %}
       <div class="field" style="margin-top:10px"><label>Or capture the scene as it is now</label>
         <input type="text" id="ps-capture-name" placeholder="name for the captured scene">
