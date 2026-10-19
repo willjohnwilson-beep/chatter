@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chatter — edit {{ meta.name }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="page">
+<div class="wrap">
+  <div class="pagehead">
+    <h1 id="ed-title">{{ meta.name }} <span>— scenario editor</span></h1>
+    <a class="btn" href="/">← Library</a>
+    <button data-text="start a playthrough" id="ed-start" onclick="startThis(this)">start a playthrough</button>
+  </div>
+
+  <div id="tabs">
+    <button class="on" onclick="tab(this,'p-details')">Details</button>
+    <button onclick="tab(this,'p-cast')">Cast</button>
+    <button onclick="tab(this,'p-places')">Places</button>
+    <button onclick="tab(this,'p-scene')">Opening scene</button>
+    <button onclick="tab(this,'p-prompt')">Prompts</button>
+  </div>
+
+  <div id="p-details" class="pane on">
+    <div class="section">
+      <h2>Details <span id="meta-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Changes here, and in every tab, are saved to this scenario when you press that tab's save button. A playthrough
+        that is already running keeps the copy it started with; the next one you start picks the changes up.
+      </div>
+      <div class="field"><label for="ed-name">Name</label><input type="text" id="ed-name"></div>
+      <div class="field"><label for="ed-desc">A line about it (shown in the library)</label><input type="text" id="ed-desc"></div>
+      <button onclick="saveMeta()">Save details</button>
+    </div>
+  </div>
+
+  <div id="p-cast" class="pane">
+    {% with live=False %}{% include "_cast.html" %}{% endwith %}
+  </div>
+
+  <div id="p-places" class="pane">
+    {% with live=False %}{% include "_places.html" %}{% endwith %}
+  </div>
+
+  <div id="p-scene" class="pane">
+    <div class="section">
+      <h2>Where it opens <span id="scene-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        How the first scene begins. Everyone sees the place and the time; whoever is placed there (on the Cast tab) is in the
+        scene. Open threads are left hanging for those present.
+      </div>
+      <div class="field"><label for="sc-place">Opens at</label><select id="sc-place"></select></div>
+      <div class="field"><label for="sc-premise">Scene premise (told to every speaker)</label><textarea id="sc-premise" class="multi"></textarea></div>
+      <div class="field"><label for="sc-fiction_time">Time</label><textarea id="sc-fiction_time" class="one"></textarea></div>
+      <div class="field"><label for="sc-extras">Others around (not in the cast)</label><textarea id="sc-extras" class="multi"></textarea></div>
+      <div class="field"><label for="sc-open_threads">Left hanging</label><textarea id="sc-open_threads" class="multi"></textarea></div>
+      <button onclick="saveStartScene()">Save opening scene</button>
+    </div>
+    {% with live=False %}{% include "_presets.html" %}{% endwith %}
+  </div>
+
+  <div id="p-prompt" class="pane">
+    {% with live=False %}{% include "_prompts.html" %}{% endwith %}
+  </div>
+</div>
+<script>
+const DEFAULTS = {{ defaults | tojson }};
+const SCENARIO_ID = {{ sid | tojson }};
+</script>
+<script src="{{ url_for('static', filename='common.js') }}"></script>
+<script src="{{ url_for('static', filename='editors.js') }}"></script>
+<script src="{{ url_for('static', filename='editor.js') }}"></script>
+</body>
+</html>

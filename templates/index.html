@@ -4,149 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Chatter — roleplay memory harness</title>
-<style>
-  :root {
-    --bg: #12141a; --panel: #181b23; --panel-2: #1e222c; --line: #2a2f3d;
-    --text: #dfe3ec; --dim: #8b93a7; --accent: #7aa2f7; --warm: #e0af68;
-    --green: #9ece6a; --pink: #bb9af7; --red: #f7768e; --teal: #73daca;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; height: 100vh; display: flex; overflow: hidden;
-         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-         background: var(--bg); color: var(--text); }
-  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
-       color: var(--dim); margin: 0 0 8px; font-weight: 600; }
-
-  /* ---------- left: chat ---------- */
-  #left { flex: 1 1 55%; display: flex; flex-direction: column; min-width: 0; }
-  #topbar { padding: 10px 16px; border-bottom: 1px solid var(--line); display: flex;
-            gap: 8px; align-items: center; flex-wrap: wrap; background: var(--panel); }
-  #topbar .title { font-weight: 600; margin-right: auto; }
-  #topbar .title span { color: var(--dim); font-weight: 400; }
-  button { background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
-           padding: 5px 11px; border-radius: 6px; cursor: pointer; font-size: 12px; }
-  button:hover { border-color: var(--accent); }
-  button.danger:hover { border-color: var(--red); color: var(--red); }
-  button.armed { border-color: var(--red); color: var(--red); background: #2a1a1f; }
-  button.small { padding: 1px 8px; font-size: 11px; }
-
-  #chat { flex: 1; overflow-y: auto; padding: 18px 16px; }
-  .msg { margin-bottom: 14px; display: flex; gap: 10px; }
-  .msg .who { flex: 0 0 auto; font-size: 11px; text-transform: uppercase;
-              letter-spacing: .06em; color: var(--dim); width: 92px; padding-top: 3px;
-              overflow-wrap: anywhere; }
-  .msg .body { flex: 1; white-space: pre-wrap; min-width: 0; }
-  .msg.player .who { color: var(--text); }
-  .msg.narr .body { color: var(--dim); font-style: italic; }
-  .msg.sys .body { color: var(--dim); font-style: italic; font-size: 13px; }
-  .msg.err .body { color: var(--red); font-family: ui-monospace, monospace; font-size: 12px; }
-  .msg.away { opacity: .55; }
-  .msg.priv .body { border-left: 2px solid var(--teal); padding-left: 10px; }
-  .msg.priv .who { color: var(--teal); }
-  #say-to { align-self: flex-start; max-width: 150px; }
-  .act { color: var(--dim); font-style: italic; }
-  #do-toggle { align-self: flex-start; min-width: 48px; }
-  #do-toggle.on { background: var(--accent); color: #10131a; border-color: var(--accent); font-weight: 600; }
-
-  #inputbar { border-top: 1px solid var(--line); padding: 12px 16px; background: var(--panel); }
-  #inputrow { display: flex; gap: 8px; }
-  #cast-strip { font-size: 12px; color: var(--dim); margin-bottom: 8px; }
-  #cast-strip .chip { display: inline-block; padding: 1px 8px; border-radius: 10px; margin-right: 6px;
-                      border: 1px solid var(--line); }
-  #cast-strip .chip.away { opacity: .45; text-decoration: line-through; }
-  textarea, input, select { background: var(--panel-2); color: var(--text);
-    border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: inherit; }
-  textarea { resize: vertical; }
-  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
-  #msg { flex: 1; height: 62px; }
-  #send { padding: 0 18px; background: var(--accent); color: #10131a; border: none; font-weight: 600; }
-  #send:disabled { opacity: .45; cursor: default; }
-
-  /* ---------- right: inspector ---------- */
-  #right { flex: 1 1 45%; max-width: 620px; border-left: 1px solid var(--line);
-           background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
-  #tabs { display: flex; border-bottom: 1px solid var(--line); }
-  #tabs button { flex: 1; border: none; border-radius: 0; background: none;
-                 padding: 10px 4px; color: var(--dim); font-size: 12px;
-                 text-transform: uppercase; letter-spacing: .06em; }
-  #tabs button.on { color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
-  #tabs button:hover { color: var(--text); }
-  .pane { display: none; overflow-y: auto; padding: 14px 16px; flex: 1; }
-  .pane.on { display: block; }
-  .section { margin-bottom: 20px; }
-
-  .card { background: var(--panel-2); border: 1px solid var(--line);
-          border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-  .card .id { color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; }
-  .card .summary { margin: 3px 0 6px; }
-  .card .detail { color: var(--dim); font-size: 12.5px; }
-  .card .reason { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--line);
-                  color: var(--accent); font-size: 12.5px; font-style: italic; }
-  .card.is-core { border-left: 2px solid var(--accent); }
-  .card.is-canon { border-left: 2px solid var(--warm); }
-  .card .asof { color: var(--dim); font-size: 11.5px; margin-top: 4px; }
-  .card .evidence { color: var(--dim); font-size: 12px; margin-top: 4px; font-style: italic;
-                    border-left: 2px solid var(--line); padding-left: 8px; }
-  .card details.versions { margin-top: 6px; }
-  .card details.versions summary { text-transform: none; letter-spacing: 0; font-weight: 400;
-                                   font-size: 11.5px; color: var(--dim); }
-  .card .ver { font-size: 12px; color: var(--dim); margin-top: 4px; padding-left: 8px;
-               border-left: 2px solid var(--line); }
-  .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-  .tag { background: #232838; color: var(--pink); border: 1px solid var(--line);
-         padding: 1px 7px; border-radius: 10px; font-size: 11px; font-family: ui-monospace, monospace; }
-  .badge { font-size: 10px; text-transform: uppercase; letter-spacing: .06em;
-           padding: 1px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600; }
-  .badge.create { background: #1f3320; color: var(--green); }
-  .badge.update { background: #33301f; color: var(--warm); }
-  .badge.core { background: #1e2b3d; color: var(--accent); }
-  .badge.subject { background: #2a2536; color: var(--pink); }
-  .badge.knows { background: #1c2e2c; color: var(--teal); }
-  .badge.secret { background: #3a2a1f; color: var(--warm); }
-  .badge.warn { background: #3a1f26; color: var(--red); }
-  .empty { color: var(--dim); font-style: italic; font-size: 13px; }
-
-  .field { margin-bottom: 10px; }
-  .field label { display: block; font-size: 11px; text-transform: uppercase;
-                 letter-spacing: .06em; color: var(--dim); margin-bottom: 3px; font-weight: 600; }
-  .field label .changed { color: var(--green); text-transform: none; letter-spacing: 0;
-                          font-weight: 400; font-style: italic; margin-left: 6px; }
-  .field textarea, .field input[type=text] { width: 100%; font-size: 12.5px; }
-  .field textarea.one { height: 42px; }
-  .field textarea.multi { height: 62px; }
-  .field textarea.big { height: 150px; }
-  .field textarea.flash, .field input.flash { border-color: var(--green); }
-
-  .char-card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
-               padding: 12px; margin-bottom: 12px; border-left: 3px solid var(--accent); }
-  .char-card .head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .char-card .head input[type=text] { flex: 1; font-weight: 600; }
-  .char-card .head label { font-size: 12px; color: var(--dim); display: flex; gap: 4px; align-items: center; }
-  .char-card .cid { color: var(--dim); font-size: 11px; font-family: ui-monospace, monospace; }
-  .char-card .field input[type=text] { background: var(--panel); }
-
-  .models { display: grid; grid-template-columns: auto 1fr; gap: 6px 8px; align-items: center; }
-  .models label { color: var(--dim); font-size: 12px; }
-  .models select, .models input { padding: 4px 6px; font-size: 12px; width: 100%; }
-  .mi { font-size: 11px; color: var(--dim); margin-top: 2px; min-height: 14px; }
-  .mi.warn { color: #f7768e; }
-  #usage { color: var(--dim); font-size: 11.5px; font-family: ui-monospace, monospace; }
-  #summary { color: var(--dim); font-size: 13px; white-space: pre-wrap; }
-  .note { color: var(--dim); font-size: 12px; }
-  .delta { font-size: 12.5px; margin-bottom: 6px; }
-  .delta b { color: var(--warm); font-weight: 600; }
-  .delta .why { color: var(--dim); font-style: italic; }
-  .saved { color: var(--green); font-size: 12px; margin-left: 8px; }
-  .dir-line { margin-bottom: 6px; font-size: 13px; }
-  .dir-line .cue { color: var(--dim); font-style: italic; }
-  .speaker-block { margin-bottom: 14px; }
-  .speaker-block h3 { font-size: 12px; margin: 0 0 6px; font-weight: 600; }
-</style>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
 
 <div id="left">
   <div id="topbar">
+    <a class="btn" href="/" title="Sessions, scenarios and the scenario editor">← Library</a>
     <div class="title">Chatter <span>— roleplay harness</span></div>
     <button onclick="newSession()">End scene</button>
     <button id="wipe" class="danger" onclick="wipe()">Wipe everything</button>
@@ -171,7 +35,6 @@
     <button onclick="tab(this,'p-scene')">Scene</button>
     <button onclick="tab(this,'p-mem')">Memory</button>
     <button onclick="tab(this,'p-prompt')">Prompts</button>
-    <button onclick="tab(this,'p-library'); loadLibrary()">Library</button>
   </div>
 
   <!-- ---------- turn ---------- -->
@@ -230,52 +93,12 @@
 
   <!-- ---------- cast ---------- -->
   <div id="p-cast" class="pane">
-    <div class="section">
-      <h2>Player <span id="cast-saved" class="saved"></span></h2>
-      <div class="field">
-        <label for="player-name">Your character's name</label>
-        <input id="player-name" type="text">
-      </div>
-    </div>
-    <div class="section">
-      <h2>Characters</h2>
-      <div class="note" style="margin-bottom:10px">
-        Each character has their own persona and sees only what they were present for.
-        The director chooses who answers. Status, reading and relationship are kept
-        current by the watcher; correct them here when they drift.
-      </div>
-      <div id="chars"></div>
-      <button onclick="addCharacter()">+ Add character</button>
-    </div>
-    <div class="section">
-      <h2>Narrator</h2>
-      <div class="note" style="margin-bottom:10px">
-        An optional extra voice for description and transitions. Off by default; the
-        director picks it only when the scene needs it.
-      </div>
-      <div class="field"><label><input id="nar-enabled" type="checkbox"> enabled</label></div>
-      <div class="field"><label for="nar-persona">Persona</label><textarea id="nar-persona" class="multi"></textarea></div>
-      <div class="field"><label for="nar-reminder">Reminder</label><textarea id="nar-reminder" class="one"></textarea></div>
-    </div>
-    <button onclick="saveCast()">Save cast</button>
+  {% with live=True %}{% include "_cast.html" %}{% endwith %}
   </div>
 
   <!-- ---------- places ---------- -->
   <div id="p-places" class="pane">
-    <div class="section">
-      <h2>Places <span id="places-saved" class="saved"></span></h2>
-      <div class="note" style="margin-bottom:10px">
-        Define the world's locations the way you define the cast. Whoever is at the
-        scene's place is told its description and what is nearby. Each character is
-        <i>in</i> a place (set on the Cast tab), and who is present is simply who is
-        where the scene is. The watcher moves the scene and people between these places and
-        keeps each one's condition current; it never invents a place. Connections say what
-        is nearby, they don't forbid going anywhere else.
-      </div>
-      <div id="places"></div>
-      <button onclick="addPlace()">+ Add place</button>
-    </div>
-    <button onclick="savePlaces()">Save places</button>
+  {% with live=True %}{% include "_places.html" %}{% endwith %}
   </div>
 
   <!-- ---------- scene ---------- -->
@@ -305,23 +128,7 @@
         <textarea id="sc-open_threads" class="multi"></textarea></div>
       <button onclick="saveScene()">Save scene</button>
     </div>
-    <div class="section">
-      <h2>Scene presets <span id="presets-saved" class="saved"></span></h2>
-      <div class="note" style="margin-bottom:10px">
-        A ready-made starting point: a place, the time, who is where and doing what, what is hanging,
-        and an optional premise and opening line. Starting one ends the current scene and sets the new
-        one up. The cast, places and memories carry on.
-      </div>
-      <div class="field"><label><input type="checkbox" id="ps-flush" checked> Save the current scene to memory first</label></div>
-      <div id="presets"></div>
-      <div style="margin-top:8px">
-        <button onclick="addPreset()">+ New preset</button>
-        <button onclick="savePresets()">Save presets</button>
-      </div>
-      <div class="field" style="margin-top:10px"><label>Or capture the scene as it is now</label>
-        <input type="text" id="ps-capture-name" placeholder="name for the captured scene">
-        <button style="margin-top:6px" onclick="capturePreset()">Save current scene as preset</button></div>
-    </div>
+    {% with live=True %}{% include "_presets.html" %}{% endwith %}
   </div>
 
   <!-- ---------- memory ---------- -->
@@ -364,94 +171,18 @@
     </div>
   </div>
 
-  <!-- ---------- library ---------- -->
-  <div id="p-library" class="pane">
-    <div class="section">
-      <h2>Create a scenario</h2>
-      <div class="note" style="margin-bottom:10px">
-        Describe the setting in a few lines and a model drafts the whole world: places and how they connect, a cast with
-        voices, hidden facts with hints, a couple of scene presets and topics to keep open. It is saved to the scenarios
-        below, untouched by the world you are playing; start it when you want to read and edit it in the other tabs.
-        Uses the Character model. Read the draft: a model can slip a hidden fact into a description.
-      </div>
-      <textarea id="lib-premise" class="multi" placeholder="e.g. A fog-bound lighthouse on a tidal island. The keeper has died and the relief boat can't come until morning."></textarea>
-      <button style="margin-top:6px" id="lib-draft" onclick="draftScenario()">Draft a scenario</button>
-      <div id="lib-draft-out" style="margin-top:8px"></div>
-    </div>
-    <div class="section">
-      <h2>Sessions <span id="lib-saved" class="saved"></span></h2>
-      <div class="note" style="margin-bottom:10px">
-        A session is a playthrough: the world as it stands, the memories and the conversation. Loading one resumes it.
-        Whatever you were playing is kept in the Autosave slot first, so a switch never loses anything.
-      </div>
-      <div class="field" style="display:flex;gap:6px">
-        <input type="text" id="lib-session-name" placeholder="name this session" style="flex:1">
-        <button onclick="saveSession()">Save session</button>
-      </div>
-      <div id="lib-sessions"></div>
-    </div>
-    <div class="section">
-      <h2>Scenarios</h2>
-      <div class="note" style="margin-bottom:10px">
-        A scenario is a reusable world with a clean start: no memories and no conversation. Starting one begins a
-        fresh playthrough (the current one is autosaved). Scenarios are files in <code>scenarios/</code>.
-      </div>
-      <div class="field">
-        <input type="text" id="lib-scenario-name" placeholder="name">
-        <input type="text" id="lib-scenario-desc" placeholder="one line about it (optional)" style="margin-top:4px">
-        <button style="margin-top:6px" onclick="saveScenario()">Save this world as a scenario</button>
-      </div>
-      <div id="lib-scenarios"></div>
-    </div>
-  </div>
 
   <!-- ---------- prompts ---------- -->
   <div id="p-prompt" class="pane">
-    <div class="section">
-      <h2>World prompt <span id="fixed-saved" class="saved"></span></h2>
-      <div class="note" style="margin-bottom:10px">
-        Shared by every character. Per-character persona and reminder live on the Cast tab.
-      </div>
-      <div class="field"><label for="fx-core_instructions">core instructions</label>
-        <textarea id="fx-core_instructions" class="big"></textarea></div>
-      <div class="field"><label for="fx-scenario">scenario</label>
-        <textarea id="fx-scenario" class="big"></textarea></div>
-      <div class="field"><label for="fx-invention">How freely characters invent</label>
-        <select id="fx-invention" onchange="describeInvention()">
-          <option value="balanced">Balanced</option>
-          <option value="strict">Strict</option>
-          <option value="free">Free</option>
-        </select>
-        <div class="note" id="fx-invention-note" style="margin-top:4px"></div></div>
-      <div class="field"><label for="fx-actions">Action beats</label>
-        <select id="fx-actions" onchange="describeActions()">
-          <option value="rare">Rare and short</option>
-          <option value="off">Off (speech only)</option>
-        </select>
-        <div class="note" id="fx-actions-note" style="margin-top:4px"></div></div>
-      <button onclick="saveFixed()">Save prompt</button>
-    </div>
-    <div class="section">
-      <h2>Reserved topics <span id="reserved-saved" class="saved"></span></h2>
-      <div class="note" style="margin-bottom:10px">
-        Lore you are keeping for yourself. Name a topic (for example "who built the Vault") and nobody
-        will invent anything about it: characters are told they don't know and the narrator leaves it
-        unexplained. Write the topic, never the answer. Tag characters or places to tell only them (or
-        anyone in a scene at those places); leave both blank to tell everyone.
-      </div>
-      <div id="reserved"></div>
-      <div style="margin-top:8px">
-        <button onclick="addReserved()">+ New topic</button>
-        <button onclick="saveReserved()">Save topics</button>
-      </div>
-    </div>
+  {% with live=True %}{% include "_prompts.html" %}{% endwith %}
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='common.js') }}"></script>
+<script src="{{ url_for('static', filename='editors.js') }}"></script>
 <script>
 const DEFAULTS = {{ defaults | tojson }};
 const STEPS = ["director", "retrieval", "character", "state", "formation", "summary"];
-const PALETTE = ["#e0af68", "#7dcfff", "#bb9af7", "#9ece6a", "#f7768e", "#ff9e64", "#73daca"];
 
 // A model id with no slash goes to Anthropic directly; "vendor/model" goes
 // through OpenRouter. The fields take any id; /api/models fills the suggestions.
@@ -523,14 +254,10 @@ async function saveReasoning() {
   document.getElementById("r-background").value = cur.background;
 })();
 
-let W = null;              // world snapshot from the server
 let MEMS = [];             // current memories
 let LAST_TAGS = [];
 const chat = document.getElementById("chat");
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-}
 function tab(btn, id) {
   document.querySelectorAll("#tabs button").forEach(b => b.classList.remove("on"));
   document.querySelectorAll(".pane").forEach(p => p.classList.remove("on"));
@@ -539,13 +266,6 @@ function tab(btn, id) {
 }
 function models() {
   return Object.fromEntries(STEPS.map(s => [s, document.getElementById("m-" + s).value.trim() || DEFAULTS[s]]));
-}
-function nameOf(id) { return (W && W.names && W.names[id]) || id; }
-function colorOf(id) {
-  if (id === "player") return "var(--text)";
-  if (id === "narrator") return "var(--dim)";
-  const i = (W?.characters || []).findIndex(c => c.id === id);
-  return PALETTE[(i < 0 ? 0 : i) % PALETTE.length];
 }
 
 /* ---------------- transcript ---------------- */
@@ -728,93 +448,6 @@ function renderFilter() {
 }
 
 /* ---------------- cast ---------------- */
-function charCardHtml(c, idx) {
-  const color = PALETTE[idx % PALETTE.length];
-  return `<div class="char-card" data-id="${esc(c.id || "")}" style="border-left-color:${color}">
-    <div class="head">
-      <input type="text" class="c-name" value="${esc(c.name || "")}" placeholder="Name">
-      <button class="small danger" onclick="removeCharacter(this)">remove</button>
-    </div>
-    <div class="cid">${c.id ? "id: " + esc(c.id) : "new character"}</div>
-    <div class="field"><label>Where they are${c.location && c.location === W?.scene?.location ? " (here, in the scene)" : ""}<span class="changed c-ch-location"></span></label>
-      <select class="c-location">${placeOptions(c.location)}</select></div>
-    <div class="field"><label>Brief (what others could tell at a glance)</label>
-      <input type="text" class="c-brief" value="${esc(c.brief || "")}"></div>
-    <div class="field"><label>Persona</label>
-      <textarea class="c-persona multi">${esc(c.persona || "")}</textarea></div>
-    <div class="field"><label>Reminder (rides beside the latest line)</label>
-      <textarea class="c-reminder one">${esc(c.reminder || "")}</textarea></div>
-    <div class="field"><label>Doing right now<span class="changed c-ch-status"></span></label>
-      <input type="text" class="c-status" value="${esc(c.status || "")}"></div>
-    <div class="field"><label><input type="checkbox" class="c-active" ${c.active !== false ? "checked" : ""}> Has a life while out of sight</label></div>
-    <div class="field"><label>Offscreen: what they're up to (hidden from the story)<span class="changed c-ch-offscreen"></span></label>
-      <input type="text" class="c-offscreen" value="${esc(c.offscreen || "")}"></div>
-    <div class="field"><label>Reads the player as<span class="changed c-ch-view_of_player"></span></label>
-      <input type="text" class="c-view" value="${esc(c.view_of_player || "")}"></div>
-    <div class="field"><label>Stands with the player<span class="changed c-ch-relationship"></span></label>
-      <input type="text" class="c-rel" value="${esc(c.relationship || "")}"></div>
-  </div>`;
-}
-function renderCast(changes) {
-  if (!W) return;
-  document.getElementById("player-name").value = W.player.name || "";
-  document.getElementById("nar-enabled").checked = !!W.narrator.enabled;
-  document.getElementById("nar-persona").value = W.narrator.persona || "";
-  document.getElementById("nar-reminder").value = W.narrator.reminder || "";
-  const holder = document.getElementById("chars");
-  // don't clobber a card the user is typing in
-  if (holder.contains(document.activeElement) && !changes) return;
-  holder.innerHTML = W.characters.map((c, i) => charCardHtml(c, i)).join("");
-  const field = { status: "status", view_of_player: "view_of_player", relationship: "relationship", location: "location" };
-  for (const ch of changes || []) {
-    const card = holder.querySelector(`.char-card[data-id="${CSS.escape(ch.target)}"]`);
-    const mark = card && card.querySelector(".c-ch-" + field[ch.field]);
-    if (mark) mark.textContent = "changed";
-  }
-}
-function addCharacter() {
-  const holder = document.getElementById("chars");
-  const idx = holder.querySelectorAll(".char-card").length;
-  holder.insertAdjacentHTML("beforeend", charCardHtml({ name: "", location: W?.scene?.location || "" }, idx));
-  holder.lastElementChild.querySelector(".c-name").focus();
-}
-function removeCharacter(btn) {
-  const card = btn.closest(".char-card");
-  if (document.querySelectorAll("#chars .char-card").length <= 1) { return; }
-  card.remove();
-}
-async function saveCast() {
-  const characters = [...document.querySelectorAll("#chars .char-card")].map(card => ({
-    id: card.dataset.id || "",
-    name: card.querySelector(".c-name").value,
-    brief: card.querySelector(".c-brief").value,
-    persona: card.querySelector(".c-persona").value,
-    reminder: card.querySelector(".c-reminder").value,
-    location: card.querySelector(".c-location").value,
-    status: card.querySelector(".c-status").value,
-    active: card.querySelector(".c-active").checked,
-    offscreen: card.querySelector(".c-offscreen").value,
-    view_of_player: card.querySelector(".c-view").value,
-    relationship: card.querySelector(".c-rel").value,
-  })).filter(c => c.name.trim());
-  const res = await (await fetch("/api/cast", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      characters,
-      player: { name: document.getElementById("player-name").value },
-      narrator: {
-        enabled: document.getElementById("nar-enabled").checked,
-        persona: document.getElementById("nar-persona").value,
-        reminder: document.getElementById("nar-reminder").value,
-      },
-    }),
-  })).json();
-  if (res.error) { alert(res.error); return; }
-  W = res.world;
-  renderCast(); renderFilter(); renderCastStrip();
-  const s = document.getElementById("cast-saved");
-  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
-}
 function renderCastStrip() {
   if (!W) return;
   const chips = W.characters.map(c =>
@@ -827,14 +460,6 @@ function renderCastStrip() {
 
 /* ---------------- scene ---------------- */
 const SCENE_FIELDS = ["premise", "fiction_time", "extras", "open_threads"];
-function placeName(id) {
-  const l = (W?.locations || []).find(x => x.id === id);
-  return l ? l.name : "offstage";
-}
-function placeOptions(selected) {
-  return `<option value="">elsewhere (offstage)</option>`
-    + (W?.locations || []).map(l => `<option value="${esc(l.id)}" ${l.id === selected ? "selected" : ""}>${esc(l.name)}${l.locked ? " (locked)" : ""}</option>`).join("");
-}
 function renderScene(changes) {
   if (!W) return;
   const changed = new Set((changes || []).filter(c => c.target === "scene").map(c => c.field));
@@ -860,230 +485,10 @@ function renderScene(changes) {
   renderReserved();
 }
 
-/* ---------------- scenarios and sessions ---------------- */
-async function libPost(path, body) {
-  const d = await (await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })).json();
-  if (d.error) { alert(d.error); return null; }
-  return d;
-}
-// Switching replaces the live world, so the page reloads from the new state afterwards. Native confirm() is
-// auto-dismissed in embedded panes: the button arms first and the second click does it.
-let libArmed = null;
-function libArm(btn, label, then) {
-  if (libArmed !== btn) {
-    libArmed = btn; btn.textContent = label;
-    setTimeout(() => { if (libArmed === btn) { libArmed = null; btn.textContent = btn.dataset.text; } }, 4000);
-    return;
-  }
-  libArmed = null; then();
-}
-function libRow(m, kind) {
-  const bits = kind === "session"
-    ? [m.saved_at, `${m.messages ?? "?"} messages`, `${m.memories ?? "?"} memories`, (m.cast || []).join(", ")]
-    : [`${m.places} places`, `${m.cast} characters`, m.created_at];
-  const sub = kind === "session" ? (m.premise || "") : (m.description || m.premise || "");
-  const go = kind === "session" ? "load" : "start";
-  return `<div class="char-card" data-id="${esc(m.id)}" data-kind="${kind}">
-    <div class="head"><strong style="flex:1">${esc(m.name)}</strong>
-      <button class="small" data-text="${go}" onclick="libGo(this)">${go}</button>
-      <button class="small danger" data-text="delete" onclick="libDelete(this)">delete</button></div>
-    <div class="cid">${esc(bits.filter(Boolean).join(" · "))}</div>
-    ${sub ? `<div class="note">${esc(sub)}</div>` : ""}</div>`;
-}
-async function loadLibrary() {
-  const d = await (await fetch("/api/library")).json();
-  document.getElementById("lib-sessions").innerHTML = (d.sessions || []).map(m => libRow(m, "session")).join("") || `<div class="empty">no saved sessions</div>`;
-  document.getElementById("lib-scenarios").innerHTML = (d.scenarios || []).map(m => libRow(m, "scenario")).join("") || `<div class="empty">no saved scenarios</div>`;
-}
-function libGo(btn) {
-  const card = btn.closest(".char-card"), kind = card.dataset.kind;
-  libArm(btn, kind === "session" ? "switch to this? (autosaves the current one)" : "start fresh? (autosaves the current one)", async () => {
-    const d = await libPost(kind === "session" ? "/api/sessions/load" : "/api/scenarios/start", { id: card.dataset.id });
-    if (d) location.reload();
-  });
-}
-function libDelete(btn) {
-  const card = btn.closest(".char-card"), kind = card.dataset.kind;
-  libArm(btn, "really delete?", async () => {
-    if (await libPost(kind === "session" ? "/api/sessions/delete" : "/api/scenarios/delete", { id: card.dataset.id })) loadLibrary();
-  });
-}
-async function draftScenario() {
-  const premise = document.getElementById("lib-premise").value.trim();
-  const btn = document.getElementById("lib-draft"), out = document.getElementById("lib-draft-out");
-  if (!premise) { out.textContent = "Write a premise first."; return; }
-  btn.disabled = true; out.textContent = "Drafting… this takes a minute.";
-  try {
-    const d = await (await fetch("/api/scenarios/draft", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ premise, models: models() }),
-    })).json();
-    if (d.error) { out.textContent = "Couldn't draft it: " + d.error; return; }
-    const s = d.summary, list = a => a.map(esc).join(", ") || "none";
-    out.innerHTML = `<div class="char-card"><div class="head"><strong style="flex:1">${esc(d.saved.name)}</strong>
-        <button class="small" data-text="start it now" onclick="startDrafted(this, '${esc(d.saved.id)}')">start it now</button></div>
-      <div class="note">Saved to your scenarios. Opens at ${esc(s.start)}.</div>
-      <div class="note">Places: ${list(s.places)}</div><div class="note">Cast: ${list(s.cast)}</div>
-      <div class="note">${s.secrets} hidden fact(s) · presets: ${list(s.presets)} · kept open: ${list(s.reserved)}</div>
-      ${d.warnings.length ? `<div class="note" style="color:var(--amber, #e0af68)">Check: ${d.warnings.map(esc).join(" · ")}</div>` : ""}</div>`;
-    loadLibrary();
-  } catch (e) {
-    out.textContent = "Couldn't draft it: " + e;
-  } finally {
-    btn.disabled = false;
-  }
-}
-function startDrafted(btn, id) {
-  libArm(btn, "start fresh? (autosaves the current one)", async () => {
-    if (await libPost("/api/scenarios/start", { id })) location.reload();
-  });
-}
-async function saveSession() {
-  const name = document.getElementById("lib-session-name").value;
-  if (await libPost("/api/sessions/save", { name })) {
-    document.getElementById("lib-session-name").value = "";
-    const s = document.getElementById("lib-saved"); s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
-    loadLibrary();
-  }
-}
-async function saveScenario() {
-  const name = document.getElementById("lib-scenario-name").value, description = document.getElementById("lib-scenario-desc").value;
-  if (await libPost("/api/scenarios/save", { name, description })) {
-    document.getElementById("lib-scenario-name").value = "";
-    document.getElementById("lib-scenario-desc").value = "";
-    loadLibrary();
-  }
-}
 
 /* ---------------- reserved topics ---------------- */
-let reservedSig = "", newReservedN = 0;
-function reservedCardHtml(r, idx) {
-  const box = (cls, id, label, on) =>
-    `<label style="display:inline-block;margin:0 10px 2px 0"><input type="checkbox" class="${cls}" value="${esc(id)}" ${on ? "checked" : ""}> ${esc(label)}</label>`;
-  const chars = W.characters.map(c => box("rs-char", c.id, c.name, (r.characters || []).includes(c.id))).join("");
-  const places = (W.locations || []).map(l => box("rs-place", l.id, l.name, (r.places || []).includes(l.id))).join("");
-  return `<div class="char-card reserved-card" data-id="${esc(r.id || "")}" style="border-left-color:${PALETTE[idx % PALETTE.length]}">
-    <div class="head">
-      <input type="text" class="rs-topic" value="${esc(r.topic || "")}" placeholder="a topic to keep open, e.g. who built the Vault">
-      <button class="small danger" onclick="this.closest('.reserved-card').remove()">remove</button>
-    </div>
-    <div class="field"><label>Told to these characters (blank = everyone)</label>${chars}</div>
-    <div class="field"><label>Or to anyone while the scene is at these places</label>${places}</div>
-  </div>`;
-}
-function renderReserved(force) {
-  if (!W) return;
-  const holder = document.getElementById("reserved");
-  const sig = JSON.stringify([W.reserved || [], (W.locations || []).map(l => l.id + l.name), W.characters.map(c => c.id + c.name)]);
-  if (!force && (sig === reservedSig || holder.contains(document.activeElement))) return;
-  reservedSig = sig;
-  holder.innerHTML = (W.reserved || []).map((r, i) => reservedCardHtml(r, i)).join("")
-    || `<div class="empty">no reserved topics</div>`;
-}
-function addReserved() {
-  const holder = document.getElementById("reserved");
-  if (!holder.querySelector(".reserved-card")) holder.innerHTML = "";
-  const idx = holder.querySelectorAll(".reserved-card").length;
-  holder.insertAdjacentHTML("beforeend", reservedCardHtml({ id: "new-" + (++newReservedN), topic: "", characters: [], places: [] }, idx));
-  holder.lastElementChild.querySelector(".rs-topic").focus();
-}
-function collectReserved() {
-  return [...document.querySelectorAll("#reserved .reserved-card")].map(card => ({
-    id: card.dataset.id,
-    topic: card.querySelector(".rs-topic").value,
-    characters: [...card.querySelectorAll(".rs-char:checked")].map(x => x.value),
-    places: [...card.querySelectorAll(".rs-place:checked")].map(x => x.value),
-  })).filter(r => r.topic.trim());
-}
-async function saveReserved() {
-  const res = await (await fetch("/api/reserved", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reserved: collectReserved() }),
-  })).json();
-  if (res.error) { alert(res.error); return; }
-  W = res.world; renderReserved(true);
-  const s = document.getElementById("reserved-saved");
-  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
-}
 
 /* ---------------- scene presets ---------------- */
-let presetsSig = "", newPresetN = 0;
-function presetCardHtml(p, idx) {
-  const color = PALETTE[(idx + 5) % PALETTE.length];
-  const locs = W.locations || [];
-  const placeSel = (cur, extra) => (extra || "") + locs.map(l => `<option value="${esc(l.id)}" ${l.id === cur ? "selected" : ""}>${esc(l.name)}</option>`).join("");
-  const rows = W.characters.map(c => {
-    const e = (p.cast || []).find(x => x.id === c.id) || { location: "keep" };
-    const extra = `<option value="keep" ${e.location === "keep" ? "selected" : ""}>(leave as is)</option>`
-      + `<option value="none" ${e.location === "none" ? "selected" : ""}>elsewhere (offstage)</option>`;
-    return `<div class="pc-row" data-id="${esc(c.id)}" data-view="${esc(e.view_of_player || "")}" data-rel="${esc(e.relationship || "")}"
-        style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-      <span style="width:64px;color:${colorOf(c.id)}">${esc(c.name)}</span>
-      <select class="pc-loc" style="width:150px">${placeSel(e.location, extra)}</select>
-      <input type="text" class="pc-status" placeholder="doing (blank = keep)" value="${esc(e.status || "")}" style="flex:1"></div>`;
-  }).join("");
-  return `<div class="char-card preset-card" data-id="${esc(p.id || "")}" style="border-left-color:${color}">
-    <div class="head">
-      <input type="text" class="ps-name" value="${esc(p.name || "")}" placeholder="Name">
-      <button class="small" onclick="startPreset(this)">start</button>
-      <button class="small danger" onclick="removePreset(this)">remove</button>
-    </div>
-    <div class="cid">${p.id && !p.id.startsWith("new-") ? "id: " + esc(p.id) : "new preset"}</div>
-    <div class="field"><label>Scene premise (told to every speaker)</label>
-      <textarea class="ps-premise multi">${esc(p.premise || "")}</textarea></div>
-    <div class="field"><label>Opening line (a stage direction everyone present has seen)</label>
-      <input type="text" class="ps-opening" value="${esc(p.opening || "")}" placeholder="(The door bangs open. Rain.)"></div>
-    <div class="field"><label>Starts at</label><select class="ps-place">${placeSel(p.location || W.scene.location)}</select></div>
-    <div class="field"><label>Time (blank = keep the clock)</label>
-      <input type="text" class="ps-time" value="${esc(p.fiction_time || "")}"></div>
-    <div class="field"><label>Others around (not in the cast)</label>
-      <textarea class="ps-extras one">${esc(p.extras || "")}</textarea></div>
-    <div class="field"><label>Left hanging (one per line; known to everyone present)</label>
-      <textarea class="ps-threads one">${esc(p.open_threads || "")}</textarea></div>
-    <div class="field"><label>Who is where</label>${rows}</div>
-  </div>`;
-}
-function renderPresets(force) {
-  if (!W) return;
-  const holder = document.getElementById("presets");
-  const sig = JSON.stringify([W.presets || [], (W.locations || []).map(l => l.id + l.name), W.characters.map(c => c.id + c.name)]);
-  if (!force && (sig === presetsSig || holder.contains(document.activeElement))) return;
-  presetsSig = sig;
-  holder.innerHTML = (W.presets || []).map((p, i) => presetCardHtml(p, i)).join("")
-    || `<div class="empty">no presets yet</div>`;
-}
-function addPreset() {
-  const holder = document.getElementById("presets");
-  if (!holder.querySelector(".preset-card")) holder.innerHTML = "";
-  const idx = holder.querySelectorAll(".preset-card").length;
-  holder.insertAdjacentHTML("beforeend", presetCardHtml({ id: "new-" + (++newPresetN), name: "", location: W.scene.location, cast: [] }, idx));
-  holder.lastElementChild.querySelector(".ps-name").focus();
-}
-function removePreset(btn) { btn.closest(".preset-card").remove(); }
-function collectPresets() {
-  return [...document.querySelectorAll("#presets .preset-card")].map(card => ({
-    id: card.dataset.id,
-    name: card.querySelector(".ps-name").value,
-    premise: card.querySelector(".ps-premise").value,
-    opening: card.querySelector(".ps-opening").value,
-    location: card.querySelector(".ps-place").value,
-    fiction_time: card.querySelector(".ps-time").value,
-    extras: card.querySelector(".ps-extras").value,
-    open_threads: card.querySelector(".ps-threads").value,
-    cast: [...card.querySelectorAll(".pc-row")].map(r => ({
-      id: r.dataset.id, location: r.querySelector(".pc-loc").value, status: r.querySelector(".pc-status").value,
-      view_of_player: r.dataset.view, relationship: r.dataset.rel,
-    })),
-  })).filter(p => p.name.trim());
-}
-async function savePresets() {
-  const res = await (await fetch("/api/presets", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ presets: collectPresets() }),
-  })).json();
-  if (res.error) { alert(res.error); return null; }
-  W = res.world; renderPresets(true);
-  const s = document.getElementById("presets-saved");
-  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
-  return res.world;
-}
 async function capturePreset() {
   const name = document.getElementById("ps-capture-name").value.trim() || "Captured scene";
   const res = await (await fetch("/api/presets/capture", {
@@ -1170,77 +575,6 @@ async function doMove() {
 }
 
 /* ---------------- places ---------------- */
-let newPlaceN = 0;
-function placeCardHtml(l, idx) {
-  const color = PALETTE[(idx + 3) % PALETTE.length];
-  const here = l.id && l.id === W?.scene?.location;
-  return `<div class="char-card place-card" data-id="${esc(l.id || "")}" data-connects='${esc(JSON.stringify(l.connects_to || []))}' style="border-left-color:${color}">
-    <div class="head">
-      <input type="text" class="p-name" value="${esc(l.name || "")}" placeholder="Name" oninput="refreshLinks()">
-      ${here ? '<span class="badge knows">scene is here</span>' : ""}
-      <button class="small danger" onclick="removePlace(this)">remove</button>
-    </div>
-    <div class="cid">${l.id && !l.id.startsWith("new-") ? "id: " + esc(l.id) : "new place"}</div>
-    <div class="field"><label>Brief (what you could say at a glance)</label>
-      <input type="text" class="p-brief" value="${esc(l.brief || "")}"></div>
-    <div class="field"><label>Description (what anyone there is told)</label>
-      <textarea class="p-desc multi">${esc(l.description || "")}</textarea></div>
-    <div class="field"><label>Condition right now<span class="changed p-ch-state"></span></label>
-      <input type="text" class="p-state" value="${esc(l.state || "")}" placeholder="kept current by the watcher: lighting, damage, crowd"></div>
-    <div class="field"><label>Nearby (connects to)</label><div class="p-links"></div></div>
-    <div class="field"><label><input type="checkbox" class="p-locked" ${l.locked ? "checked" : ""}
-        onchange="this.closest('.place-card').querySelector('.p-lockbox').style.display = this.checked ? 'block' : 'none'">
-        Locked: nobody can be taken here until it's opened</label>
-      <div class="p-lockbox" style="display:${l.locked ? "block" : "none"};margin-top:4px">
-        <input type="text" class="p-locknote" placeholder="What anyone nearby can see (public), e.g. a padlocked iron door" value="${esc(l.lock_note || "")}">
-        <input type="text" class="p-unlock" style="margin-top:4px" placeholder="Opens when… (hidden; judged against play), e.g. someone uses the harbourmaster's key" value="${esc(l.unlock || "")}">
-        <button class="small" style="margin-top:4px" onclick="unlockPlace(this)" ${l.id && !l.id.startsWith("new-") ? "" : "disabled"}
-          title="Opens it now; announced if it's next to the scene">unlock now</button>
-      </div></div>
-    <div class="field"><label>Hidden facts (in no prompt until discovered; shown here because you're the author)</label>
-      <div class="p-secrets">${(l.secrets || []).map(secretRowHtml).join("")}</div>
-      <button class="small" onclick="addSecret(this)">+ hidden fact</button></div>
-  </div>`;
-}
-let newSecretN = 0;
-function secretRowHtml(s) {
-  const knows = new Set(s.known_by || []);
-  const people = (W?.characters || []).map(c =>
-    `<label style="margin-right:10px;font-size:12px"><input type="checkbox" class="s-kb" value="${esc(c.id)}" ${knows.has(c.id) ? "checked" : ""}> ${esc(c.name)}</label>`).join("");
-  const id = s.id || ("new-" + (++newSecretN));
-  const saved = !id.startsWith("new-");
-  return `<div class="sec-row" data-id="${esc(id)}" data-revealed="${s.revealed ? "1" : ""}" data-at="${esc(s.revealed_at || "")}" data-shown="${s.hints_shown || 0}" data-lasthint="${s.last_hint_at ?? -999}"
-      style="border:1px solid var(--line);border-radius:6px;padding:6px;margin-bottom:6px">
-    <textarea class="s-text one" placeholder="The fact, as you know it">${esc(s.text || "")}</textarea>
-    <input type="text" class="s-how" placeholder="How it can be found (e.g. moving the barrels)" value="${esc(s.how || "")}" style="margin-top:4px">
-    <div style="display:flex;gap:6px;margin-top:4px">
-      <input type="text" class="s-hint" style="flex:1" placeholder="Hint: public atmosphere the director may let through (e.g. a faint draught from the back wall)" value="${esc(s.hint || "")}">
-      <button class="small" onclick="suggestHint(this)" title="Drafts one for you to edit. It sees the fact; the result is yours to review.">suggest</button></div>
-    ${s.hints_shown ? `<div style="font-size:11px;color:var(--dim)">hint has surfaced ${s.hints_shown} time(s)</div>` : ""}
-    <div style="margin-top:4px;font-size:12px;color:var(--dim)">Already known to: ${people || "<i>no characters</i>"}</div>
-    <div style="margin-top:4px">
-      ${s.revealed ? `<span class="badge create">discovered</span> <button class="small" onclick="hideSecret(this)" ${saved ? "" : "disabled"}>hide again</button>`
-                   : `<span class="badge secret">hidden</span> <button class="small" onclick="revealSecret(this)" ${saved ? "" : "disabled"}
-                        title="Needs the scene to be at this place; whoever is present learns it">reveal now</button>`}
-      <button class="small danger" onclick="this.closest('.sec-row').remove()">remove</button>
-    </div></div>`;
-}
-async function suggestHint(btn) {
-  const row = btn.closest(".sec-row");
-  const text = row.querySelector(".s-text").value.trim();
-  if (!text) { alert("Write the hidden fact first."); return; }
-  btn.disabled = true; btn.textContent = "…";
-  try {
-    const res = await (await fetch("/api/suggest_hint", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text, how: row.querySelector(".s-how").value, place: btn.closest(".place-card").querySelector(".p-name").value, models: models() }),
-    })).json();
-    if (res.error) { alert(res.error); } else { row.querySelector(".s-hint").value = res.hint; }
-  } finally { btn.disabled = false; btn.textContent = "suggest"; }
-}
-function addSecret(btn) {
-  btn.previousElementSibling.insertAdjacentHTML("beforeend", secretRowHtml({}));
-}
 async function unlockPlace(btn) {
   const place = btn.closest(".place-card").dataset.id;
   const res = await (await fetch("/api/unlock", {
@@ -1266,71 +600,6 @@ async function hideSecret(btn) {
   if (res.error) { alert(res.error); return; }
   W = res.world; renderPlaces([]);
 }
-function refreshLinks() {
-  const cards = [...document.querySelectorAll("#places .place-card")];
-  const info = cards.map(c => ({ id: c.dataset.id, name: c.querySelector(".p-name").value.trim() || "(unnamed)" }));
-  for (const card of cards) {
-    const box = card.querySelector(".p-links");
-    const checked = card.dataset.connects
-      ? new Set(JSON.parse(card.dataset.connects))
-      : new Set([...box.querySelectorAll("input:checked")].map(i => i.value));
-    delete card.dataset.connects;
-    box.innerHTML = info.filter(o => o.id !== card.dataset.id).map(o =>
-      `<label style="margin-right:12px;font-size:12px"><input type="checkbox" value="${esc(o.id)}" ${checked.has(o.id) ? "checked" : ""}> ${esc(o.name)}</label>`).join("")
-      || `<span class="empty">no other places yet</span>`;
-  }
-}
-function renderPlaces(changes) {
-  if (!W) return;
-  const holder = document.getElementById("places");
-  if (holder.contains(document.activeElement) && !changes) return;
-  holder.innerHTML = (W.locations || []).map((l, i) => placeCardHtml(l, i)).join("");
-  refreshLinks();
-  for (const ch of changes || []) {
-    const card = holder.querySelector(`.place-card[data-id="${CSS.escape(ch.target)}"]`);
-    const mark = card && card.querySelector(".p-ch-" + ch.field);
-    if (mark) mark.textContent = "changed";
-  }
-}
-function addPlace() {
-  const holder = document.getElementById("places");
-  const idx = holder.querySelectorAll(".place-card").length;
-  holder.insertAdjacentHTML("beforeend", placeCardHtml({ id: "new-" + (++newPlaceN), name: "", connects_to: [] }, idx));
-  refreshLinks();
-  holder.lastElementChild.querySelector(".p-name").focus();
-}
-function removePlace(btn) {
-  if (document.querySelectorAll("#places .place-card").length <= 1) return;
-  btn.closest(".place-card").remove();
-  refreshLinks();
-}
-async function savePlaces() {
-  const locations = [...document.querySelectorAll("#places .place-card")].map(card => ({
-    id: card.dataset.id,
-    name: card.querySelector(".p-name").value,
-    brief: card.querySelector(".p-brief").value,
-    description: card.querySelector(".p-desc").value,
-    state: card.querySelector(".p-state").value,
-    connects_to: [...card.querySelectorAll(".p-links input:checked")].map(i => i.value),
-    locked: card.querySelector(".p-locked").checked,
-    lock_note: card.querySelector(".p-locknote").value,
-    unlock: card.querySelector(".p-unlock").value,
-    secrets: [...card.querySelectorAll(".sec-row")].map(r => ({
-      id: r.dataset.id, text: r.querySelector(".s-text").value, how: r.querySelector(".s-how").value,
-      hint: r.querySelector(".s-hint").value, hints_shown: +(r.dataset.shown || 0), last_hint_at: +(r.dataset.lasthint || -999),
-      known_by: [...r.querySelectorAll(".s-kb:checked")].map(i => i.value),
-      revealed: !!r.dataset.revealed, revealed_at: r.dataset.at,
-    })).filter(s => s.text.trim()),
-  })).filter(l => l.name.trim());
-  const res = await (await fetch("/api/locations", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ locations }),
-  })).json();
-  if (res.error) { alert(res.error); return; }
-  W = res.world;
-  renderScene(); renderPlaces([]); renderCast(); renderCastStrip();
-  const s = document.getElementById("places-saved");
-  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
-}
 async function saveScene() {
   const body = Object.fromEntries(SCENE_FIELDS.map(f => [f, document.getElementById("sc-" + f).value]));
   const res = await (await fetch("/api/scene", {
@@ -1338,20 +607,6 @@ async function saveScene() {
   })).json();
   W = res.world;
   const s = document.getElementById("scene-saved");
-  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
-}
-async function saveFixed() {
-  const body = {
-    core_instructions: document.getElementById("fx-core_instructions").value,
-    scenario: document.getElementById("fx-scenario").value,
-    invention: document.getElementById("fx-invention").value,
-    actions: document.getElementById("fx-actions").value,
-  };
-  const res = await (await fetch("/api/fixed", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-  })).json();
-  W = res.world;
-  const s = document.getElementById("fixed-saved");
   s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
 }
 
@@ -1547,30 +802,12 @@ async function undoMerge(id) {
   applySnapshot(d);
   document.getElementById("consolidate-out").textContent = `restored ${d.restored.join(", ")}`;
 }
-function loadFixed() {
-  if (!W) return;
-  document.getElementById("fx-core_instructions").value = W.fixed.core_instructions || "";
-  document.getElementById("fx-scenario").value = W.fixed.scenario || "";
-  document.getElementById("fx-invention").value = W.fixed.invention || "balanced";
-  document.getElementById("fx-actions").value = W.fixed.actions || "rare";
-  describeActions();
-  describeInvention();
-}
-function describeActions() {
-  const notes = {
-    rare: "Speech comes first. A character may add one short *action* when it matters (handing something over, leaving, a pointed gesture), only for themselves. This overrides any 'speak only' wording in your world prompt or a character's reminder. Type /me or press Do to act yourself.",
-    off: "Characters speak only, as your world prompt and their reminders say. You can still write actions.",
-  };
-  document.getElementById("fx-actions-note").textContent = notes[document.getElementById("fx-actions").value] || "";
-}
-function describeInvention() {
-  const notes = {
-    balanced: "Colour, history, lore and a character's own past are free (what they say is kept as an unconfirmed claim you can confirm or delete). They may not make up where other people are or what they're doing now, who is here, or what is locked.",
-    strict: "Characters add nothing new: no invented backstory, history or details about other people. For a world you've fully authored.",
-    free: "Anything goes, even about other people. Characters stay consistent with what they've been told, but may also put others in places or doings the story hasn't set.",
-  };
-  document.getElementById("fx-invention-note").textContent = notes[document.getElementById("fx-invention").value] || "";
-}
+
+// The shared editors save through the live endpoints here; refresh what this page shows from them.
+EDIT.after = kind => {
+  if (kind === "cast") { renderFilter(); renderCastStrip(); }
+  else if (kind === "locations") { renderScene(); renderCastStrip(); }
+};
 
 document.getElementById("msg").addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }

@@ -19,7 +19,9 @@ Python/Flask harness for roleplay chat with several AI characters, built to test
 
 ## Layout
 
-`app.py` routes and global state; `chatter.py` turn pipeline; `state.py` world state and the watcher; `memory.py` retrieval, formation, consolidation; `director.py` speaker choice; `llm.py` provider routing (a model id with a slash goes via OpenRouter, a bare id goes direct to Anthropic); `templates/index.html` the whole UI.
+`app.py` routes and global state; `chatter.py` turn pipeline; `state.py` world state and the watcher; `memory.py` retrieval, formation, consolidation; `director.py` speaker choice; `llm.py` provider routing (a model id with a slash goes via OpenRouter, a bare id goes direct to Anthropic); `library.py` saved scenarios (`scenarios/`) and sessions (`sessions/`); `scenario.py` the AI scenario drafter.
+
+The UI is three pages: `loader.html` at `/` (sessions, scenarios, create), `index.html` at `/play` (the game), `editor.html` at `/editor/<id>` (edit a saved scenario). The authoring editors (cast, places, presets, reserved topics, world prompt) are one shared set: markup in `templates/_*.html` partials, code in `static/editors.js`, pointed at the live world or a scenario by `EDIT` (play-only features are gated on `EDIT.live`). Other shared files: `static/common.js`, `static/app.css`. The UI tests read all of these together (`ui_text()` in `test_engine.py`).
 
 ## Design principles (keep)
 

@@ -1,0 +1,28 @@
+    <div class="section">
+      <h2>Player <span id="cast-saved" class="saved"></span></h2>
+      <div class="field">
+        <label for="player-name">Your character's name</label>
+        <input id="player-name" type="text">
+      </div>
+    </div>
+    <div class="section">
+      <h2>Characters</h2>
+      <div class="note" style="margin-bottom:10px">
+        Each character has their own persona and sees only what they were present for.
+        The director chooses who answers. Status, reading and relationship are kept
+        current by the watcher; correct them here when they drift.
+      </div>
+      <div id="chars"></div>
+      <button onclick="addCharacter()">+ Add character</button>
+    </div>
+    <div class="section">
+      <h2>Narrator</h2>
+      <div class="note" style="margin-bottom:10px">
+        An optional extra voice for description and transitions. Off by default; the
+        director picks it only when the scene needs it.
+      </div>
+      <div class="field"><label><input id="nar-enabled" type="checkbox"> enabled</label></div>
+      <div class="field"><label for="nar-persona">Persona</label><textarea id="nar-persona" class="multi"></textarea></div>
+      <div class="field"><label for="nar-reminder">Reminder</label><textarea id="nar-reminder" class="one"></textarea></div>
+    </div>
+    <button onclick="saveCast()">Save cast</button>

@@ -1,0 +1,38 @@
+    <div class="section">
+      <h2>World prompt <span id="fixed-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Shared by every character. Per-character persona and reminder live on the Cast tab.
+      </div>
+      <div class="field"><label for="fx-core_instructions">core instructions</label>
+        <textarea id="fx-core_instructions" class="big"></textarea></div>
+      <div class="field"><label for="fx-scenario">scenario</label>
+        <textarea id="fx-scenario" class="big"></textarea></div>
+      <div class="field"><label for="fx-invention">How freely characters invent</label>
+        <select id="fx-invention" onchange="describeInvention()">
+          <option value="balanced">Balanced</option>
+          <option value="strict">Strict</option>
+          <option value="free">Free</option>
+        </select>
+        <div class="note" id="fx-invention-note" style="margin-top:4px"></div></div>
+      <div class="field"><label for="fx-actions">Action beats</label>
+        <select id="fx-actions" onchange="describeActions()">
+          <option value="rare">Rare and short</option>
+          <option value="off">Off (speech only)</option>
+        </select>
+        <div class="note" id="fx-actions-note" style="margin-top:4px"></div></div>
+      <button onclick="saveFixed()">Save prompt</button>
+    </div>
+    <div class="section">
+      <h2>Reserved topics <span id="reserved-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Lore you are keeping for yourself. Name a topic (for example "who built the Vault") and nobody
+        will invent anything about it: characters are told they don't know and the narrator leaves it
+        unexplained. Write the topic, never the answer. Tag characters or places to tell only them (or
+        anyone in a scene at those places); leave both blank to tell everyone.
+      </div>
+      <div id="reserved"></div>
+      <div style="margin-top:8px">
+        <button onclick="addReserved()">+ New topic</button>
+        <button onclick="saveReserved()">Save topics</button>
+      </div>
+    </div>

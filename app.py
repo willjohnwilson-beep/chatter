@@ -3,10 +3,11 @@
 import json
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "vendor"))
 
-from flask import Flask, jsonify, render_template, request  # noqa: E402
+from flask import Flask, jsonify, redirect, render_template, request  # noqa: E402
 
 import library as library_mod  # noqa: E402
 import llm  # noqa: E402
@@ -135,8 +136,23 @@ def api_models():
 
 
 @app.route("/")
-def index():
+def loader():
+    """The front door: resume a session, start or edit a scenario, create one."""
+    return render_template("loader.html", defaults=DEFAULT_MODELS)
+
+
+@app.route("/play")
+def play():
     return render_template("index.html", defaults=DEFAULT_MODELS)
+
+
+@app.route("/editor/<sid>")
+def editor(sid):
+    """The scenario editor. An unknown scenario goes back to the library."""
+    meta = _library().scenario_meta(sid)
+    if meta is None:
+        return redirect("/")
+    return render_template("editor.html", sid=sid, meta=meta, defaults=DEFAULT_MODELS)
 
 
 @app.route("/api/state")
@@ -180,48 +196,80 @@ def chat():
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 
+EDIT_KINDS = ("fixed", "scene", "cast", "locations", "presets", "reserved")
+
+
+def _apply_edit(w: state_mod.WorldState, kind: str, body: dict, scenario: bool = False) -> str | None:
+    """One authoring edit to a world, the same whether it is the live one or a scenario's. Returns an error
+    message, or None when it was applied. A scenario's scene may also name where it opens; on the live world
+    that is a move, which has its own route and its own consequences."""
+    if kind == "fixed":
+        for field in state_mod.FIXED_FIELDS:
+            if field in body:
+                if field == "invention" and body[field] not in state_mod.INVENTION_MODES:
+                    continue
+                if field == "actions" and body[field] not in state_mod.ACTION_MODES:
+                    continue
+                w.fixed[field] = body[field]
+        w.save()
+    elif kind == "scene":
+        w.set_scene(body)
+        if scenario and body.get("location") in w.location_ids():
+            w.scene["location"] = body["location"]
+            w.save()
+    elif kind == "cast":
+        chars = body.get("characters")
+        if not isinstance(chars, list) or not chars:
+            return "the cast needs at least one character"
+        w.set_cast(chars, body.get("narrator"), body.get("player"))
+    elif kind == "locations":
+        locs = body.get("locations")
+        if not isinstance(locs, list) or not locs:
+            return "there must be at least one place"
+        w.set_locations(locs)
+    elif kind == "presets":
+        presets = body.get("presets")
+        if not isinstance(presets, list):
+            return "presets must be a list"
+        w.set_presets(presets)
+    elif kind == "reserved":
+        topics = body.get("reserved")
+        if not isinstance(topics, list):
+            return "reserved must be a list"
+        w.set_reserved([t for t in topics if isinstance(t, dict)])
+    else:
+        return "unknown edit"
+    return None
+
+
+def _edit_live(kind: str):
+    err = _apply_edit(world, kind, request.get_json() or {})
+    if err:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "world": world.snapshot()})
+
+
 @app.route("/api/fixed", methods=["POST"])
 def save_fixed():
-    body = request.get_json() or {}
-    for field in state_mod.FIXED_FIELDS:
-        if field in body:
-            if field == "invention" and body[field] not in state_mod.INVENTION_MODES:
-                continue
-            if field == "actions" and body[field] not in state_mod.ACTION_MODES:
-                continue
-            world.fixed[field] = body[field]
-    world.save()
-    return jsonify({"ok": True, "world": world.snapshot()})
+    return _edit_live("fixed")
 
 
 @app.route("/api/scene", methods=["POST"])
 def save_scene():
     """Hand-edit the mutable scene — it drifts, so correcting it matters."""
-    body = request.get_json() or {}
-    world.set_scene(body)
-    return jsonify({"ok": True, "world": world.snapshot()})
+    return _edit_live("scene")
 
 
 @app.route("/api/cast", methods=["POST"])
 def save_cast():
     """Replace the cast: characters, the narrator, and the player's name."""
-    body = request.get_json() or {}
-    chars = body.get("characters")
-    if not isinstance(chars, list) or not chars:
-        return jsonify({"error": "the cast needs at least one character"}), 400
-    world.set_cast(chars, body.get("narrator"), body.get("player"))
-    return jsonify({"ok": True, "world": world.snapshot()})
+    return _edit_live("cast")
 
 
 @app.route("/api/locations", methods=["POST"])
 def save_locations():
     """Replace the places: authored fields, connections and current condition."""
-    body = request.get_json() or {}
-    locs = body.get("locations")
-    if not isinstance(locs, list) or not locs:
-        return jsonify({"error": "there must be at least one place"}), 400
-    world.set_locations(locs)
-    return jsonify({"ok": True, "world": world.snapshot()})
+    return _edit_live("locations")
 
 
 @app.route("/api/move", methods=["POST"])
@@ -255,23 +303,14 @@ def offscreen_now():
 @app.route("/api/presets", methods=["POST"])
 def save_presets():
     """Replace the scene presets."""
-    body = request.get_json() or {}
-    presets = body.get("presets")
-    if not isinstance(presets, list):
-        return jsonify({"error": "presets must be a list"}), 400
-    world.set_presets(presets)
-    return jsonify({"ok": True, "world": world.snapshot()})
+    return _edit_live("presets")
 
 
 @app.route("/api/reserved", methods=["POST"])
 def save_reserved():
     """Replace the reserved topics: lore the author keeps for themselves, which no character
     is allowed to invent anything about. Each is a name for the topic, with optional tags."""
-    topics = (request.get_json() or {}).get("reserved")
-    if not isinstance(topics, list):
-        return jsonify({"error": "reserved must be a list"}), 400
-    world.set_reserved([t for t in topics if isinstance(t, dict)])
-    return jsonify({"ok": True, "world": world.snapshot()})
+    return _edit_live("reserved")
 
 
 @app.route("/api/presets/capture", methods=["POST"])
@@ -489,6 +528,82 @@ def scenario_save():
     """Save the world as it is now as a reusable scenario: a clean start, no memories or conversation."""
     body = request.get_json() or {}
     meta = _library().save_scenario(world.as_scenario(), str(body.get("name") or ""), str(body.get("description") or ""))
+    return jsonify({"ok": True, "saved": meta, **_library_listing()})
+
+
+def _scenario_world(sid: str):
+    """(a WorldState loaded from the scenario, the library), or (None, library) if there is no such scenario.
+    The WorldState is a scratch copy: nothing reaches the scenario until the caller saves it back."""
+    lib = _library()
+    data = lib.load_scenario(sid)
+    if data is None:
+        return None, lib
+    path = os.path.join(tempfile.mkdtemp(), "world.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f)
+    return state_mod.WorldState(path), lib
+
+
+@app.route("/api/edit/<sid>/world", methods=["GET"])
+def edit_world(sid):
+    """A scenario as the editors show a world, so the same editors work on it."""
+    w, lib = _scenario_world(sid)
+    if w is None:
+        return jsonify({"error": "no such scenario"}), 404
+    return jsonify({"ok": True, "world": w.snapshot(), "meta": lib.scenario_meta(sid)})
+
+
+@app.route("/api/edit/<sid>/<kind>", methods=["POST"])
+def edit_scenario(sid, kind):
+    """The same authoring edits as the live world's, applied to a saved scenario. Playthroughs already
+    started from it keep their own copy."""
+    if kind not in EDIT_KINDS:
+        return jsonify({"error": "unknown edit"}), 400
+    w, lib = _scenario_world(sid)
+    if w is None:
+        return jsonify({"error": "no such scenario"}), 404
+    err = _apply_edit(w, kind, request.get_json() or {}, scenario=True)
+    if err:
+        return jsonify({"error": err}), 400
+    meta = lib.update_scenario(sid, world=w.as_scenario())
+    return jsonify({"ok": True, "world": w.snapshot(), "meta": meta})
+
+
+@app.route("/api/scenarios/<sid>/meta", methods=["POST"])
+def scenario_meta(sid):
+    body = request.get_json() or {}
+    meta = _library().update_scenario(sid, name=body.get("name"), description=body.get("description"))
+    if meta is None:
+        return jsonify({"error": "no such scenario"}), 404
+    return jsonify({"ok": True, "meta": meta})
+
+
+def _blank_world() -> dict:
+    """The smallest world the editors can start from: one place, one character, and prompts to overwrite."""
+    w = state_mod.WorldState(os.path.join(tempfile.mkdtemp(), "world.json"))
+    w.set_locations([{"name": "Starting place", "brief": "where the scene opens", "description": "Describe the place."}])
+    here = w.locations[0]["id"]
+    w.set_cast([{"name": "Character", "brief": "who they are at a glance", "persona": "You are Character. Say who they are and how they speak.",
+                 "reminder": "You are Character. Stay in your own voice.", "location": here, "status": "what they are doing now"}],
+               {"enabled": False}, {"name": "Player"})
+    w.fixed["scenario"] = "Describe the world every character is told: the setting, the mood, who the player is to them."
+    w.scene["location"] = here
+    return w.as_scenario()
+
+
+@app.route("/api/scenarios/new", methods=["POST"])
+def scenario_new():
+    """A blank scenario to fill in, or (with `copy`) a duplicate of an existing one."""
+    body = request.get_json() or {}
+    lib = _library()
+    src = body.get("copy")
+    if src:
+        data = lib.load_scenario(str(src))
+        if data is None:
+            return jsonify({"error": "no such scenario"}), 404
+    else:
+        data = _blank_world()
+    meta = lib.save_scenario(data, str(body.get("name") or ""), str(body.get("description") or ""))
     return jsonify({"ok": True, "saved": meta, **_library_listing()})
 
 

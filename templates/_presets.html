@@ -1,0 +1,22 @@
+    <div class="section">
+      <h2>Scene presets <span id="presets-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        {% if live %}A ready-made starting point: a place, the time, who is where and doing what, what is hanging,
+        and an optional premise and opening line. Starting one ends the current scene and sets the new
+        one up. The cast, places and memories carry on.{% else %}Alternative scenes the player can start from once this scenario is
+        running: a place, the time, who is where and doing what, and an optional premise and opening line.{% endif %}
+      </div>
+{% if live %}
+      <div class="field"><label><input type="checkbox" id="ps-flush" checked> Save the current scene to memory first</label></div>
+{% endif %}
+      <div id="presets"></div>
+      <div style="margin-top:8px">
+        <button onclick="addPreset()">+ New preset</button>
+        <button onclick="savePresets()">Save presets</button>
+      </div>
+{% if live %}
+      <div class="field" style="margin-top:10px"><label>Or capture the scene as it is now</label>
+        <input type="text" id="ps-capture-name" placeholder="name for the captured scene">
+        <button style="margin-top:6px" onclick="capturePreset()">Save current scene as preset</button></div>
+{% endif %}
+    </div>

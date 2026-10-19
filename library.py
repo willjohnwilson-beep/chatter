@@ -74,6 +74,29 @@ class Library:
         _write(self._scenario_path(sid), {"meta": meta, "world": world})
         return meta
 
+    def scenario_meta(self, sid: str) -> dict | None:
+        return next((m for m in self.scenarios() if m["id"] == sid), None)
+
+    def update_scenario(self, sid: str, world: dict | None = None, name: str | None = None,
+                        description: str | None = None) -> dict | None:
+        """Change a scenario in place, keeping its id and when it was created. Any of the parts may be left as it is."""
+        meta = self.scenario_meta(sid)
+        if meta is None:
+            return None
+        data = _read(self._scenario_path(sid))
+        if world is not None:
+            data["world"] = world
+        if name is not None and name.strip():
+            meta["name"] = name.strip()
+        if description is not None:
+            meta["description"] = description.strip()
+        w = data["world"]
+        meta.update({"places": len(w.get("locations") or []), "cast": len(w.get("characters") or []),
+                     "premise": str((w.get("fixed") or {}).get("scenario", ""))[:160]})
+        data["meta"] = meta
+        _write(self._scenario_path(sid), data)
+        return meta
+
     def load_scenario(self, sid: str) -> dict | None:
         """The scenario's world dict, or None if there is no such scenario."""
         if sid not in {m["id"] for m in self.scenarios()}:

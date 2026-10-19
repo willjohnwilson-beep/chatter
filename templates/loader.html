@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chatter — library</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body class="page">
+<div class="wrap">
+  <div class="pagehead">
+    <h1>Chatter <span>— sessions and scenarios</span></h1>
+    <a class="btn" href="/play">Back to the game →</a>
+  </div>
+
+  <div class="section" id="current">
+    <h2>Your playthrough <span id="cur-saved" class="saved"></span></h2>
+    <div id="cur-card" class="char-card"><div class="empty">loading…</div></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <div class="section">
+        <h2>Sessions</h2>
+        <div class="note" style="margin-bottom:10px">
+          A session is a saved playthrough: the world as it stands, the memories and the conversation. Loading one
+          resumes it, and whatever you were playing is kept in the Autosave slot first, so a switch never loses anything.
+        </div>
+        <div id="lib-sessions"></div>
+      </div>
+    </div>
+    <div>
+      <div class="section">
+        <h2>Scenarios</h2>
+        <div class="note" style="margin-bottom:10px">
+          A scenario is a reusable world with a clean start: no memories and no conversation. Starting one begins a
+          fresh playthrough. Edit one to change it for every playthrough you start from then on; a playthrough already
+          running keeps its own copy. Scenarios are files in <code>scenarios/</code>.
+        </div>
+        <div id="lib-scenarios"></div>
+      </div>
+      <div class="section">
+        <h2>New scenario</h2>
+        <div class="field">
+          <input type="text" id="new-name" placeholder="name">
+          <button style="margin-top:6px" onclick="newBlank()">Create a blank scenario and edit it</button>
+        </div>
+        <div class="field" style="margin-top:14px">
+          <label for="lib-premise">Or have a model draft one from a premise</label>
+          <div class="note" style="margin-bottom:6px">
+            It drafts the whole world: places and how they connect, a cast with voices, hidden facts with hints, a couple of scene
+            presets and topics to keep open. It is saved to your scenarios and nothing you are playing changes. Read it before you play it:
+            a model can slip a hidden fact into a description.
+          </div>
+          <textarea id="lib-premise" class="multi" placeholder="e.g. A fog-bound lighthouse on a tidal island. The keeper has died and the relief boat can't come until morning."></textarea>
+          <input type="text" id="lib-model" list="lib-model-list" style="margin-top:6px" value="{{ defaults.character }}" title="The model that writes the draft (a bare id goes direct to Anthropic; vendor/model goes through OpenRouter)">
+          <datalist id="lib-model-list"><option value="deepseek/deepseek-v4.1-flash"><option value="{{ defaults.character }}"></datalist>
+          <button style="margin-top:6px" id="lib-draft" onclick="draftScenario()">Draft a scenario</button>
+          <div id="lib-draft-out" style="margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='common.js') }}"></script>
+<script src="{{ url_for('static', filename='library.js') }}"></script>
+</body>
+</html>

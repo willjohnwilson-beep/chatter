@@ -15,6 +15,14 @@ tmp = tempfile.mkdtemp()
 _n = [0]
 
 
+def ui_text():
+    """Everything the browser is sent: the pages, their shared partials, and the shared scripts and styles."""
+    import glob
+    root = "D:/Claude/Chatter"
+    files = sorted(glob.glob(root + "/templates/*.html")) + sorted(glob.glob(root + "/static/*"))
+    return chr(10).join(open(f, encoding="utf-8").read() for f in files if not f.endswith("index.before_split.html"))
+
+
 def paths():
     _n[0] += 1
     return {k: os.path.join(tmp, f"{k}{_n[0]}.json") for k in ("m", "w", "c")}
@@ -1292,7 +1300,7 @@ assert with_dep and any("leaves for Pier with Wren" not in p for p in forms), "o
 assert all("WHO CAN KNOW THIS" in p and "Mick" in p.split("WHO CAN KNOW THIS")[1][:200] for p in with_dep)
 mick_sum = [kw["messages"][0]["content"] for k, kw in f.calls if k == "summary" and "THE CHARACTER: Mick" in kw["messages"][0]["content"]]
 assert mick_sum and "leaves for Pier with Wren" in mick_sum[0], "Mick's own summary is built from it"
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'm.kind === "depart"' in tmpl, "hidden from the transcript, like asides"
 print("   PASS")
 
@@ -1441,7 +1449,7 @@ store, world, c = secret_world()
 c.history = [dm]
 assert c.viewer_messages("wren")[0] == {"role": "user", "content": "(Discovered at X: y)"}
 assert c.latest_for("wren") == "(Discovered at X: y)" and not c.viewer_messages("mick")[0]["content"].startswith("(Discovered")
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'm.kind === "move" || m.kind === "discover"' in tmpl
 print("   PASS")
 
@@ -1588,7 +1596,7 @@ by_tag = {tuple(m["tags"]): m for m in store.memories}
 disc = by_tag[("cellar", "discovery")]
 assert disc["places"] == ["cellar"], "found in the cellar, remembered as such even though the scene moved on"
 assert by_tag[("keg",)]["places"] == ["cellar"], "formed from lines said in the cellar"
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'id="mem-place-filter"' in tmpl and "placeBadge" in tmpl
 print("   PASS")
 
@@ -1765,7 +1773,7 @@ assert cl.post("/api/unlock", json={"place": "vault", "lock": True}).status_code
 assert cl.post("/api/unlock", json={"place": "vault", "lock": True}).status_code == 400, "already locked"
 assert cl.post("/api/locations", json={"locations": world.locations}).status_code == 200 and not world.can_enter("vault"), \
     "saving the places keeps the lock"
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'class="p-locked"' in tmpl and "unlockPlace" in tmpl and "(locked)" in tmpl
 print("   PASS")
 
@@ -1822,7 +1830,7 @@ assert not any(m["content"] == arr["content"] for m in c.viewer_messages("sam"))
 assert c.viewer_messages("mick")[-1]["role"] == "user" and "Narrator" not in c.recent_text("wren")
 assert c.recent_text("wren").splitlines()[-1] == arr["content"] and c.latest_for("mick") == arr["content"]
 assert memory._line(arr, world.names()).endswith(arr["content"]) and "Narrator" not in memory._line(arr, world.names())
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'm.kind === "arrive"' in tmpl, "hidden from the player's transcript, like a departure"
 
 store, world, c = trio()                       # from offstage: no 'from'; two from one place: one line; two places: two lines
@@ -2091,7 +2099,7 @@ assert cl.post("/api/memory/confirm", json={"memory_id": "nope"}).status_code ==
 r = cl.post("/api/memory/delete", json={"memory_id": "mem_0002"})
 assert r.status_code == 200 and [m["id"] for m in store.memories] == ["mem_0001"] and len(r.get_json()["memories"]) == 1
 assert cl.post("/api/memory/delete", json={"memory_id": "mem_0002"}).status_code == 400
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert "claimBadge" in tmpl and "confirmMemory" in tmpl and "deleteMemory" in tmpl and "really delete?" in tmpl
 print("   PASS")
 
@@ -2281,7 +2289,7 @@ assert r.status_code == 200 and j["hint"] == "A cold draught lifts the dust alon
 p = f.calls[0][1]["messages"][0]["content"]
 assert FACT in p and "Do NOT name or describe the hidden thing" in p and "PLACE: The Cellar" in p, "it sees the fact, to avoid it"
 assert cl.post("/api/suggest_hint", json={"text": "  "}).status_code == 400
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'class="s-hint"' in tmpl and "suggestHint" in tmpl and "hints_shown" in tmpl
 print("   PASS")
 
@@ -2319,7 +2327,7 @@ world.character("mick")["location"] = "cellar"
 for mode in ("strict", "balanced", "free"):
     world.fixed["invention"] = mode
     assert "Not here: Mick is in The Cellar, nearby" in world.render_scene("wren"), mode
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'id="fx-invention"' in tmpl and "describeInvention" in tmpl and "invention: document.getElementById" in tmpl
 print("   PASS")
 
@@ -2445,7 +2453,7 @@ cl.post("/api/memory/lifetime", json={"memory_id": s_["id"], "lifetime": "days"}
 cl.post("/api/start_scene", json={"preset_id": "next", "flush": False})
 assert store.scene_no == 2, "starting a scene is a break too"
 assert json.load(open(store.path))["scene_no"] == 2, "saved"
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert "setLifetime" in tmpl and "/api/memory/lifetime" in tmpl and "short-lived" in tmpl
 print("   PASS")
 
@@ -2514,8 +2522,8 @@ assert cl.post("/api/reserved", json={"reserved": []}).get_json()["world"]["rese
 world.set_reserved([{"topic": "x"}])
 world.reset_all()
 assert world.reserved == [], "reset clears them"
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
-assert 'id="reserved"' in tmpl and "saveReserved" in tmpl and "/api/reserved" in tmpl and "renderReserved(true)" in tmpl
+tmpl = ui_text()
+assert 'id="reserved"' in tmpl and "saveReserved" in tmpl and 'editUrl("reserved")' in tmpl and "renderReserved(true)" in tmpl
 
 # offscreen life is written by its own call, so it is told too (each character only their own topics)
 store, world, c = life_world()
@@ -2620,7 +2628,7 @@ f = install(offstage=lambda kw: {"memories": [{"summary": "Fixed latch", "detail
 c.history = []
 formed, count, _ = c.flush("claude-haiku-5-5")
 assert count == 0 and any("latch" in m["detail"] for m in formed), "flush forms offstage memories too"
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert 'm.origin === "offstage"' in tmpl
 print("   PASS")
 
@@ -2691,7 +2699,7 @@ r = cl.post("/api/memory/not_conflict", json={"memory_id": fl["id"], "other_id":
 assert r.status_code == 200 and {m["id"]: m for m in r.get_json()["memories"]}[fl["id"]]["conflicts_with"] == []
 assert cl.post("/api/memory/not_conflict", json={"memory_id": fl["id"]}).status_code == 400, "nothing to clear"
 assert cl.post("/api/memory/not_conflict", json={"memory_id": "nope"}).status_code == 400
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert "notConflict" in tmpl and "conflicts with" in tmpl and "/api/memory/not_conflict" in tmpl
 print("   PASS")
 
@@ -2886,7 +2894,7 @@ assert world.fixed["actions"] == "rare"
 assert c._clean("*slides the glass across.* Here.") == "*slides the glass across.* Here."
 assert c._expects_reply("Sure. *slides the key across.*") and not c._expects_reply("*slides the key across.*")
 # the transcript and the input
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+tmpl = ui_text()
 assert "function fillBody" in tmpl and ".act {" in tmpl and 'fillBody(div.querySelector(".body"), text)' in tmpl
 assert "innerHTML" not in tmpl[tmpl.index("function fillBody"):tmpl.index("function toggleDo")], "action text is never inserted as markup"
 assert 'id="do-toggle"' in tmpl and "function toggleDo" in tmpl and "function asAction" in tmpl and "/me" in tmpl
@@ -3010,8 +3018,8 @@ for path_, body_ in (("/api/sessions/load", {"id": "nope"}), ("/api/scenarios/st
     assert cl.post(path_, json=body_).status_code == 400, path_
 assert cl.post("/api/sessions/delete", json={"id": "app-one"}).status_code == 200
 assert cl.post("/api/scenarios/delete", json={"id": "app-world"}).get_json()["scenarios"] == []
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
-assert 'id="p-library"' in tmpl and "loadLibrary()" in tmpl and "/api/sessions/load" in tmpl and "/api/scenarios/start" in tmpl and "libArm" in tmpl
+tmpl = ui_text()
+assert 'id="lib-sessions"' in tmpl and "loadLibrary()" in tmpl and "/api/sessions/load" in tmpl and "/api/scenarios/start" in tmpl and "libArm" in tmpl
 print("   PASS")
 
 # ------------------------------------------------------------------ 88
@@ -3159,8 +3167,146 @@ assert len(cl.get("/api/library").get_json()["scenarios"]) == 1
 r = cl.post("/api/scenarios/start", json={"id": "the-last-light"})
 assert r.status_code == 200 and appmod.world.fixed["scenario"].startswith("A fog-bound lighthouse") and appmod.store.memories == []
 assert [ch_["name"] for ch_ in r.get_json()["world"]["characters"]] == ["Mara", "Tobias"]
-tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
-assert 'id="lib-premise"' in tmpl and "draftScenario" in tmpl and "/api/scenarios/draft" in tmpl and "startDrafted" in tmpl
+tmpl = ui_text()
+assert 'id="lib-premise"' in tmpl and "draftScenario" in tmpl and "/api/scenarios/draft" in tmpl and 'href="/editor/' in tmpl
+print("   PASS")
+
+# ------------------------------------------------------------------ 89
+print("== 89. editing a saved scenario with the same edits as the live world ==")
+store, world, c = make([WREN, MICK])
+world.fixed["scenario"] = "LIVE WORLD"
+tmp4 = tempfile.mkdtemp()
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine, appmod.LIBRARY_BASE = store, world, c, tmp4
+cl = appmod.app.test_client()
+live_before = json.dumps([world.fixed, world.scene, world.locations, world.characters, world.presets, world.reserved], sort_keys=True)
+# a blank scenario is a world the editors can start from
+r = cl.post("/api/scenarios/new", json={"name": "My new world"})
+j = r.get_json()
+assert r.status_code == 200 and j["saved"]["id"] == "my-new-world" and j["saved"]["places"] == 1 and j["saved"]["cast"] == 1
+bw = cl.get("/api/edit/my-new-world/world").get_json()
+assert bw["ok"] and bw["meta"]["name"] == "My new world" and [p["name"] for p in bw["world"]["locations"]] == ["Starting place"]
+assert [ch_["name"] for ch_ in bw["world"]["characters"]] == ["Character"] and bw["world"]["characters"][0]["location"] == bw["world"]["scene"]["location"]
+assert bw["world"]["fixed"]["actions"] == "rare" and bw["world"]["player"]["name"] == "Player"
+assert cl.post("/api/scenarios/new", json={"name": ""}).get_json()["saved"]["name"] == "Untitled scenario"
+assert cl.get("/api/edit/nope/world").status_code == 404
+# each kind of edit reaches the scenario, with the live validation, and nothing else
+r = cl.post("/api/edit/my-new-world/fixed", json={"scenario": "A fog-bound lighthouse.", "actions": "off", "invention": "strict"})
+assert r.status_code == 200 and r.get_json()["world"]["fixed"]["scenario"] == "A fog-bound lighthouse." and r.get_json()["world"]["fixed"]["actions"] == "off"
+assert cl.post("/api/edit/my-new-world/fixed", json={"actions": "always", "invention": "wild"}).get_json()["world"]["fixed"]["actions"] == "off", "unknown values are ignored, as live"
+r = cl.post("/api/edit/my-new-world/locations", json={"locations": [
+    {"id": "new-1", "name": "Kitchen", "brief": "warm", "description": "A stove.", "connects_to": []},
+    {"id": "new-2", "name": "Stairs", "brief": "iron", "description": "Cold.", "connects_to": [],
+     "secrets": [{"id": "new-1", "text": "A ledger under the boards.", "how": "lifting them", "hint": "a draught", "known_by": []}]}]})
+assert r.status_code == 200 and [p["id"] for p in r.get_json()["world"]["locations"]] == ["kitchen", "stairs"] and r.get_json()["meta"]["places"] == 2
+r = cl.post("/api/edit/my-new-world/cast", json={"characters": [{"name": "Mara", "persona": "You are Mara.", "location": "kitchen", "status": "stirring"},
+                                                               {"name": "Tobias", "persona": "You are Tobias.", "location": "kitchen"}],
+                                                 "player": {"name": "Alex"}, "narrator": {"enabled": True, "persona": "N", "reminder": "R"}})
+assert r.status_code == 200 and r.get_json()["meta"]["cast"] == 2 and r.get_json()["world"]["narrator"]["enabled"] is True
+r = cl.post("/api/edit/my-new-world/scene", json={"location": "kitchen", "fiction_time": "Friday 3 November 2028, 10pm", "premise": "Dawn is far off.", "extras": "a cat"})
+assert r.status_code == 200 and r.get_json()["world"]["scene"]["fiction_time"].startswith("Friday 3 November") and r.get_json()["world"]["scene"]["extras"] == "a cat"
+assert r.get_json()["world"]["scene"]["location"] == "kitchen"
+r = cl.post("/api/edit/my-new-world/scene", json={"location": "stairs"})
+assert r.get_json()["world"]["scene"]["location"] == "stairs", "a scenario can say where it opens"
+assert cl.post("/api/edit/my-new-world/scene", json={"location": "nowhere"}).get_json()["world"]["scene"]["location"] == "stairs", "only a real place"
+cl.post("/api/edit/my-new-world/scene", json={"location": "kitchen"})
+live_scene_loc = world.scene["location"]
+cl.post("/api/scene", json={"location": "cellar"})
+assert world.scene["location"] == live_scene_loc, "on the live world a location is a move, never a scene edit"
+r = cl.post("/api/edit/my-new-world/presets", json={"presets": [{"id": "new-1", "name": "Dawn", "premise": "Light.", "opening": "(Grey.)", "location": "stairs",
+                                                               "cast": [{"id": "mara", "location": "stairs"}]}]})
+assert r.status_code == 200 and [p["id"] for p in r.get_json()["world"]["presets"]] == ["dawn"]
+r = cl.post("/api/edit/my-new-world/reserved", json={"reserved": [{"id": "new-1", "topic": "who the keeper was", "characters": ["mara"]}, "junk"]})
+assert r.status_code == 200 and [t["topic"] for t in r.get_json()["world"]["reserved"]] == ["who the keeper was"]
+# validation matches the live routes; unknown kinds and scenarios are refused
+assert cl.post("/api/edit/my-new-world/cast", json={"characters": []}).status_code == 400
+assert cl.post("/api/edit/my-new-world/locations", json={"locations": []}).status_code == 400
+assert cl.post("/api/edit/my-new-world/presets", json={"presets": "no"}).status_code == 400
+assert cl.post("/api/edit/my-new-world/reserved", json={"reserved": "no"}).status_code == 400
+assert cl.post("/api/edit/my-new-world/everything", json={}).status_code == 400
+assert cl.post("/api/edit/nope/fixed", json={}).status_code == 404
+# it is stored clean (no traces of play), and reads back
+saved = appmod._library().load_scenario("my-new-world")
+assert saved["locations"][1]["secrets"][0]["revealed"] is False and saved["locations"][1]["secrets"][0]["text"] == "A ledger under the boards."
+assert [x["name"] for x in saved["characters"]] == ["Mara", "Tobias"] and saved["reserved"][0]["characters"] == ["mara"]
+back = cl.get("/api/edit/my-new-world/world").get_json()["world"]
+assert back["fixed"]["scenario"] == "A fog-bound lighthouse." and [p["name"] for p in back["locations"]] == ["Kitchen", "Stairs"] and back["player"]["name"] == "Alex"
+# other scenarios and the live world are untouched
+assert cl.get("/api/edit/untitled-scenario/world").get_json()["world"]["fixed"]["scenario"].startswith("Describe the world")
+assert json.dumps([world.fixed, world.scene, world.locations, world.characters, world.presets, world.reserved], sort_keys=True) == live_before, "the live world never moved"
+# rename and describe
+assert cl.post("/api/scenarios/my-new-world/meta", json={"name": "The Last Light", "description": "fog"}).get_json()["meta"]["name"] == "The Last Light"
+m_ = cl.post("/api/scenarios/my-new-world/meta", json={"name": "   "}).get_json()["meta"]
+assert m_["name"] == "The Last Light" and m_["description"] == "fog" and m_["id"] == "my-new-world", "a blank name changes nothing; the id never moves"
+assert cl.post("/api/scenarios/nope/meta", json={"name": "x"}).status_code == 404
+# a duplicate is its own scenario
+d_ = cl.post("/api/scenarios/new", json={"copy": "my-new-world", "name": "Copy of it"}).get_json()["saved"]
+assert d_["id"] == "copy-of-it" and d_["places"] == 2 and d_["cast"] == 2
+cl.post("/api/edit/copy-of-it/fixed", json={"scenario": "Only in the copy."})
+assert cl.get("/api/edit/my-new-world/world").get_json()["world"]["fixed"]["scenario"] == "A fog-bound lighthouse."
+assert cl.post("/api/scenarios/new", json={"copy": "nope"}).status_code == 404
+# starting an edited scenario plays the edits, and leaves the scenario as it was
+r = cl.post("/api/scenarios/start", json={"id": "my-new-world"})
+assert r.status_code == 200 and appmod.world.fixed["scenario"] == "A fog-bound lighthouse." and appmod.world.player["name"] == "Alex"
+appmod.world.fixed["scenario"] = "changed in play"
+appmod.world.save()
+assert cl.get("/api/edit/my-new-world/world").get_json()["world"]["fixed"]["scenario"] == "A fog-bound lighthouse.", "play doesn't write back to the scenario"
+print("   PASS")
+
+# ------------------------------------------------------------------ 90
+print("== 90. three pages: the loader at /, the game at /play, the scenario editor, sharing one set of editors ==")
+store, world, c = make([WREN, MICK])
+tmp5 = tempfile.mkdtemp()
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine, appmod.LIBRARY_BASE = store, world, c, tmp5
+cl = appmod.app.test_client()
+cl.post("/api/scenarios/new", json={"name": "Page trial"})
+home, play, ed = (cl.get(u).get_data(as_text=True) for u in ("/", "/play", "/editor/page-trial"))
+assert cl.get("/").status_code == 200 and cl.get("/play").status_code == 200 and cl.get("/editor/page-trial").status_code == 200
+r = cl.get("/editor/nope")
+assert r.status_code == 302 and r.headers["Location"].endswith("/"), "an unknown scenario goes back to the library"
+# the loader: the library, and no game
+assert "<title>Chatter — library</title>" in home and 'id="lib-sessions"' in home and 'id="lib-scenarios"' in home and 'id="lib-premise"' in home
+assert 'href="/play"' in home and "library.js" in home and 'id="p-cast"' not in home and 'id="chat"' not in home
+assert 'value="' + appmod.DEFAULT_MODELS["character"] + '"' in home, "the drafting model starts at the app's character model"
+# the game: its tabs, no Library tab, a way back, the shared scripts
+assert 'id="chat"' in play and 'id="p-mem"' in play and 'id="p-library"' not in play and "loadLibrary" not in play and "libPost" not in play
+assert 'href="/"' in play and "← Library" in play and "static/common.js" in play and "static/editors.js" in play
+for tab_ in ("Turn", "Cast", "Places", "Scene", "Memory", "Prompts"):
+    assert f">{tab_}</button>" in play
+assert ">Library</button>" not in play
+# the editor: the authoring tabs and the same markup, minus what only makes sense in play
+assert "<title>Chatter — edit Page trial</title>" in ed and 'const SCENARIO_ID = "page-trial"' in ed and "static/editor.js" in ed
+for tab_ in ("Details", "Cast", "Places", "Opening scene", "Prompts"):
+    assert f">{tab_}</button>" in ed
+for ident in ('id="chars"', 'id="player-name"', 'id="nar-enabled"', 'id="places"', 'id="presets"', 'id="reserved"', 'id="fx-scenario"', 'id="fx-actions"', 'id="fx-invention"'):
+    assert ident in ed and ident in play, f"both pages carry {ident}"
+    assert ed.count(ident) == 1 and play.count(ident) == 1, f"{ident} comes from one shared partial"
+for live_only in ('id="ps-flush"', 'id="ps-capture-name"', 'id="p-mem"', 'id="chat"', 'id="p-turn"'):
+    assert live_only not in ed, f"{live_only} belongs to play"
+assert 'id="ps-flush"' in play and 'id="ps-capture-name"' in play, "the game keeps starting and capturing presets"
+assert "Alternative scenes the player can start from" in ed and "Starting one ends the current scene" in play, "the presets note says what is true on each page"
+# one set of editors, pointed at the live world or a scenario, with play-only features gated
+js = open("D:/Claude/Chatter/static/editors.js", encoding="utf-8").read()
+assert "const EDIT = { live: true" in js and "`/api/${kind}`" in js and "`/api/edit/${EDIT.sid}/${kind}`" in js
+for gated in ("startPreset", "unlockPlace", "hideSecret", "revealSecret", "c-offscreen", "p-state"):
+    assert js.count(gated) >= 1 and "EDIT.live" in js[max(0, js.index(gated) - 400):js.index(gated)], f"{gated} only shows in play"
+assert 'fetch("/api/cast"' not in js and 'fetch("/api/fixed"' not in js, "the editors never name a live endpoint directly"
+ejs = open("D:/Claude/Chatter/static/editor.js", encoding="utf-8").read()
+assert "EDIT.live = false" in ejs and "EDIT.sid = SCENARIO_ID" in ejs and "EDIT.after =" in ejs and "/api/scenarios/${SCENARIO_ID}/meta" in ejs
+# the play page keeps what is its own, and wires the shared editors back to itself
+for own in ("function send(", "function renderScene(", "function renderCastStrip(", "function memCard(", "EDIT.after = kind =>"):
+    assert own in play, own
+for moved in ("function charCardHtml(", "function placeCardHtml(", "function renderPresets(", "function saveReserved(", "function saveFixed("):
+    assert moved not in play and moved in js, f"{moved} lives in the shared script"
+# static files are served
+for f_, marker in (("common.js", "function esc("), ("editors.js", "function editUrl("), ("library.js", "function loadLibrary("), ("editor.js", "function saveStartScene("), ("app.css", "a.btn")):
+    r = cl.get("/static/" + f_)
+    assert r.status_code == 200 and marker in r.get_data(as_text=True), f_
+# leftovers from the split are gone
+assert not os.path.exists("D:/Claude/Chatter/templates/index.before_split.html")
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
