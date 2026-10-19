@@ -8,8 +8,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "ven
 
 from flask import Flask, jsonify, render_template, request  # noqa: E402
 
+import library as library_mod  # noqa: E402
 import llm  # noqa: E402
 import memory  # noqa: E402
+import scenario as scenario_mod  # noqa: E402
 import state as state_mod  # noqa: E402
 from chatter import LAYOUTS, Chatter  # noqa: E402
 
@@ -22,6 +24,32 @@ app.jinja_env.auto_reload = True
 store = memory.MemoryStore()
 world = state_mod.WorldState()
 chat_engine = Chatter(store, world)
+LIBRARY_BASE = library_mod.BASE  # where scenarios/ and sessions/ live; the tests point it at a temp dir
+
+# What the UI sets on the engine each turn. Kept across a switch so the settings don't snap back to defaults.
+ENGINE_SETTINGS = ("batch", "verbatim", "recall_cap", "layout", "recall_tool", "max_speakers", "life_every")
+
+
+def _library() -> library_mod.Library:
+    """The library, working on whatever files the live objects are using right now."""
+    return library_mod.Library({"world": world.path, "memories": store.path, "conversation": chat_engine.path}, LIBRARY_BASE)
+
+
+def _save_live() -> None:
+    store.save()
+    world.save()
+    chat_engine.save()
+
+
+def _reload_live() -> None:
+    """Re-read the three live files into fresh objects (after the library replaced them)."""
+    global store, world, chat_engine
+    old, paths = chat_engine, (store.path, world.path, chat_engine.path)
+    store = memory.MemoryStore(paths[0])
+    world = state_mod.WorldState(paths[1])
+    chat_engine = Chatter(store, world, path=paths[2])
+    for k in ENGINE_SETTINGS:
+        setattr(chat_engine, k, getattr(old, k))
 
 DEFAULT_MODELS = {
     "retrieval": llm.RETRIEVAL_MODEL,
@@ -441,6 +469,105 @@ def unmerge_route():
         return jsonify({"error": "that is not a merged memory"}), 400
     store.save()
     return jsonify({"ok": True, "restored": restored, **snapshot()})
+
+
+# ------------------------------------------------------------ scenarios and sessions
+
+
+def _library_listing() -> dict:
+    lib = _library()
+    return {"scenarios": lib.scenarios(), "sessions": lib.sessions()}
+
+
+@app.route("/api/library", methods=["GET"])
+def library_list():
+    return jsonify({"ok": True, **_library_listing()})
+
+
+@app.route("/api/scenarios/save", methods=["POST"])
+def scenario_save():
+    """Save the world as it is now as a reusable scenario: a clean start, no memories or conversation."""
+    body = request.get_json() or {}
+    meta = _library().save_scenario(world.as_scenario(), str(body.get("name") or ""), str(body.get("description") or ""))
+    return jsonify({"ok": True, "saved": meta, **_library_listing()})
+
+
+@app.route("/api/scenarios/draft", methods=["POST"])
+def scenario_draft():
+    """Draft a whole scenario from a premise and save it to the library. The live world isn't touched: starting
+    it is a separate, confirmed step."""
+    body = request.get_json() or {}
+    model = (body.get("models") or {}).get("character", llm.CHARACTER_MODEL)
+    try:
+        data, warnings, usage = scenario_mod.draft(str(body.get("premise") or ""), model)
+    except json.JSONDecodeError as exc:  # the model's reply, not the request (JSONDecodeError is a ValueError too)
+        app.logger.exception("scenario draft wasn't JSON")
+        return jsonify({"error": f"the model's reply wasn't valid JSON ({exc}); try again"}), 500
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        app.logger.exception("scenario draft failed")
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+    title = usage.pop("title", "") or "Drafted scenario"
+    meta = _library().save_scenario(data, title, str(body.get("premise") or "").strip()[:200])
+    summary = {
+        "places": [p["name"] for p in data["locations"]],
+        "cast": [c["name"] for c in data["characters"]],
+        "secrets": sum(len(p["secrets"]) for p in data["locations"]),
+        "presets": [p["name"] for p in data["presets"]],
+        "reserved": [r["topic"] for r in data["reserved"]],
+        "start": next((p["name"] for p in data["locations"] if p["id"] == data["scene"]["location"]), ""),
+    }
+    return jsonify({"ok": True, "saved": meta, "summary": summary, "warnings": warnings, "usage": usage, **_library_listing()})
+
+
+@app.route("/api/scenarios/start", methods=["POST"])
+def scenario_start():
+    """Start a fresh playthrough of a scenario. The playthrough being left is autosaved first."""
+    lib = _library()
+    data = lib.load_scenario((request.get_json() or {}).get("id", ""))
+    if data is None:
+        return jsonify({"error": "no such scenario"}), 400
+    _save_live()
+    lib.autosave()
+    lib.start_fresh(data)
+    _reload_live()
+    return jsonify({"ok": True, **snapshot(), **_library_listing()})
+
+
+@app.route("/api/scenarios/delete", methods=["POST"])
+def scenario_delete():
+    if not _library().delete_scenario((request.get_json() or {}).get("id", "")):
+        return jsonify({"error": "no such scenario"}), 400
+    return jsonify({"ok": True, **_library_listing()})
+
+
+@app.route("/api/sessions/save", methods=["POST"])
+def session_save():
+    """Save the playthrough as it stands: world, memories and conversation."""
+    _save_live()
+    meta = _library().save_session(str((request.get_json() or {}).get("name") or ""))
+    return jsonify({"ok": True, "saved": meta, **_library_listing()})
+
+
+@app.route("/api/sessions/load", methods=["POST"])
+def session_load():
+    """Resume a saved session. The playthrough being left is autosaved first."""
+    lib = _library()
+    sid = (request.get_json() or {}).get("id", "")
+    if sid not in {m["id"] for m in lib.sessions()}:
+        return jsonify({"error": "no such session"}), 400
+    _save_live()
+    lib.switch_session(sid)
+    _reload_live()
+    return jsonify({"ok": True, **snapshot(), **_library_listing()})
+
+
+@app.route("/api/sessions/delete", methods=["POST"])
+def session_delete():
+    if not _library().delete_session((request.get_json() or {}).get("id", "")):
+        return jsonify({"error": "no such session"}), 400
+    return jsonify({"ok": True, **_library_listing()})
 
 
 if __name__ == "__main__":

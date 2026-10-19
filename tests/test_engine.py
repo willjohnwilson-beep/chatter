@@ -63,6 +63,8 @@ class Fake:
             kind = "offstage"
         elif "keep its facts consistent" in first:
             kind = "crossconf"
+        elif "You draft a complete scenario" in first:
+            kind = "draft"
         elif "fact that was hidden at this place" in first:
             kind = "discover"
         else:
@@ -2889,6 +2891,276 @@ assert "function fillBody" in tmpl and ".act {" in tmpl and 'fillBody(div.queryS
 assert "innerHTML" not in tmpl[tmpl.index("function fillBody"):tmpl.index("function toggleDo")], "action text is never inserted as markup"
 assert 'id="do-toggle"' in tmpl and "function toggleDo" in tmpl and "function asAction" in tmpl and "/me" in tmpl
 assert 'id="fx-actions"' in tmpl and "describeActions" in tmpl and "actions: document.getElementById" in tmpl
+print("   PASS")
+
+# ------------------------------------------------------------------ 87
+print("== 87. scenarios and sessions: a clean export, saving, switching, and nothing lost on the way ==")
+import library as libmod
+
+store, world, c = make([WREN, MICK])
+world.set_locations([{"id": "salt-line", "name": "The Salt Line", "connects_to": ["cellar"]},
+                     {"id": "cellar", "name": "The Cellar", "connects_to": ["salt-line"], "state": "flooded to the knee",
+                      "secrets": [{"id": "cache", "text": "A cache of rum.", "how": "tapping the wall", "known_by": ["mick"],
+                                   "revealed": True, "revealed_at": "T", "hint": "a draught", "hints_shown": 2, "last_hint_at": 7}]}])
+world.set_reserved([{"topic": "who built the Vault"}])
+world.character("mick")["offscreen"] = "hauling kegs"
+world.character("mick")["offscreen_history"] = [{"at": "t", "note": "hauling kegs"}]
+world.character("mick")["offscreen_retired"] = [{"at": "t", "note": "old note"}]
+world.character("mick")["arriving"] = True
+world.fixed["scenario"] = "A quiet pub."
+sc = world.as_scenario()
+sec = sc["locations"][1]["secrets"][0]
+assert sec["revealed"] is False and sec["revealed_at"] == "" and sec["hints_shown"] == 0 and sec["last_hint_at"] == -999, "discovery wiped"
+assert sec["text"] == "A cache of rum." and sec["hint"] == "a draught" and sec["known_by"] == ["mick"], "what the author wrote stays"
+assert sc["locations"][1]["state"] == "" and sc["locations"][1]["connects_to"] == ["salt-line"]
+mkc_ = next(x for x in sc["characters"] if x["id"] == "mick")
+assert mkc_["offscreen"] == "" and mkc_["offscreen_history"] == [] and mkc_["offscreen_retired"] == [] and mkc_["arriving"] is False
+assert sc["reserved"] == world.reserved and sc["fixed"]["scenario"] == "A quiet pub." and sc["player"] == world.player
+assert world.locations[1]["state"] == "flooded to the knee" and world.locations[1]["secrets"][0]["revealed"] is True, "the live world is untouched"
+json.dump(sc, open(os.path.join(tmp, "asc.json"), "w"))
+back = st.WorldState(os.path.join(tmp, "asc.json"))
+assert [l["id"] for l in back.locations] == ["salt-line", "cellar"] and back.character("mick")["location"] == world.character("mick")["location"]
+assert back.reserved == world.reserved and back.fixed["scenario"] == "A quiet pub.", "it loads as a world"
+
+# the library on its own: files in a temp base, "live" files elsewhere
+base_, live_ = tempfile.mkdtemp(), tempfile.mkdtemp()
+LIVE = {k: os.path.join(live_, k + ".json") for k in ("world", "memories", "conversation")}
+lib = libmod.Library(LIVE, base_)
+assert lib.scenarios() == [] and lib.sessions() == []
+m1 = lib.save_scenario(sc, "The Salt Line / pub!", "a quiet one")
+m2 = lib.save_scenario(sc, "The Salt Line / pub!")
+assert m1["id"] == "the-salt-line-pub" and m2["id"] == "the-salt-line-pub-2" and m1["places"] == 2 and m1["cast"] == 2
+assert lib.save_scenario(sc, "   ")["name"] == "Untitled scenario"
+assert [m["id"] for m in lib.scenarios()][0] == lib.scenarios()[0]["id"] and len(lib.scenarios()) == 3
+assert lib.load_scenario(m1["id"]) == sc and lib.load_scenario("nope") is None and lib.load_scenario("../x") is None
+assert lib.delete_scenario(m2["id"]) and not lib.delete_scenario(m2["id"]) and len(lib.scenarios()) == 2
+
+
+def put(tag, msgs, mems):
+    json.dump({"fixed": {"scenario": f"premise {tag}"}, "characters": [{"name": "Wren"}], "locations": [], "scene": {}}, open(LIVE["world"], "w"))
+    json.dump({"memories": [{"id": f"mem_{i}"} for i in range(mems)], "next_id": mems + 1}, open(LIVE["memories"], "w"))
+    json.dump({"history": [{"speaker": "player", "content": tag}] * msgs, "formed_upto": 0}, open(LIVE["conversation"], "w"))
+
+
+def live_tag():
+    return json.load(open(LIVE["world"]))["fixed"]["scenario"]
+
+
+put("one", 3, 2)
+s1 = lib.save_session("Evening one")
+assert s1["id"] == "evening-one" and s1["messages"] == 3 and s1["memories"] == 2 and s1["premise"] == "premise one" and s1["cast"] == ["Wren"]
+assert lib.save_session("Evening one")["id"] == "evening-one-2", "two sessions with a name get two slots"
+assert lib.save_session("Autosave")["id"] != libmod.AUTOSAVE, "the autosave slot can't be taken by a name"
+put("two", 5, 4)
+assert lib.switch_session("nope") is False
+assert lib.switch_session("evening-one") and live_tag() == "premise one", "resumed"
+auto = [m for m in lib.sessions() if m["id"] == libmod.AUTOSAVE][0]
+assert auto["messages"] == 5 and auto["memories"] == 4 and auto["premise"] == "premise two", "what we left is kept"
+# resuming the autosave swaps it with the live one, and nothing is overwritten before it is read
+assert lib.switch_session(libmod.AUTOSAVE) and live_tag() == "premise two"
+assert [m for m in lib.sessions() if m["id"] == libmod.AUTOSAVE][0]["premise"] == "premise one"
+assert not os.path.exists(os.path.join(base_, "sessions", "_swap")), "no scratch copy left behind"
+# a missing file is missing on restore too
+os.remove(LIVE["conversation"])
+lib.save_session("No conversation")
+put("three", 9, 9)
+assert lib.restore_session("no-conversation") and not os.path.exists(LIVE["conversation"]) and live_tag() == "premise two"
+# a fresh playthrough: the world, and nothing else
+put("old", 4, 4)
+lib.start_fresh(sc)
+assert json.load(open(LIVE["world"])) == sc and not os.path.exists(LIVE["memories"]) and not os.path.exists(LIVE["conversation"])
+assert lib.delete_session("evening-one-2") and not lib.delete_session("evening-one-2") and not lib.delete_session("../evil")
+
+# through the app: the live objects are rebound and the engine settings survive
+tmp2 = tempfile.mkdtemp()
+store, world, c = make([WREN, MICK])
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine, appmod.LIBRARY_BASE = store, world, c, tmp2
+cl = appmod.app.test_client()
+world.fixed["scenario"] = "App premise"
+store.apply_operations([{"action": "create", "memory_id": "", "subject": "world", "tags": ["t"], "summary": "s", "detail": "REMEMBERED",
+                         "core": False, "lifetime": "lasting", "evidence": "hello"}],
+                       [{"speaker": "wren", "content": "hello", "present": ["wren", "mick"], "t": "T"}], all_ids=["wren", "mick"],
+                       subject_ids=["world", "wren", "mick"], known_by=["*"])
+c.history = [{"speaker": "player", "content": "a line", "present": ["wren"], "t": "T"}]
+c.batch, c.verbatim, c.max_speakers = 7, 11, 3
+assert cl.get("/api/library").get_json() == {"ok": True, "scenarios": [], "sessions": []}
+r = cl.post("/api/sessions/save", json={"name": "App one"})
+assert r.status_code == 200 and r.get_json()["saved"]["messages"] == 1 and r.get_json()["saved"]["memories"] == 1
+r = cl.post("/api/scenarios/save", json={"name": "App world", "description": "d"})
+assert r.get_json()["saved"]["id"] == "app-world" and r.get_json()["scenarios"][0]["places"] == 1
+# start the scenario: fresh playthrough, the old one autosaved, the settings kept
+r = cl.post("/api/scenarios/start", json={"id": "app-world"})
+j = r.get_json()
+assert r.status_code == 200 and appmod.store is not store and appmod.chat_engine is not c, "rebound"
+assert appmod.store.memories == [] and appmod.chat_engine.history == [] and j["memories"] == [] and j["history"] == []
+assert appmod.world.fixed["scenario"] == "App premise" and j["world"]["fixed"]["scenario"] == "App premise"
+assert (appmod.chat_engine.batch, appmod.chat_engine.verbatim, appmod.chat_engine.max_speakers) == (7, 11, 3)
+assert "autosave" in {m["id"] for m in j["sessions"]}, "the playthrough left is kept"
+assert appmod.store.path == store.path and appmod.world.path == world.path, "the same files, reloaded"
+# play on, then resume the first session: its memories and conversation come back
+appmod.chat_engine.history = [{"speaker": "player", "content": "different", "present": ["wren"], "t": "T"}] * 2
+r = cl.post("/api/sessions/load", json={"id": "app-one"})
+j = r.get_json()
+assert r.status_code == 200 and [m["detail"] for m in j["memories"]] == ["REMEMBERED"] and len(j["history"]) == 1 and j["history"][0]["content"] == "a line"
+assert [m for m in j["sessions"] if m["id"] == "autosave"][0]["messages"] == 2, "and what we were doing is the new autosave"
+for path_, body_ in (("/api/sessions/load", {"id": "nope"}), ("/api/scenarios/start", {"id": "nope"}),
+                     ("/api/sessions/delete", {"id": "nope"}), ("/api/scenarios/delete", {"id": "nope"})):
+    assert cl.post(path_, json=body_).status_code == 400, path_
+assert cl.post("/api/sessions/delete", json={"id": "app-one"}).status_code == 200
+assert cl.post("/api/scenarios/delete", json={"id": "app-world"}).get_json()["scenarios"] == []
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert 'id="p-library"' in tmpl and "loadLibrary()" in tmpl and "/api/sessions/load" in tmpl and "/api/scenarios/start" in tmpl and "libArm" in tmpl
+print("   PASS")
+
+# ------------------------------------------------------------------ 88
+print("== 88. the scenario creator: a draft by names becomes a world that loads, with problems reported ==")
+import scenario as scen
+
+SECRET = "The lamp room hides a ledger of wrecked ships under a loose floorboard."
+DRAFT = {
+    "title": "The Last Light", "scenario": "A fog-bound lighthouse on a tidal island. The keeper has died; the relief boat comes at dawn.",
+    "player_name": "Alex", "start_place": "The Kitchen", "fiction_time": "Friday 3 November 2028, 10pm",
+    "places": [
+        {"name": "The Kitchen", "brief": "warm, cramped", "description": "A stove, a long table, wet coats on hooks.", "connects_to": ["The Stairs", "Nowhere"],
+         "locked": False, "lock_note": "", "unlock": "", "secrets": []},
+        {"name": "The Stairs", "brief": "a spiral of iron steps", "description": "Cold and echoing.", "connects_to": ["The Lamp Room"], "locked": False,
+         "lock_note": "", "unlock": "", "secrets": []},
+        {"name": "The Lamp Room", "brief": "the great lens", "description": "Brass and glass, humming faintly.", "connects_to": [], "locked": True,
+         "lock_note": "a bolted hatch", "unlock": "someone has the keeper's key",
+         "secrets": [{"text": SECRET, "how": "lifting the boards by the lens", "hint": "a faint smell of old paper",
+                      "known_by": ["Mara", "Ghost"]}]},
+        {"name": "The Jetty", "brief": "slick stone", "description": "Fog hides the far end.", "connects_to": [], "locked": False, "lock_note": "",
+         "unlock": "", "secrets": []},
+    ],
+    "characters": [
+        {"name": "Mara", "brief": "the keeper's niece", "persona": "You are Mara, the keeper's niece. Quiet, watchful, quick to anger.",
+         "reminder": "You are Mara. Stay in your own voice.", "place": "the kitchen", "status": "stirring a pot", "view_of_player": "a stranger off the boat",
+         "relationship": "wary"},
+        {"name": "Tobias", "brief": "a deckhand", "persona": "You are Tobias, a deckhand. You know the ledger of wrecked ships is under the floorboard.",
+         "reminder": "You are Tobias.", "place": "The Atlantis", "status": "drying his socks", "view_of_player": "", "relationship": ""},
+    ],
+    "presets": [{"name": "Dawn", "premise": "The boat is late.", "opening": "(Grey light at the windows.)", "place": "The Jetty",
+                 "cast": [{"name": "Mara", "place": "The Jetty", "status": "watching the water"}, {"name": "Nobody", "place": "The Jetty", "status": "x"}]}],
+    "reserved_topics": ["who the keeper really was", "  ", "who the keeper really was"],
+}
+world_d, warns = scen.build_world(DRAFT)
+assert [l["id"] for l in world_d["locations"]] == ["the-kitchen", "the-stairs", "the-lamp-room", "the-jetty"]
+assert [c["id"] for c in world_d["characters"]] == ["mara", "tobias"]
+assert world_d["scene"]["location"] == "the-kitchen" and world_d["scene"]["fiction_time"].startswith("Friday 3 November")
+assert world_d["player"]["name"] == "Alex" and scen.build_world(DRAFT, "Sam")[0]["player"]["name"] == "Sam"
+by = {l["id"]: l for l in world_d["locations"]}
+assert by["the-kitchen"]["connects_to"] == ["the-stairs"] and "the-kitchen" in by["the-stairs"]["connects_to"], "connections are mutual, bad ones dropped"
+assert by["the-lamp-room"]["connects_to"] == ["the-stairs"] and by["the-lamp-room"]["locked"] is True and by["the-lamp-room"]["lock_note"] == "a bolted hatch"
+assert by["the-lamp-room"]["secrets"][0]["known_by"] == ["mara"], "a knower who isn't in the cast is dropped"
+assert world_d["characters"][0]["location"] == "the-kitchen", "place names match loosely ('the kitchen')"
+assert world_d["characters"][1]["location"] == "the-kitchen", "an unknown start place falls back to the scene's"
+assert [p["name"] for p in world_d["presets"]] == ["Dawn"] and world_d["presets"][0]["location"] == "the-jetty"
+assert [e["id"] for e in world_d["presets"][0]["cast"]] == ["mara"], "an unknown name in a preset is dropped"
+assert [r["topic"] for r in world_d["reserved"]] == ["who the keeper really was"], "blank and repeated topics go"
+wtxt = " | ".join(warns)
+assert "'Nowhere'" in wtxt and "'Ghost'" in wtxt and "The Atlantis" in wtxt, wtxt
+assert "The Jetty can't be reached" in wtxt, "an island with no way in is reported"
+assert "Tobias's persona" in wtxt and "ledger of wrecked ships" in wtxt, "a hidden fact in a persona is caught"
+assert "Mara's persona" not in wtxt and "description" not in wtxt, "no false alarms"
+# it is a world the app can load, and the hidden fact reaches only who knows it
+json.dump(world_d, open(os.path.join(tmp, "drafted.json"), "w"))
+wd = st.WorldState(os.path.join(tmp, "drafted.json"))
+assert wd.player["name"] == "Alex" and len(wd.locations) == 4 and wd.fixed["actions"] == "rare" and wd.fixed["invention"] == "balanced"
+wd.scene["location"] = "the-lamp-room"      # the scene is where the hidden fact is
+for c_ in wd.characters:
+    c_["location"] = "the-lamp-room"
+assert SECRET in wd.render_scene("mara") and SECRET not in wd.render_scene("tobias"), "told only to the one who knows it"
+assert SECRET not in "".join(wd.render_fixed(c) for c in ("mara", "tobias", "narrator")), "never in a fixed prompt"
+# too thin to play
+for bad in ({**DRAFT, "places": DRAFT["places"][:1]}, {**DRAFT, "characters": DRAFT["characters"][:1]}, {}):
+    try:
+        scen.build_world(bad)
+        raise SystemExit("built a world from a thin draft")
+    except ValueError as e_:
+        assert "too thin" in str(e_)
+# a start place that is locked is opened; an unknown one falls back
+w2, wn2 = scen.build_world({**DRAFT, "start_place": "The Lamp Room"})
+assert w2["scene"]["location"] == "the-lamp-room" and not [l for l in w2["locations"] if l["id"] == "the-lamp-room"][0]["locked"] and "start place was locked" in " ".join(wn2)
+assert scen.build_world({**DRAFT, "start_place": "Moon base"})[0]["scene"]["location"] == "the-kitchen"
+
+# drafting is three calls (world, cast, hidden facts); a staged fake answers each with its part of DRAFT
+def staged(d, thin_cast_first=0):
+    seen = {"cast": 0}
+
+    def handler(kw):
+        p_ = kw["messages"][0]["content"]
+        if "STEP 1 OF 3" in p_:
+            return {**{k: d[k] for k in ("title", "scenario", "player_name", "start_place", "fiction_time")},
+                    "places": [{k: v for k, v in pl.items() if k != "secrets"} for pl in d["places"]]}
+        if "STEP 2 OF 3" in p_:
+            seen["cast"] += 1
+            if seen["cast"] <= thin_cast_first:
+                return {"characters": [], "presets": [], "reserved_topics": []}
+            return {"characters": d["characters"], "presets": d["presets"], "reserved_topics": d["reserved_topics"]}
+        return {"secrets": [{"place": pl["name"], **s} for pl in d["places"] for s in pl["secrets"]]}
+    return handler
+
+
+f = install(draft=staged(DRAFT))
+dw, dwarn, du = scen.draft("A lighthouse in fog.", "claude-sonnet-5-5")
+ps = [kw["messages"][0]["content"] for k, kw in f.calls if k == "draft"]
+assert len(ps) == 3 and all("A lighthouse in fog." in p_ for p_ in ps) and du["title"] == "The Last Light"
+assert "STEP 1 OF 3" in ps[0] and "STEP 2 OF 3" in ps[1] and "STEP 3 OF 3" in ps[2]
+assert "write nothing hidden now" in ps[0] and "A stove, a long table" in ps[1] and "The Kitchen" in ps[2] and "You are Mara" in ps[2]
+assert not any("ledger of wrecked ships" in p_ for p_ in ps[:2]), "the world and the cast are written before any hidden fact exists"
+assert "carries NO information" in ps[2], "the hint is told to carry nothing"
+assert dw["locations"][2]["secrets"][0]["text"] == SECRET and dw["locations"][2]["secrets"][0]["known_by"] == ["mara"]
+assert dw["player"]["name"] == "Alex"
+for sch in (scen.WORLD_SCHEMA, scen.CAST_SCHEMA, scen.SECRETS_SCHEMA):
+    assert sch["additionalProperties"] is False and set(sch["required"]) == set(sch["properties"]), "every field required, nothing extra"
+assert {"places", "start_place"} <= set(scen.WORLD_SCHEMA["required"]) and {"characters", "presets", "reserved_topics"} <= set(scen.CAST_SCHEMA["required"])
+# a thin answer is retried, up to three times; then the draft is judged as it stands
+f = install(draft=staged(DRAFT, thin_cast_first=2))
+assert scen.draft("x", "claude-sonnet-5-5")[2]["title"] == "The Last Light" and [kw["messages"][0]["content"].count("STEP 2 OF 3") for k, kw in f.calls].count(1) == 3
+f = install(draft=staged(DRAFT, thin_cast_first=9))
+try:
+    scen.draft("x", "claude-sonnet-5-5")
+    raise SystemExit("drafted a world with no cast")
+except ValueError as e_:
+    assert "too thin" in str(e_) and len(f.calls) == 1 + 3, "it gives up before asking for hidden facts in an empty world"
+# a hidden fact placed somewhere that isn't a place is dropped, with a warning
+bad_sec = {**DRAFT, "places": [{**pl, "secrets": [{**s, "text": s["text"]} for s in pl["secrets"]]} for pl in DRAFT["places"]]}
+inner = staged(bad_sec)
+install(draft=lambda kw: ({"secrets": [{"place": "Atlantis", "text": "x", "how": "y", "hint": "z", "known_by": []}]}
+                          if "STEP 3 OF 3" in kw["messages"][0]["content"] else inner(kw)))
+assert "isn't one of the places" in " ".join(scen.draft("x", "claude-sonnet-5-5")[1])
+try:
+    scen.draft("   ", "claude-sonnet-5-5")
+    raise SystemExit("drafted from nothing")
+except ValueError:
+    pass
+store, world, c = make([WREN, MICK])
+world.fixed["scenario"] = "LIVE WORLD"
+tmp3 = tempfile.mkdtemp()
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine, appmod.LIBRARY_BASE = store, world, c, tmp3
+cl = appmod.app.test_client()
+f = install(draft=staged(DRAFT))
+r = cl.post("/api/scenarios/draft", json={"premise": "A lighthouse in fog.", "models": {"character": "claude-sonnet-5-5"}})
+j = r.get_json()
+assert r.status_code == 200 and j["saved"]["id"] == "the-last-light" and j["summary"]["cast"] == ["Mara", "Tobias"] and j["summary"]["secrets"] == 1
+assert j["summary"]["start"] == "The Kitchen" and j["warnings"] and [m["id"] for m in j["scenarios"]] == ["the-last-light"]
+assert appmod.world is world and world.fixed["scenario"] == "LIVE WORLD" and len(f.calls) == 3, "the live world is untouched"
+assert cl.post("/api/scenarios/draft", json={"premise": " "}).status_code == 400
+install(draft=lambda kw: "not json at all")
+assert cl.post("/api/scenarios/draft", json={"premise": "x"}).status_code == 500
+install(draft=staged({**DRAFT, "places": []}))
+assert cl.post("/api/scenarios/draft", json={"premise": "x"}).status_code == 400, "a draft too thin to play is refused, not saved"
+assert len(cl.get("/api/library").get_json()["scenarios"]) == 1
+# starting the drafted scenario gives a playable fresh world
+r = cl.post("/api/scenarios/start", json={"id": "the-last-light"})
+assert r.status_code == 200 and appmod.world.fixed["scenario"].startswith("A fog-bound lighthouse") and appmod.store.memories == []
+assert [ch_["name"] for ch_ in r.get_json()["world"]["characters"]] == ["Mara", "Tobias"]
+tmpl = open("D:/Claude/Chatter/templates/index.html", encoding="utf-8").read()
+assert 'id="lib-premise"' in tmpl and "draftScenario" in tmpl and "/api/scenarios/draft" in tmpl and "startDrafted" in tmpl
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

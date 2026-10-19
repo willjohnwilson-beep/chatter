@@ -171,6 +171,7 @@
     <button onclick="tab(this,'p-scene')">Scene</button>
     <button onclick="tab(this,'p-mem')">Memory</button>
     <button onclick="tab(this,'p-prompt')">Prompts</button>
+    <button onclick="tab(this,'p-library'); loadLibrary()">Library</button>
   </div>
 
   <!-- ---------- turn ---------- -->
@@ -360,6 +361,47 @@
         <select id="mem-place-filter" onchange="renderMemories()"></select>
       </div>
       <div id="memories"><div class="empty">no memories stored</div></div>
+    </div>
+  </div>
+
+  <!-- ---------- library ---------- -->
+  <div id="p-library" class="pane">
+    <div class="section">
+      <h2>Create a scenario</h2>
+      <div class="note" style="margin-bottom:10px">
+        Describe the setting in a few lines and a model drafts the whole world: places and how they connect, a cast with
+        voices, hidden facts with hints, a couple of scene presets and topics to keep open. It is saved to the scenarios
+        below, untouched by the world you are playing; start it when you want to read and edit it in the other tabs.
+        Uses the Character model. Read the draft: a model can slip a hidden fact into a description.
+      </div>
+      <textarea id="lib-premise" class="multi" placeholder="e.g. A fog-bound lighthouse on a tidal island. The keeper has died and the relief boat can't come until morning."></textarea>
+      <button style="margin-top:6px" id="lib-draft" onclick="draftScenario()">Draft a scenario</button>
+      <div id="lib-draft-out" style="margin-top:8px"></div>
+    </div>
+    <div class="section">
+      <h2>Sessions <span id="lib-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        A session is a playthrough: the world as it stands, the memories and the conversation. Loading one resumes it.
+        Whatever you were playing is kept in the Autosave slot first, so a switch never loses anything.
+      </div>
+      <div class="field" style="display:flex;gap:6px">
+        <input type="text" id="lib-session-name" placeholder="name this session" style="flex:1">
+        <button onclick="saveSession()">Save session</button>
+      </div>
+      <div id="lib-sessions"></div>
+    </div>
+    <div class="section">
+      <h2>Scenarios</h2>
+      <div class="note" style="margin-bottom:10px">
+        A scenario is a reusable world with a clean start: no memories and no conversation. Starting one begins a
+        fresh playthrough (the current one is autosaved). Scenarios are files in <code>scenarios/</code>.
+      </div>
+      <div class="field">
+        <input type="text" id="lib-scenario-name" placeholder="name">
+        <input type="text" id="lib-scenario-desc" placeholder="one line about it (optional)" style="margin-top:4px">
+        <button style="margin-top:6px" onclick="saveScenario()">Save this world as a scenario</button>
+      </div>
+      <div id="lib-scenarios"></div>
     </div>
   </div>
 
@@ -816,6 +858,100 @@ function renderScene(changes) {
   renderOffstage();
   renderPresets();
   renderReserved();
+}
+
+/* ---------------- scenarios and sessions ---------------- */
+async function libPost(path, body) {
+  const d = await (await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) })).json();
+  if (d.error) { alert(d.error); return null; }
+  return d;
+}
+// Switching replaces the live world, so the page reloads from the new state afterwards. Native confirm() is
+// auto-dismissed in embedded panes: the button arms first and the second click does it.
+let libArmed = null;
+function libArm(btn, label, then) {
+  if (libArmed !== btn) {
+    libArmed = btn; btn.textContent = label;
+    setTimeout(() => { if (libArmed === btn) { libArmed = null; btn.textContent = btn.dataset.text; } }, 4000);
+    return;
+  }
+  libArmed = null; then();
+}
+function libRow(m, kind) {
+  const bits = kind === "session"
+    ? [m.saved_at, `${m.messages ?? "?"} messages`, `${m.memories ?? "?"} memories`, (m.cast || []).join(", ")]
+    : [`${m.places} places`, `${m.cast} characters`, m.created_at];
+  const sub = kind === "session" ? (m.premise || "") : (m.description || m.premise || "");
+  const go = kind === "session" ? "load" : "start";
+  return `<div class="char-card" data-id="${esc(m.id)}" data-kind="${kind}">
+    <div class="head"><strong style="flex:1">${esc(m.name)}</strong>
+      <button class="small" data-text="${go}" onclick="libGo(this)">${go}</button>
+      <button class="small danger" data-text="delete" onclick="libDelete(this)">delete</button></div>
+    <div class="cid">${esc(bits.filter(Boolean).join(" · "))}</div>
+    ${sub ? `<div class="note">${esc(sub)}</div>` : ""}</div>`;
+}
+async function loadLibrary() {
+  const d = await (await fetch("/api/library")).json();
+  document.getElementById("lib-sessions").innerHTML = (d.sessions || []).map(m => libRow(m, "session")).join("") || `<div class="empty">no saved sessions</div>`;
+  document.getElementById("lib-scenarios").innerHTML = (d.scenarios || []).map(m => libRow(m, "scenario")).join("") || `<div class="empty">no saved scenarios</div>`;
+}
+function libGo(btn) {
+  const card = btn.closest(".char-card"), kind = card.dataset.kind;
+  libArm(btn, kind === "session" ? "switch to this? (autosaves the current one)" : "start fresh? (autosaves the current one)", async () => {
+    const d = await libPost(kind === "session" ? "/api/sessions/load" : "/api/scenarios/start", { id: card.dataset.id });
+    if (d) location.reload();
+  });
+}
+function libDelete(btn) {
+  const card = btn.closest(".char-card"), kind = card.dataset.kind;
+  libArm(btn, "really delete?", async () => {
+    if (await libPost(kind === "session" ? "/api/sessions/delete" : "/api/scenarios/delete", { id: card.dataset.id })) loadLibrary();
+  });
+}
+async function draftScenario() {
+  const premise = document.getElementById("lib-premise").value.trim();
+  const btn = document.getElementById("lib-draft"), out = document.getElementById("lib-draft-out");
+  if (!premise) { out.textContent = "Write a premise first."; return; }
+  btn.disabled = true; out.textContent = "Drafting… this takes a minute.";
+  try {
+    const d = await (await fetch("/api/scenarios/draft", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ premise, models: models() }),
+    })).json();
+    if (d.error) { out.textContent = "Couldn't draft it: " + d.error; return; }
+    const s = d.summary, list = a => a.map(esc).join(", ") || "none";
+    out.innerHTML = `<div class="char-card"><div class="head"><strong style="flex:1">${esc(d.saved.name)}</strong>
+        <button class="small" data-text="start it now" onclick="startDrafted(this, '${esc(d.saved.id)}')">start it now</button></div>
+      <div class="note">Saved to your scenarios. Opens at ${esc(s.start)}.</div>
+      <div class="note">Places: ${list(s.places)}</div><div class="note">Cast: ${list(s.cast)}</div>
+      <div class="note">${s.secrets} hidden fact(s) · presets: ${list(s.presets)} · kept open: ${list(s.reserved)}</div>
+      ${d.warnings.length ? `<div class="note" style="color:var(--amber, #e0af68)">Check: ${d.warnings.map(esc).join(" · ")}</div>` : ""}</div>`;
+    loadLibrary();
+  } catch (e) {
+    out.textContent = "Couldn't draft it: " + e;
+  } finally {
+    btn.disabled = false;
+  }
+}
+function startDrafted(btn, id) {
+  libArm(btn, "start fresh? (autosaves the current one)", async () => {
+    if (await libPost("/api/scenarios/start", { id })) location.reload();
+  });
+}
+async function saveSession() {
+  const name = document.getElementById("lib-session-name").value;
+  if (await libPost("/api/sessions/save", { name })) {
+    document.getElementById("lib-session-name").value = "";
+    const s = document.getElementById("lib-saved"); s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+    loadLibrary();
+  }
+}
+async function saveScenario() {
+  const name = document.getElementById("lib-scenario-name").value, description = document.getElementById("lib-scenario-desc").value;
+  if (await libPost("/api/scenarios/save", { name, description })) {
+    document.getElementById("lib-scenario-name").value = "";
+    document.getElementById("lib-scenario-desc").value = "";
+    loadLibrary();
+  }
 }
 
 /* ---------------- reserved topics ---------------- */

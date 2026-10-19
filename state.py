@@ -531,6 +531,23 @@ class WorldState:
         for c in self.characters:
             c["location"] = self.scene["location"]
 
+    def as_scenario(self) -> dict:
+        """The authored world as a clean starting point, in the shape load() reads: everything the author
+        wrote, with the traces of play removed (what has been discovered or hinted, what the watcher noted
+        about a place, offstage notes and who is on their way). The scene as it stands, the cast and where they
+        are, the presets and the reserved topics are kept, so saving a scenario right after setting it up
+        starts the next playthrough just there."""
+        d = copy.deepcopy({"fixed": self.fixed, "scene": self.scene, "locations": self.locations,
+                           "characters": self.characters, "presets": self.presets, "reserved": self.reserved,
+                           "narrator": self.narrator, "player": self.player})
+        for place in d["locations"]:
+            place["state"] = ""
+            for sec in place.get("secrets", []):
+                sec.update({"revealed": False, "revealed_at": "", "hints_shown": 0, "last_hint_at": -999})
+        for c in d["characters"]:
+            c.update({"offscreen": "", "offscreen_at": "", "offscreen_history": [], "offscreen_retired": [], "arriving": False})
+        return d
+
     def save(self) -> None:
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(

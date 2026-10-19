@@ -11,3 +11,6 @@ __pycache__/
 world.json
 memories.json
 conversation.json
+
+# saved playthroughs; scenarios/ is kept, since an authored world is worth sharing
+sessions/
