@@ -372,6 +372,15 @@ def memory_not_conflict():
     return jsonify({"ok": True, **snapshot()})
 
 
+@app.route("/api/memory/not_contradicted", methods=["POST"])
+def memory_not_contradicted():
+    """The author says what was said in front of others doesn't really contradict this memory."""
+    if not store.clear_contradictions((request.get_json() or {}).get("memory_id", "")):
+        return jsonify({"error": "nothing to clear"}), 400
+    store.save()
+    return jsonify({"ok": True, **snapshot()})
+
+
 @app.route("/api/memory/delete", methods=["POST"])
 def delete_memory():
     """Drop one memory (an invention you don't want kept)."""

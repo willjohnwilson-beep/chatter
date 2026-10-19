@@ -354,6 +354,10 @@ function memCard(m, opts = {}) {
     + ["moment", "days", "lasting"].map(v => `<option value="${v}"${v === life ? " selected" : ""}>${v}</option>`).join("") + `</select> `;
   const originBadge = m.origin === "offstage"
     ? `<span class="badge knows" title="Written from what this character did while out of sight">offstage</span>` : "";
+  const contradicted = (m.contradicted_in_play || []).length
+    ? `<div class="asof"><span class="badge warn" title="Something said in front of people who don't hold this memory cannot be true alongside it. Only you see this.">contradicted in play</span>
+        ${(m.contradicted_in_play || []).map(c => `${esc(c.speaker || "someone")}: “${esc(c.line)}”` + (c.why ? ` <span style="color:var(--dim)">(${esc(c.why)})</span>` : "")).join(" · ")}
+        <button class="small" onclick="notContradicted('${m.id}')">not a contradiction</button></div>` : "";
   const conflictLines = (m.conflicts_with || []).map(oid => {
     const o = MEMS.find(x => x.id === oid);
     return `<div class="asof"><span class="badge warn" title="These two cannot both be true. Confirm or delete one, or say they don't conflict.">conflicts with ${esc(oid)}</span> ${o ? esc(o.summary) : ""}
@@ -382,7 +386,7 @@ function memCard(m, opts = {}) {
     <div class="summary">${esc(m.summary)}</div>
     <div class="detail">${esc(m.detail)}</div>
     <div class="tags">${(m.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
-    ${asof}${conflictLines}${merged}${evidence}${versions}${reason}
+    ${asof}${contradicted}${conflictLines}${merged}${evidence}${versions}${reason}
     ${opts.noActions ? "" : `<div class="asof">${lifeSelect}${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
 }
 
@@ -404,6 +408,11 @@ function renderMemories() {
 }
 async function confirmMemory(id) {
   const d = await (await fetch("/api/memory/confirm", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }) })).json();
+  if (d.error) { alert(d.error); return; }
+  setMemories(d.memories);
+}
+async function notContradicted(id) {
+  const d = await (await fetch("/api/memory/not_contradicted", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }) })).json();
   if (d.error) { alert(d.error); return; }
   setMemories(d.memories);
 }

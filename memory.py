@@ -357,6 +357,7 @@ class MemoryStore:
             m.setdefault("lifetime_by", "")      # "author" once the author has set it by hand
             m.setdefault("origin", "")           # "offstage" for a memory written from a character's offstage notes
             m.setdefault("conflicts_with", [])   # ids of memories that cannot both be true with this one (author-facing only)
+            m.setdefault("contradicted_in_play", [])  # lines said in front of people who don't hold this memory that contradict it (author-facing only)
             m.setdefault("scene_no", 0)
             m.setdefault("kind", "person")
             m.setdefault("subject", PLAYER if m["kind"] == "person" else WORLD)
@@ -514,6 +515,14 @@ class MemoryStore:
         for m in self.memories:
             if memory_id in m.get("conflicts_with", []):
                 m["conflicts_with"] = [i for i in m["conflicts_with"] if i != memory_id]
+
+    def clear_contradictions(self, memory_id: str) -> bool:
+        """The author says what was said in front of others doesn't really contradict this memory."""
+        m = self.by_id(memory_id)
+        if m is None or not m.get("contradicted_in_play"):
+            return False
+        m["contradicted_in_play"] = []
+        return True
 
     def clear_conflict(self, a: str, b: str | None = None) -> bool:
         """The author says it isn't a conflict: drop the link between `a` and `b`, or all of a's."""
@@ -673,6 +682,7 @@ class MemoryStore:
                 "lifetime_by": "author" if any(s.get("lifetime_by") == "author" for s in sources) else "",
                 "scene_no": max(s.get("scene_no", 0) for s in sources),
                 "conflicts_with": list(dict.fromkeys(c for s in sources for c in s.get("conflicts_with", []) if c not in ids)),
+                "contradicted_in_play": [f for s in sources for f in s.get("contradicted_in_play", [])],
                 "as_of": newest.get("as_of", ""),
                 "places": [p for p in dict.fromkeys(p for s in sources for p in s.get("places") or [])][-MAX_PLACES:],
                 "source": best,
@@ -1104,46 +1114,69 @@ def form_offstage(store: MemoryStore, cid: str, notes: list[dict], model: str,
     return applied, llm.usage(response)
 
 
-CROSS_CONFLICT_SCHEMA = {
+CROSS_LINES_SCHEMA = {
     "type": "object",
-    "properties": {"conflicts": {"type": "array", "items": {
+    "properties": {"contradictions": {"type": "array", "items": {
         "type": "object",
-        "properties": {"new_id": {"type": "string"}, "existing_id": {"type": "string"}},
-        "required": ["new_id", "existing_id"], "additionalProperties": False}}},
-    "required": ["conflicts"],
+        "properties": {"memory_id": {"type": "string"}, "line_quote": {"type": "string"}, "memory_quote": {"type": "string"}, "why": {"type": "string"}},
+        "required": ["memory_id", "line_quote", "memory_quote", "why"], "additionalProperties": False}}},
+    "required": ["contradictions"],
     "additionalProperties": False,
 }
 
 
-def cross_conflicts(store: MemoryStore, new: list[dict], audience: list[str], all_ids: list[str] | None,
-                    model: str) -> tuple[int, dict]:
-    """Flag, for the author, new memories that contradict memories the audience they were written for
-    cannot see (a private memory against a public account, say). Formation can't notice these: it is only
-    shown what its audience knows. This call is shown both, but it answers in ids alone and its answer goes
-    only into the author's conflict flags, so no character can ever be told what it saw."""
-    fresh = [m for m in (store.by_id(n["id"]) for n in new) if m]
-    fresh_ids = {m["id"] for m in fresh}
-    hidden = [m for m in store.memories if m["id"] not in fresh_ids and not known_to_all(m, audience, all_ids)]
-    if not fresh or not hidden:
+def _cross_lines_prompt(spoken: list[dict], hidden: list[dict], names: dict) -> str:
+    return (
+        "You help the author of a roleplay keep its facts consistent. Below are LINES that everyone present just heard, then MEMORIES that only "
+        "some of the characters hold. List a memory ONLY if a line FLATLY CONTRADICTS it: the two cannot both be true (where someone is, what "
+        "happened, what is locked or open, who did what). A line that doesn't mention it, adds to it, or comes from someone who doesn't know "
+        "is not a contradiction by itself; a character lying or mistaken IS one if what they say cannot be true alongside the memory. For each, "
+        "give `line_quote` (the exact words from the line) and `memory_quote` (the exact words from the memory) that cannot both be true, each "
+        "a short phrase, and `why` (one sentence: how, at the same moment, can both be true? they cannot). An empty list is the normal answer."
+        # Measured on seven cases that look like conflicts and aren't: without this, a refinement was flagged 10 times in 10 and 12 of
+        # 70 clean pairs were falsely flagged; with it, 4 of 70, while still catching 36 to 38 of 40 real ones.
+        "\n\nThese are NOT contradictions: someone saying they don't know, haven't seen, or have no idea about it (ignorance is not denial); a "
+        "line about a different time ('last winter', 'earlier', 'before') when the memory is about now or another time; more detail or a more "
+        "specific description of the same thing (a refinement: 'translator' and 'does contracts and legal documents' can both be true); and a "
+        "different fact about the same place or thing (the Vault being padlocked says nothing about where its key is). Only list a pair when, "
+        "if both were true at the same moment, the world would be inconsistent.\n\n"
+        "LINES:\n" + "\n".join(_line(l, names) for l in spoken) + "\n\n"
+        "MEMORIES:\n" + "\n".join(f"- {m['id']}: {m['detail']}" for m in hidden) + "\n")
+
+
+def cross_lines(store: MemoryStore, lines: list[dict], audience: list[str], all_ids: list[str] | None, model: str,
+                names: dict | None = None) -> tuple[int, dict]:
+    """Flag, for the author, a memory the audience can't see that something they just said in front of each other
+    contradicts. Formation can't notice these: it is only shown what its audience knows, and it may write no memory
+    for the line at all (a memory-to-memory comparison of what it wrote caught a character's own memory only 3 times in
+    10, and falsely flagged a refinement 8 times in 10, so it was dropped for this). The model here sees what the
+    audience can't, but its answer goes only into the author's flags, so nothing it saw can reach a character. Each
+    flag must quote the line AND the memory, both checked against the real text and short enough to be a specific clash."""
+    names = names or {}
+    spoken = [l for l in lines if l.get("kind") not in _NOTICE and str(l.get("content") or "").strip()]
+    hidden = [m for m in store.memories if not known_to_all(m, audience, all_ids)]
+    if not spoken or not hidden:
         return 0, llm.zero_usage()
-    fmt = lambda ms: "\n".join(f"- {m['id']}: {m['detail']}" for m in ms)
-    prompt = (
-        "You help the author of a roleplay keep its facts consistent. Below are NEW memories and EXISTING memories. "
-        "List every pair (one new, one existing) that cannot both be true: two accounts of the same moment or the same "
-        "standing fact that disagree. A refinement, an addition, an agreement, or something that changed over time is not "
-        "a conflict, and different people knowing different things is not a conflict unless what they hold disagrees. "
-        "Answer with ids only. An empty list is normal.\n\n"
-        f"NEW:\n{fmt(fresh)}\n\nEXISTING:\n{fmt(hidden)}\n"
-    )
+    prompt = _cross_lines_prompt(spoken, hidden, names)
     response = llm.client().messages.create(**llm.params(
-        model, max_tokens=500, messages=[{"role": "user", "content": prompt}],
-        output_config={"format": {"type": "json_schema", "schema": CROSS_CONFLICT_SCHEMA}}))
-    hidden_ids = {m["id"] for m in hidden}
-    linked = 0
-    for c in json.loads(llm.text(response))["conflicts"]:
-        if c["new_id"] in fresh_ids and c["existing_id"] in hidden_ids:
-            linked += len(store.link_conflicts(c["new_id"], [c["existing_id"]]))
-    return linked, llm.usage(response)
+        model, max_tokens=800, messages=[{"role": "user", "content": prompt}],
+        output_config={"format": {"type": "json_schema", "schema": CROSS_LINES_SCHEMA}}))
+    by_id = {m["id"]: m for m in hidden}
+    flagged = 0
+    for c in json.loads(llm.text(response))["contradictions"]:
+        m = by_id.get(c["memory_id"])
+        lq, mq = _norm(c["line_quote"]), _norm(c["memory_quote"])
+        if m is None or not (3 <= len(lq.split()) <= 25 and 3 <= len(mq.split()) <= 25):
+            continue
+        line = next((l for l in spoken if lq in _norm(l["content"])), None)
+        if line is None or mq not in _norm(m["detail"]):
+            continue                                   # a quote that isn't really there is not shown
+        flags = m.setdefault("contradicted_in_play", [])
+        if not any(_norm(f["line"]) == lq for f in flags):
+            flags.append({"line": str(c["line_quote"]).strip(), "speaker": names.get(line.get("speaker"), line.get("speaker", "")),
+                          "t": line.get("t", ""), "why": " ".join(str(c.get("why") or "").split())[:240]})
+            flagged += 1
+    return flagged, llm.usage(response)
 
 
 CONSOLIDATION_SCHEMA = {

@@ -70,8 +70,8 @@ class Fake:
             kind = "offscreen"
         elif "remembers from their time away" in first:
             kind = "offstage"
-        elif "keep its facts consistent" in first:
-            kind = "crossconf"
+        elif "LINES that everyone present just heard" in first:
+            kind = "crosslines"
         elif "You draft a complete scenario" in first:
             kind = "draft"
         elif "You add to a roleplay scenario" in first:
@@ -87,7 +87,8 @@ class Fake:
             return text_resp(json.dumps({"updates": []}) if kind == "watch"
                              else json.dumps({"discovered": []}) if kind == "discover"
                              else json.dumps({"memories": []}) if kind == "offstage"
-                             else json.dumps({"conflicts": []}) if kind == "crossconf" else f"reply-{self.n}")
+                             else json.dumps({"contradictions": []}) if kind == "crosslines"
+                             else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
 
@@ -2733,7 +2734,7 @@ addmem(store, "mem_0001", PUB, ["*"])
 c.history = lines(("player", "Where is Sam?", ROOM), ("mick", "Sam is on the docks", ROOM))
 f = install(form={"operations": [FORM_OP], "session_summary": "SHARED-SUMMARY"}, omni="OMNI")
 c.flush("claude-haiku-5-5")
-assert "form" in f.kinds() and "omni" not in f.kinds() and "crossconf" not in f.kinds(), f.kinds()
+assert "form" in f.kinds() and "omni" not in f.kinds() and "crosslines" not in f.kinds(), f.kinds()
 pr = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
 assert PUB in pr and "WHO CAN KNOW THIS" not in pr, "all public: the old combined pass"
 assert store.session_summary == "SHARED-SUMMARY" and store.summary_audience == ["mick", "sam", "wren"]
@@ -2750,27 +2751,25 @@ addmem(store, "mem_0001", PUB, ["*"])
 addmem(store, "mem_0002", PRIV, ["wren"])
 c.history = lines(("player", "Where is Sam?", ROOM), ("mick", "Sam is on the docks", ROOM))
 f = install(form={"operations": [FORM_OP], "session_summary": "IGNORED-SUMMARY"}, omni="OMNI-SUMMARY",
-            crossconf={"conflicts": [{"new_id": "mem_0003", "existing_id": "mem_0002"}, {"new_id": "mem_0003", "existing_id": "mem_0001"},
-                                     {"new_id": "mem_9999", "existing_id": "mem_0002"}]})
+            crosslines={"contradictions": [{"memory_id": "mem_0002", "line_quote": "Sam is on the docks", "memory_quote": "Alex told Wren privately that he is leaving",
+                                            "why": "he cannot be both leaving and on the docks"}]})
 c.flush("claude-haiku-5-5")
 pr = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
 assert PUB in pr and "PRIVATE-FACT" not in pr and "Rotterdam" not in pr, "the pass is not shown the private memory"
 assert "WHO CAN KNOW THIS" in pr and "(not provided for this pass)" in pr, "nor the omniscient summary"
 assert "omni" in f.kinds() and store.session_summary == "OMNI-SUMMARY", "the shared summary comes from its own pass"
-assert f.kinds().count("crossconf") == 1
-cp = next(kw for k, kw in f.calls if k == "crossconf")["messages"][0]["content"]
-assert "Rotterdam" in cp and "PUBLIC-FACT" not in cp and "Sam is on the docks" in cp, "the author-side check sees the hidden one and the new one only"
-assert store.by_id("mem_0003")["conflicts_with"] == ["mem_0002"] and store.by_id("mem_0002")["conflicts_with"] == ["mem_0003"], \
-    "only a hidden memory can be flagged, and unknown ids are ignored"
-assert store.by_id("mem_0001").get("conflicts_with", []) == [], "a memory the group already knew was in view of the pass: not this check's job"
-assert "Rotterdam" not in store.by_id("mem_0003")["detail"], "its answer was ids only"
+assert f.kinds().count("crosslines") == 1 and "crossconf" not in f.kinds()
+cp = next(kw for k, kw in f.calls if k == "crosslines")["messages"][0]["content"]
+assert "Rotterdam" in cp and "PUBLIC-FACT" not in cp and "Sam is on the docks" in cp, "the author-side check sees the hidden memory and the lines, not what the room already knows"
+assert store.by_id("mem_0002")["contradicted_in_play"][0]["speaker"] == "Mick" and not store.by_id("mem_0001").get("contradicted_in_play"), "only a hidden memory can be flagged"
+assert "Rotterdam" not in store.by_id("mem_0003")["detail"], "what it saw never reached a memory the room holds"
 # it must not break formation when it fails
 store, world, c = trio()
 addmem(store, "mem_0002", PRIV, ["wren"])
 c.history = lines(("player", "Where is Sam?", ROOM), ("mick", "Sam is on the docks", ROOM))
 def boom(kw):
     raise RuntimeError("down")
-f = install(form={"operations": [FORM_OP], "session_summary": "s"}, omni="OMNI", crossconf=boom)
+f = install(form={"operations": [FORM_OP], "session_summary": "s"}, omni="OMNI", crosslines=boom)
 formed, count, _ = c.flush("claude-haiku-5-5")
 assert count == 2 and len(formed) == 1, "formation went ahead"
 
@@ -2797,12 +2796,9 @@ json.dump({"memories": [], "session_summary": "old summary", "next_id": 1}, open
 assert not memory.MemoryStore(os.path.join(tmp, "oldsa.json")).summary_safe_for(["wren"]), "an older store with a summary: assume the worst"
 json.dump({"memories": [], "session_summary": "", "next_id": 1}, open(os.path.join(tmp, "oldsb.json"), "w"))
 assert memory.MemoryStore(os.path.join(tmp, "oldsb.json")).summary_safe_for(ROOM), "an empty one is fine"
-# the check does nothing when nothing is hidden, and the routes reset it
+# the routes reset it
 store, world, c = trio()
 addmem(store, "mem_0001", PUB, ["*"])
-f = install(crossconf={"conflicts": [{"new_id": "mem_0002", "existing_id": "mem_0001"}]})
-store.memories.append(dict(store.memories[0], id="mem_0002"))
-assert memory.cross_conflicts(store, [store.by_id("mem_0002")], list(ROOM), list(ROOM), "claude-haiku-5-5")[0] == 0 and f.calls == [], "nothing hidden: no call"
 import app as appmod
 
 store.session_summary, store.summary_audience = "S", ["wren"]
@@ -3483,6 +3479,49 @@ for kind, off in (("places", {"places": [{"name": "Far Keep", "brief": "", "desc
 f = install(draft_section=sect)
 scen.draft_section("reserved", CTX, "", "m")
 assert len(f.calls) == 1, "kept-open topics are free text: never retried"
+# a hint that shares words with its own fact is pointing at it: redrafted, and flagged if it persists
+assert scen.hint_gives_away("The sand beneath the blankets is cooler than the sand nearby.", "A cache is buried beneath the saddle blankets in the sand.")
+assert not scen.hint_gives_away("A faint chalky taste lingers in the air.", "A cache is buried beneath the saddle blankets in the sand.")
+assert not scen.hint_gives_away("", "anything at all about blankets") and not scen.hint_gives_away("a draught", "")
+POINTS = {"secrets": [{"place": "The Kitchen", "text": "A bundle of letters is hidden beneath the stove's iron plate.", "how": "lifting it",
+                       "hint": "The iron plate beneath the stove stays warm all night.", "known_by": []}]}
+f = install(draft_section=POINTS)
+it, wn, _ = scen.draft_section("secrets", CTX, "", "m")
+assert len(f.calls) == 3 and any("may not belong" in w_ for w_ in wn), "a hint that points at its fact is retried, then flagged"
+VAGUE = {"secrets": [{**POINTS["secrets"][0], "hint": "A warmth that lingers in the room long after the fire is out."}]}
+f = install(draft_section=VAGUE)
+scen.draft_section("secrets", CTX, "", "m")
+assert len(f.calls) == 1, "a hint with nothing shared is accepted first time"
+w_leak = {**world_d, "locations": [{**world_d["locations"][2], "secrets": [{**world_d["locations"][2]["secrets"][0], "hint": "A ledger of wrecked ships rustles under the boards."}]}] + world_d["locations"][:2]}
+assert any("shares words with its hidden fact" in x for x in scen.leaks(w_leak)), "a creator draft whose hint repeats its fact is flagged"
+# the channel for each hint is chosen by the code, different per hint
+assert len(set(scen.hint_channels(3))) == 3 and all(c in scen.HINT_CHANNELS for c in scen.hint_channels(3))
+f = install(draft_section=sect)
+scen.draft_section("secrets", CTX, "", "m")
+assert "Build the hint around: " in next(kw for k, kw in f.calls if k == "draft_section")["messages"][0]["content"]
+f = install(draft=staged(DRAFT))
+scen.draft("x", "m")
+p3 = [kw["messages"][0]["content"] for k, kw in f.calls if k == "draft"][2]
+assert "Give each hint a different sense: the first around" in p3 and "the third around" in p3, "the creator's hints get three different senses"
+# a provider that comes back empty is asked again; only a run of failures reaches the author
+flaky = {"n": 0}
+
+
+def flaky_then_ok(kw):
+    flaky["n"] += 1
+    if flaky["n"] <= 2:
+        raise llm.LLMError("deepseek/x returned nothing (finish_reason=stop)")
+    return REPLIES["reserved"]
+
+
+f = install(draft_section=flaky_then_ok)
+assert scen.draft_section("reserved", CTX, "", "m")[0] and len(f.calls) == 3, "two empty replies, then it worked"
+f = install(draft_section=lambda kw: (_ for _ in ()).throw(llm.LLMError("returned nothing")))
+try:
+    scen.draft_section("reserved", CTX, "", "m")
+    raise SystemExit("hid a provider failure")
+except llm.LLMError:
+    assert len(f.calls) == 3, "three tries, then the real error"
 # repeating a name already in the scenario counts as repeating it: asked again, and warned if it persists
 for kind, dup in (("presets", {"presets": [{"name": "Dawn", "premise": "p", "opening": "(o)", "place": "The Kitchen", "cast": []}]}),
                   ("characters", {"characters": [{**ON, "name": "Mara"}]}),
@@ -3492,6 +3531,105 @@ for kind, dup in (("presets", {"presets": [{"name": "Dawn", "premise": "p", "ope
     assert len(f.calls) == 3 and any("already" in w_ for w_ in wn) and any("may not belong" in w_ for w_ in wn), f"{kind}: a reused name is retried, then flagged"
 f = install(draft_section={"presets": [{"name": "Dusk", "premise": "p", "opening": "(o)", "place": "The Kitchen", "cast": []}]})
 assert scen.draft_section("presets", CTX, "", "m")[0][0]["name"] == "Dusk" and len(f.calls) == 1, "a new name is fine"
+print("   PASS")
+
+# ------------------------------------------------------------------ 92
+print("== 92. a public line that contradicts a memory the room can't see is flagged, with quotes, for the author only ==")
+PRIV92 = "Alex told Wren privately that the Vault key is hidden in the bait shop on the quay."
+HID = [{"speaker": "mick", "content": "The Vault key went down with the ferry company in the flood, everyone knows that.", "t": "Thursday 15 October 2026, 9pm", "present": list(ROOM)},
+       {"speaker": "sam", "content": "I'll have another pint.", "t": "Thursday 15 October 2026, 9pm", "present": list(ROOM)},
+       {"speaker": "narrator", "content": "(Rain starts on the windows.)", "kind": "move", "t": "Thursday 15 October 2026, 9pm", "present": list(ROOM)}]
+GOOD92 = {"memory_id": "mem_0001", "line_quote": "The Vault key went down with the ferry company", "memory_quote": "the Vault key is hidden in the bait shop",
+          "why": "the key cannot be both lost in the flood and hidden in the bait shop"}
+NM92 = {"mick": "Mick", "sam": "Sam", "wren": "Wren", "narrator": "Narrator", "player": "Alex"}
+
+
+def fresh92():
+    s_ = memory.MemoryStore(os.path.join(tmp, f"cl{_n[0]}.json"))
+    _n[0] += 1
+    addmem(s_, "mem_0001", PRIV92, ["wren"])
+    addmem(s_, "mem_0002", PUB, ["*"])
+    return s_
+
+
+st92 = fresh92()
+f = install(crosslines={"contradictions": [GOOD92]})
+n_, use_ = memory.cross_lines(st92, HID, list(ROOM), list(ROOM), "claude-haiku-5-5", NM92)
+assert n_ == 1 and st92.by_id("mem_0001")["contradicted_in_play"] == [{"line": GOOD92["line_quote"], "speaker": "Mick", "t": "Thursday 15 October 2026, 9pm", "why": GOOD92["why"]}]
+pr = next(kw for k, kw in f.calls if k == "crosslines")["messages"][0]["content"]
+assert "Mick: The Vault key went down" in pr and PRIV92 in pr and "Rain starts" not in pr and PUB not in pr, "the lines it heard, the memories it can't see, no stage directions"
+assert "These are NOT contradictions" in pr and "ignorance is not denial" in pr and "a refinement" in pr and "`why`" in pr, "it is told what only looks like a conflict"
+# the same line twice is one flag; a second line is another
+assert memory.cross_lines(st92, HID, list(ROOM), list(ROOM), "m", NM92)[0] == 0 and len(st92.by_id("mem_0001")["contradicted_in_play"]) == 1
+# every way a flag can be unsound is dropped, not shown (the code checks the quotes are real and specific; whether two real quotes clash is the model's call)
+for bad in ({**GOOD92, "memory_id": "mem_0002"},                                  # a memory the room already knows
+            {**GOOD92, "memory_id": "mem_9999"},                                  # no such memory
+            {**GOOD92, "line_quote": "the key was never lost anywhere at all"},   # a line nobody said
+            {**GOOD92, "memory_quote": "the key is under the old pier"},          # words the memory doesn't contain
+            {**GOOD92, "line_quote": "Vault key"},                                # too short to be a specific clash
+            {**GOOD92, "memory_quote": " ".join(["the Vault key is hidden in the bait shop on the quay"] * 4)}):  # too long
+    s2 = fresh92()
+    install(crosslines={"contradictions": [bad]})
+    got = memory.cross_lines(s2, HID, list(ROOM), list(ROOM), "m", NM92)[0]
+    assert got == 0 and not s2.by_id("mem_0001").get("contradicted_in_play"), bad
+# nothing hidden, or nothing said: no call
+s3 = memory.MemoryStore(os.path.join(tmp, "cl_none.json"))
+addmem(s3, "mem_0001", PUB, ["*"])
+f = install(crosslines={"contradictions": [GOOD92]})
+assert memory.cross_lines(s3, HID, list(ROOM), list(ROOM), "m", NM92)[0] == 0 and f.calls == []
+f = install(crosslines={"contradictions": [GOOD92]})
+assert memory.cross_lines(fresh92(), [HID[2]], list(ROOM), list(ROOM), "m", NM92)[0] == 0 and f.calls == [], "only stage directions: nothing to read"
+
+# through formation: a public batch beside a private memory is read by the line check, and a failure doesn't stop formation
+store, world, c = trio()
+addmem(store, "mem_0001", PRIV92, ["wren"])
+c.history = [{"speaker": "player", "content": "Where is the Vault key?", "t": "T", "present": list(ROOM)},
+             {"speaker": "mick", "content": "The Vault key went down with the ferry company in the flood, everyone knows that.", "t": "T", "present": list(ROOM)}]
+f = install(form={"operations": [], "session_summary": "s"}, omni="OMNI", crosslines={"contradictions": [GOOD92]})
+formed, count, _ = c.flush("claude-haiku-5-5")
+assert "crosslines" in f.kinds() and count == 2
+assert store.by_id("mem_0001")["contradicted_in_play"][0]["speaker"] == "Mick", "flagged even though formation wrote no memory for the line"
+store, world, c = trio()
+addmem(store, "mem_0001", PRIV92, ["wren"])
+c.history = [{"speaker": "mick", "content": "The Vault key went down with the ferry company in the flood, everyone knows that.", "t": "T", "present": list(ROOM)}]
+def boom92(kw):
+    raise RuntimeError("down")
+f = install(form={"operations": [], "session_summary": "s"}, omni="OMNI", crosslines=boom92)
+assert c.flush("claude-haiku-5-5")[1] == 1, "formation went ahead"
+# all-public: the combined pass has nothing hidden, so there is no extra call
+store, world, c = trio()
+addmem(store, "mem_0001", PUB, ["*"])
+c.history = [{"speaker": "mick", "content": "The cellar door sticks.", "t": "T", "present": list(ROOM)}]
+f = install(form={"operations": [], "session_summary": "s"})
+c.flush("claude-haiku-5-5")
+assert "crosslines" not in f.kinds(), "nothing hidden: no call"
+
+# author-only: a flagged memory shows no trace in what a character is given, and the author can dismiss it
+store, world, c = make([WREN, MICK])
+fl = {"id": "mem_0001", "subject": "world", "kind": "canon", "known_by": ["wren"], "tags": ["x"], "summary": "key", "detail": PRIV92, "core": False,
+      "as_of": "", "versions": [], "places": [], "source": "player", "claimed_by": "", "evidence": "", "verified": True,
+      "contradicted_in_play": [{"line": "The Vault key went down with the ferry company", "speaker": "Mick", "t": "T"}]}
+store.memories = [fl]
+system, tail = c.build_context("wren", [{**fl, "stale": False}])
+assert "contradict" not in (system + tail).lower() and "ferry company" not in (system + tail), "the character is told nothing of the flag"
+assert PRIV92 in system + tail, "(the memory itself is still theirs)"
+import app as appmod
+
+appmod.store, appmod.world, appmod.chat_engine = store, world, c
+cl = appmod.app.test_client()
+assert cl.get("/api/state").get_json()["memories"][0]["contradicted_in_play"][0]["speaker"] == "Mick", "the author's view carries it"
+r = cl.post("/api/memory/not_contradicted", json={"memory_id": "mem_0001"})
+assert r.status_code == 200 and r.get_json()["memories"][0]["contradicted_in_play"] == []
+assert cl.post("/api/memory/not_contradicted", json={"memory_id": "mem_0001"}).status_code == 400 and cl.post("/api/memory/not_contradicted", json={"memory_id": "nope"}).status_code == 400
+# a merge keeps the flags
+s4 = memory.MemoryStore(os.path.join(tmp, "cl_merge.json"))
+addmem(s4, "mem_0001", "Alex is leaving.", ["wren"]); addmem(s4, "mem_0002", "Alex leaves next month.", ["wren"])
+s4.by_id("mem_0001")["contradicted_in_play"] = [{"line": "Alex isn't going anywhere", "speaker": "Sam", "t": "T"}]
+out4 = s4.apply_merges([{"source_ids": ["mem_0001", "mem_0002"], "tags": ["t"], "summary": "s", "detail": "d", "core": False, "why": "w"}], all_ids=["wren", "mick"])
+assert out4["merged"][0]["contradicted_in_play"][0]["speaker"] == "Sam"
+assert memory.MemoryStore(os.path.join(tmp, "oldc.json")).memories[0]["contradicted_in_play"] == [], "an older store loads with none"
+tmpl = ui_text()
+assert "notContradicted" in tmpl and "contradicted in play" in tmpl and "/api/memory/not_contradicted" in tmpl
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

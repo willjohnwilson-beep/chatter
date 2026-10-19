@@ -968,13 +968,13 @@ class Chatter:
                 )
                 formed += f
                 usage = add(usage, u)
-                # That pass could not see what its group doesn't know. Check what it wrote against those memories,
-                # for the author only: the answer is ids alone and goes nowhere a character can read it.
+                # That pass could not see what its group doesn't know, so what was said is read against those memories for the
+                # author: the answer is quotes and a reason, and goes nowhere a character can read it.
                 try:
-                    _, u = memory.cross_conflicts(self.store, f, sorted(g), char_ids, model)
+                    _, u = memory.cross_lines(self.store, lines, sorted(g), char_ids, model, names)
                     usage = add(usage, u)
-                except Exception:  # noqa: BLE001 - a missed flag must never break formation
-                    log.exception("cross-audience conflict check failed")
+                except Exception:  # noqa: BLE001
+                    log.exception("cross-audience line check failed")
             # The shared summary is omniscient by design (narrator only), so it
             # gets its own pass over everything rather than any one group's view.
             text, u = memory.summarize_for(

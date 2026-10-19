@@ -1,11 +1,11 @@
-"""Conflicts across audiences: the gap in in-formation flagging, and a prototype author-side pass.
+"""Conflicts across audiences: what formation can see, and the author-side check on the lines.
 
 Formation runs per audience and only sees memories that whole audience knows, so it cannot notice that a public
-account contradicts something only one character knows. This builds cases where the existing memory is known to a
-subset, then compares:
-  old  memory.form with no audience, which shows the model every memory (this leaked private facts, see exp_secretview.py)
-  app  Chatter.flush as it now runs: an audience-filtered view, plus an author-side pass against the memories the group
-       can't see, which answers in ids only
+line contradicts something only one character knows. Seven cases where it should be flagged or is close but should not
+(someone not knowing, a different time, a refinement, another fact about the same thing). Compared:
+  old          memory.form with no audience, which shows the model every memory (this leaked private facts, see exp_secretview.py)
+  via memory   Chatter.flush: a flag only when formation wrote a memory that names the hidden one (its `contradicts` field)
+  + line check the same, plus memory.cross_lines reading the lines against the memories the group can't see, quote-verified
 
 Run: M=<model> N=10 python tests/experiments/exp_crossaudience.py
 """
@@ -21,7 +21,7 @@ import chatter as ch
 import memory
 import state as st
 
-M = os.environ.get("M", "deepseek/deepseek-v4.1-flash")
+M =os.environ.get("M", "deepseek/deepseek-v4.1-flash")
 N = int(os.environ.get("N", "10"))
 NAMES = {"player": "Alex", "wren": "Wren", "mick": "Mick", "sam": "Sam", "world": "the world"}
 ALL = ["wren", "mick", "sam"]
@@ -55,6 +55,15 @@ CASES = [
      [L("mick", "I'll have another pint, Wren."), L("wren", "Coming right up.")], []),
     ("secret, agreeing", [mem(1, "mick", "Mick knows the cellar's back door is bolted from the inside.", ["mick"], "self", tags=["cellar"])],
      [L("wren", "I tried the cellar's back door earlier and it's bolted solid.")], []),
+    # harder negatives: things that look close to a conflict and are not
+    ("someone doesn't know", [mem(1, "world", "Wren knows Sam is at his mother's in Hull.", ["wren"], "self", tags=["sam", "hull"])],
+     [L("mick", "Sam? No idea where he's got to. Haven't seen him all week.")], []),
+    ("a different time", [mem(1, "world", "Wren knows the cellar's back door is bolted from the inside tonight.", ["wren"], "self", tags=["cellar"])],
+     [L("mick", "That back door was wide open all last winter, I kept shutting it.")], []),
+    ("a refinement", [mem(1, "world", "Alex told Wren privately that he works as a translator.", ["wren"], "player", tags=["alex"])],
+     [L("sam", "Alex does contracts and legal documents, mostly, from what he says.")], []),
+    ("same thing, other fact", [mem(1, "world", "Alex told Wren privately that the Vault key is hidden in the bait shop.", ["wren"], "player", tags=["vault"])],
+     [L("mick", "The Vault's been padlocked since the old man died, nobody gets in there.")], []),
 ]
 
 def one(args):
@@ -72,10 +81,14 @@ def one(args):
             c = ch.Chatter(store, world, path=os.path.join(tempfile.mkdtemp(), "c.json"))
             c.history = [dict(l) for l in lines]
             c.flush(M)
-        flagged = {c for m in store.memories for c in m.get("conflicts_with", [])} & {e["id"] for e in existing}
-        return label, cond, bool(set(expect) <= flagged) if expect else bool(flagged), None
+        ids = {e["id"] for e in existing}
+        linked = {c for m in store.memories for c in m.get("conflicts_with", [])} & ids          # via a memory formation wrote
+        by_line = {m["id"] for m in store.memories if m.get("contradicted_in_play")} & ids          # via the line itself
+        either = linked | by_line
+        hit = lambda got: bool(set(expect) <= got) if expect else bool(got)
+        return label, cond, hit(either), hit(linked), None
     except Exception as e:  # noqa: BLE001
-        return label, cond, None, f"{type(e).__name__}: {str(e)[:100]}"
+        return label, cond, None, None, f"{type(e).__name__}: {str(e)[:100]}"
 
 
 jobs = [(c[0], cond, i) for c in CASES for cond in ("old", "app") for i in range(N)]
@@ -84,13 +97,15 @@ with ThreadPoolExecutor(max_workers=6) as ex:
 
 print(f"model {M}, N={N} per case. 'flag' cases should be caught; 'no flag' cases should not.")
 print()
-print(f"{'case':28} {'expected':>9} {'old unfiltered':>15} {'the app now':>12}")
+print(f"{'case':28} {'expected':>9} {'old unfiltered':>15} {'app: via memory':>16} {'app: + line check':>18}")
 for label, _, _, expect in CASES:
     row = f"{label:28} {'flag' if expect else 'no flag':>9}"
-    for cond, w in (("old", 15), ("app", 12)):
-        rs = [r for r in res if r[0] == label and r[1] == cond and r[2] is not None]
-        row += f"{sum(r[2] for r in rs)}/{len(rs)}".rjust(w)
+    old = [r for r in res if r[0] == label and r[1] == "old" and r[2] is not None]
+    app = [r for r in res if r[0] == label and r[1] == "app" and r[2] is not None]
+    row += f"{sum(r[2] for r in old)}/{len(old)}".rjust(15)
+    row += f"{sum(r[3] for r in app)}/{len(app)}".rjust(16)
+    row += f"{sum(r[2] for r in app)}/{len(app)}".rjust(18)
     print(row)
 errs = [r for r in res if r[2] is None]
 print()
-print(f"errors: {len(errs)}", [e[3] for e in errs[:2]])
+print(f"errors: {len(errs)}", [e[4] for e in errs[:2]])

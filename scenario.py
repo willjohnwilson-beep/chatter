@@ -15,6 +15,7 @@ Nothing here touches the live world: the caller saves the result as a scenario, 
 """
 import copy
 import json
+import random
 import re
 
 import llm
@@ -86,7 +87,7 @@ STEP_SECRETS = OPENING + (
     "to one of the places. `text` is the fact, stated plainly; `how` how it could be found in play; `known_by` the characters "
     "who already know it (may be empty); `hint` a faint public atmospheric detail that carries NO information: it must not name "
     "or describe the thing, only a mood or a sensation ('a cold draught along the back wall'). Facts should follow from what is "
-    "already written and must not contradict it.\n\n"
+    "already written and must not contradict it. Give each hint a different sense: {channels}.\n\n"
     "PREMISE: {premise}\n\nTHE WORLD AND CAST:\n{world}\n"
 )
 
@@ -97,6 +98,12 @@ this those through under until very what when where which while will with would 
 
 def _words(text: str) -> set[str]:
     return {w for w in re.findall(r"[a-z']{5,}", (text or "").lower()) if w not in _STOP}
+
+
+def hint_gives_away(hint: str, fact: str) -> bool:
+    """A hint that shares two distinctive words with the fact it hides is pointing at it ('the sand beneath the blankets is cool'
+    for something buried under the saddle blankets). Cheap, and it can't catch a paraphrase, so the author still reads the hint."""
+    return len(_words(hint) & _words(fact)) >= 2
 
 
 def _find(name: str, index: dict[str, str]) -> str | None:
@@ -228,6 +235,8 @@ def leaks(world: dict) -> list[str]:
     out = []
     for p in world["locations"]:
         for s in p["secrets"]:
+            if hint_gives_away(s["hint"], s["text"]):
+                out.append(f"the hint at {p['name']} ({s['hint'][:50]}...) shares words with its hidden fact, so it may give it away")
             key = _words(s["text"])
             if len(key) < 3:
                 continue
@@ -257,15 +266,23 @@ def _call(prompt: str, schema: dict, model: str, enough, tries: int = 3):
     """One structured call, retried while the answer is too thin to use. Returns (data, usage)."""
     total = {"input_tokens": 0, "output_tokens": 0, "cost": 0.0}
     data: dict = {}
+    failed: Exception | None = None
     for _ in range(tries):
-        response = llm.client().messages.create(**llm.params(
-            model, step="character", max_tokens=6000, messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema", "schema": schema}}))
+        try:
+            response = llm.client().messages.create(**llm.params(
+                model, step="character", max_tokens=6000, messages=[{"role": "user", "content": prompt}],
+                output_config={"format": {"type": "json_schema", "schema": schema}}))
+        except llm.LLMError as e:  # a provider that came back empty or cut off: ask again rather than fail the author
+            failed = e
+            continue
+        failed = None
         u = llm.usage(response)
         total = {k: total[k] + u[k] for k in total}
         data = json.loads(llm.text(response))
         if enough(data):
             break
+    if failed is not None:
+        raise failed
     return data, total
 
 
@@ -282,7 +299,9 @@ def draft(premise: str, model: str) -> tuple[dict, list[str], dict]:
                      lambda d: len(d.get("characters") or []) >= 2)
     if len(cast.get("characters") or []) < 2:  # no point asking for hidden facts in a world with nobody in it
         raise ValueError(f"the draft is too thin to play: {len(cast.get('characters') or [])} character(s)")
-    secrets, u3 = _call(STEP_SECRETS.format(premise=premise, world=_describe(world, cast)), SECRETS_SCHEMA, model,
+    chans = hint_channels(3)
+    secrets, u3 = _call(STEP_SECRETS.format(premise=premise, world=_describe(world, cast),
+                                            channels="; ".join(f"the {o} around {c}" for o, c in zip(("first", "second", "third"), chans))), SECRETS_SCHEMA, model,
                         lambda d: len(d.get("secrets") or []) >= 1)
     by_place: dict[str, list[dict]] = {}
     for s in (secrets.get("secrets") or [])[:3]:  # at most three, however many it wrote
@@ -342,7 +361,8 @@ SECTION_WRITE = {
         "parentheses, `place` an existing place, and `cast` where each existing character is and what they are doing."),
     "reserved": (
         "WRITE: 2 or 3 topics the author keeps open (for example 'who built the vault'), each a name for something the scenario "
-        "raises and leaves unanswered. Name the topic only; never write an answer. None may repeat a topic already kept open."),
+        "raises and leaves unanswered. Name the topic only; never write an answer. None may repeat a topic already kept open. "
+        "If the author asks for a particular kind of topic, EVERY topic you write must be of that kind."),
     "secrets": (
         "WRITE: EXACTLY ONE hidden fact that nobody knows yet and that play could uncover, tied to one of the places (`place`, exact "
         "name). `text` is the fact, stated plainly; `how` how it could be found in play; `known_by` the existing characters who "
@@ -392,8 +412,29 @@ def describe_view(view: dict, secrets: bool = False) -> str:
     return "\n".join(lines)
 
 
+# A model left to choose the sense for a hint reaches for the same few (a draught, a ticking, a smell: 31 of 40 hints). Asking
+# it to avoid those only moved the habit (light and shadow took over), so the code picks the channel and the model builds on it.
+HINT_CHANNELS = (
+    "how the light falls or fails here",
+    "a taste in the air",
+    "how a particular object sits, hangs or feels under the hand",
+    "how animals or birds behave nearby",
+    "a sound that is missing, or oddly muffled",
+    "how voices carry in this place",
+    "something that is warmer or colder than it should be (not a draught)",
+    "a smell that belongs to this exact place",
+    "a small ordinary sound that doesn't quite fit",
+    "how the dust, damp or dirt lies",
+)
+
+
+def hint_channels(n: int) -> list[str]:
+    return random.sample(HINT_CHANNELS, min(n, len(HINT_CHANNELS)))
+
+
 def section_prompt(kind: str, view: dict, steer: str) -> str:
-    return (SECTION_OPENING + SECTION_WRITE[kind] + "\n\n"
+    write = SECTION_WRITE[kind] + (f" Build the hint around: {hint_channels(1)[0]}." if kind == "secrets" else "")
+    return (SECTION_OPENING + write + "\n\n"
             + (f"THE AUTHOR ASKS FOR: {steer}\n\n" if steer else "The author gave no steer: choose what the scenario most needs.\n\n")
             + "THE SCENARIO SO FAR:\n" + describe_view(view, secrets=(kind == "secrets")) + "\n")
 
@@ -444,7 +485,7 @@ def _grounded(kind: str, r, view: dict) -> bool:
     if kind == "presets":
         return known(r.get("place"))
     if kind == "secrets":
-        return known(r.get("place"))
+        return known(r.get("place")) and not hint_gives_away(str(r.get("hint") or ""), str(r.get("text") or ""))
     text = " ".join(str(r.get(k) or "") for k in ("persona", "status", "view_of_player", "relationship")).lower()
     return known(r.get("place")) or any(n and n in text for n in people | {p for p in places if len(p) >= 4})
 
