@@ -59,6 +59,8 @@ class Fake:
             kind = "bid"
         elif "Decide whether they GO to another place" in first:
             kind = "premove"
+        elif "Decide whether any of them SAYS they are going somewhere" in first:
+            kind = "moves"
         elif "You direct a roleplay scene" in first:
             kind = "director"
         elif "You track the current situation" in first:
@@ -97,6 +99,7 @@ class Fake:
                              else json.dumps({"contradictions": []}) if kind == "crosslines"
                              else json.dumps({"urge": 0, "cue": "", "why": ""}) if kind == "bid"
                              else json.dumps({"moves": False, "to": "", "companions": [], "why": ""}) if kind == "premove"
+                             else json.dumps({"moves": []}) if kind == "moves"
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
@@ -4624,6 +4627,119 @@ assert r.status_code == 200 and store.by_id(new["id"])["source"] == "claim", "de
 assert cl8.post("/api/memory/demote", json={"memory_id": new["id"]}).status_code == 400
 tmpl = ui_text()
 assert "observedBadge" in tmpl and "not a fact" in tmpl and "demoteMemory" in tmpl and "since contradicted" in tmpl and "/api/memory/demote" in tmpl
+print("   PASS")
+
+print("== 103. offstage rules: a spoken 'I'll go to X' is a tracked move, and an offstage note stays where the character is ==")
+
+
+def off_world():
+    store, world, c = make([WREN, MICK, SAM])
+    world.set_locations([
+        {"id": "kitchen", "name": "The Kitchen", "brief": "a kitchen", "description": "A kitchen with a pantry the size of a bedroom and a steel hatch.", "connects_to": ["salt-line"]},
+        {"id": "salt-line", "name": "The Salt Line", "brief": "a pub", "description": "A low pub with a long bar and a fireplace.", "connects_to": ["kitchen", "cellar"]},
+        {"id": "cellar", "name": "The Cellar", "brief": "a cellar", "description": "A damp cellar of kegs.", "connects_to": ["salt-line"]},
+        {"id": "vault", "name": "The Vault", "description": "A vault.", "locked": True},
+    ])
+    for cid, loc in (("wren", "kitchen"), ("mick", "kitchen"), ("sam", "salt-line")):
+        world.character(cid)["location"] = loc
+    world.scene["location"] = "kitchen"
+    return store, world, c
+
+
+MV = lambda *moves: {"moves": [{"id": i, "to": t, "why": "x"} for i, t in moves]}
+store, world, c = off_world()
+said = lambda *pairs: [{"speaker": sp, "content": txt, "private_to": None} for sp, txt in pairs]
+# only a line that sounds like going AND names something in the world is asked about
+f = install(moves=MV())
+assert c._announced_moves(MODELS, said(("wren", "I'll just stand here and think about things.")))[0] == [] and "moves" not in f.kinds(), "no going, no call"
+assert c._announced_moves(MODELS, said(("wren", "I'll go and have a little think.")))[0] == [] and "moves" not in f.kinds(), "going, but nothing in the world named: no call"
+c._announced_moves(MODELS, said(("wren", "I'll go and check the cellar.")))
+assert f.kinds().count("moves") == 1
+c._announced_moves(MODELS, said(("player", "I'll go to the cellar."), ("mick", "Stay here.")))
+assert f.kinds().count("moves") == 1, "the player's own line is not a character's; a line from someone not here is not asked"
+prompt = next(kw for k, kw in f.calls if k == "moves")["messages"][0]["content"]
+assert "- cellar: The Cellar, A damp cellar of kegs." in prompt and "- salt-line: The Salt Line" in prompt and "- kitchen:" not in prompt.split("PLACES")[1].split("PEOPLE")[0], \
+    "the places it could go (not the one they are in)"
+assert "vault" not in prompt.split("PLACES")[1].split("PEOPLE")[0].lower() and "a pantry the size of a bedroom" in prompt, "no locked place; the scene's own description, so a pantry is the kitchen"
+world.locations.append({"id": "room-blue", "name": "Blue Room", "brief": "a bedroom", "description": "", "connects_to": ["kitchen"]})
+n_before = f.kinds().count("moves")
+c._announced_moves(MODELS, said(("wren", "I'll nip up to the Blue Room and drop my bag.")))
+assert f.kinds().count("moves") == n_before + 1, "a four-letter place name ('Blue Room') opens the gate"
+world.locations[:] = [l for l in world.locations if l["id"] != "room-blue"]
+assert "- wren: Wren" in prompt and "- sam:" not in prompt and "Wren: I'll go and check the cellar." in prompt
+assert "something described inside the kitchen (a pantry) means the kitchen" in prompt and "a plan for later" in prompt and "going somewhere in the place they are already in" in prompt
+# the move is made, and the people left behind see them go
+store, world, c = off_world()
+install(director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, character="I'll go and check the cellar, back in five.", watch={"updates": []}, moves=MV(("wren", "cellar")), retrieve={"retrieved": []})
+r = c.turn("Anyone want to look in the cellar?", MODELS)
+assert world.character("wren")["location"] == "cellar" and world.present_ids() == ["mick"], "Wren is in the cellar now, out of the scene"
+assert [x["speaker"] for x in r["replies"]] == ["wren"] and c.history[1]["content"].startswith("I'll go and check"), "she spoke first"
+assert any(m.get("kind") == "depart" and m["content"] == "(Wren leaves for The Cellar.)" and m["present"] == ["mick", "wren"] for m in c.history), [m["content"] for m in c.history]
+assert world.character("wren")["arriving"] is False
+# bad answers change nothing
+for bad in (MV(("wren", "kitchen")), MV(("wren", "vault")), MV(("wren", "nowhere")), MV(("sam", "cellar")), MV(("mick", "cellar"))):
+    store, world, c = off_world()
+    install(moves=bad)
+    made, _ = c._announced_moves(MODELS, said(("wren", "I'll go and check the cellar.")))
+    assert made == [] and world.character("wren")["location"] == "kitchen" and world.character("mick")["location"] == "kitchen", bad
+store, world, c = off_world()
+install(moves=MV(("wren", "cellar"), ("wren", "salt-line")))
+made, _ = c._announced_moves(MODELS, said(("wren", "I'll go and check the cellar.")))
+assert made == [{"id": "wren", "to": "cellar"}], "each person at most once"
+# off, a private line and a failed call
+store, world, c = off_world()
+c.offstage_rules = False
+f = install(moves=MV(("wren", "cellar")), director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, character="I'll go and check the cellar.", watch={"updates": []}, retrieve={"retrieved": []})
+c.turn("Hm.", MODELS)
+assert "moves" not in f.kinds() and world.character("wren")["location"] == "kitchen", "switched off"
+store, world, c = off_world()
+f = install(moves=MV(("wren", "cellar")), character="I'll go and check the cellar.", watch={"updates": []})
+c.turn("Wren, a word.", MODELS, to="wren")
+assert "moves" not in f.kinds() and world.character("wren")["location"] == "kitchen", "a private line is not a public departure"
+store, world, c = off_world()
+install(moves=lambda kw: (_ for _ in ()).throw(llm.LLMError("down")), director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, character="I'll go and check the cellar.",
+        watch={"updates": []}, retrieve={"retrieved": []})
+r = c.turn("Hm.", MODELS)
+assert r["replies"] and world.character("wren")["location"] == "kitchen", "the turn goes on"
+
+# an offstage note is written from where the character is, knowing where the player is
+store, world, c = off_world()
+OFF = lambda note, loc="unchanged": {"note": note, "location": loc, "heading_here": False}
+f = install(offscreen=OFF("Counts the bottles behind the bar."))
+out, _ = c._offscreen_line("sam", "m")
+p0 = next(kw for k, kw in f.calls if k == "offscreen")["messages"][0]["content"]
+assert "The player is at: The Kitchen (A kitchen with a pantry the size of a bedroom and a steel hatch.)" in p0
+assert "They are NOT at the player's place. Never describe them there, in any part of it" in p0 and "the place they END the line" in p0
+c.offstage_rules = False
+f = install(offscreen=OFF("x"))
+c._offscreen_line("sam", "m")
+p1 = next(kw for k, kw in f.calls if k == "offscreen")["messages"][0]["content"]
+assert "NOT at the player's place" not in p1 and "The player is at: The Kitchen\n" in p1, "off: the old prompt"
+c.offstage_rules = True
+# a note that uses the player's place's words (and not their own place's) is asked for again with those words named; twice, it is dropped
+notes = iter([OFF("Takes stock of the pantry shelves and the hatch."), OFF("Wipes down the long bar.")])
+f = install(offscreen=lambda kw: next(notes))
+out, u = c._offscreen_line("sam", "m")
+assert out["note"] == "Wipes down the long bar." and f.kinds().count("offscreen") == 2, "asked again, and the second one stayed put"
+second = [kw for k, kw in f.calls][1]["messages"][0]["content"]
+assert "it used hatch, pantry, which belong to where the player is" in second, second[-300:]
+assert u["output_tokens"] == 4, "both calls are counted"
+f = install(offscreen=OFF("Counts the hatch and the pantry again."))
+out, _ = c._offscreen_line("sam", "m")
+assert out["note"] == "" and f.kinds().count("offscreen") == 2, "twice from the wrong place: no note this time"
+f = install(offscreen=OFF("Pokes the fireplace and listens at the long bar."))
+out, _ = c._offscreen_line("sam", "m")
+assert out["note"].startswith("Pokes the fireplace") and f.kinds().count("offscreen") == 1, "their own place's words are fine"
+c.offstage_rules = False
+f = install(offscreen=OFF("Takes stock of the pantry shelves."))
+out, _ = c._offscreen_line("sam", "m")
+assert out["note"] == "Takes stock of the pantry shelves." and f.kinds().count("offscreen") == 1, "off: no check"
+c.offstage_rules = True
+# an empty note leaves the character's last note in place
+world.character("sam")["offscreen"] = "Earlier note."
+install(offscreen=OFF("Counts the pantry jars."))
+c.tick_offscreen("m")
+assert world.character("sam")["offscreen"] == "Earlier note.", "nothing is written when the note is dropped"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

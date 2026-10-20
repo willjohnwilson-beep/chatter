@@ -47,6 +47,7 @@ import director
 import llm
 import memory
 import state as state_mod
+from scenario import _STOP as _EVERYDAY_WORDS, _words as _long_words
 from state import NARRATOR_ID, PLAYER_ID, WORLD_ID
 
 CONVERSATION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "conversation.json")
@@ -95,6 +96,28 @@ MOVE_SCHEMA = {
     "additionalProperties": False,
 }
 GENERIC_PLACE_WORDS = {"room", "house", "the", "upstairs", "downstairs"}   # too common in a line to mean a place on their own
+GOING_RE = re.compile(
+    r"\b(?:i'll|i will|i'm going|i am going|i'm off|i'm heading|i shall|going to|let me|off to|heading (?:to|for|off|out|over|down|up)|"
+    r"(?:pop|nip|head|step|wander|slip|run|dash|walk|go) (?:in|out|over|down|up|to|into|off|back)|go and|go (?:check|look|find|see|get|fetch))", re.I)
+MOVES_SCHEMA = {
+    "type": "object",
+    "properties": {"moves": {"type": "array", "items": {"type": "object", "properties": {
+        "id": {"type": "string"}, "to": {"type": "string"}, "why": {"type": "string"}},
+        "required": ["id", "to", "why"], "additionalProperties": False}}},
+    "required": ["moves"], "additionalProperties": False,
+}
+def gate_words(text: str) -> set:
+    """Words of a text that could name or describe a place (four letters or more, none of the everyday ones), to decide cheaply whether a line is
+    worth asking a model about."""
+    return {w for w in re.findall(r"[a-z]{4,}", (text or "").lower()) if w not in _EVERYDAY_WORDS and w not in GENERIC_PLACE_WORDS}
+
+
+def place_words(p: dict | None) -> set:
+    """What marks a place out: the words of its name (four letters or more) and the longer words of its description."""
+    p = p or {}
+    return gate_words(p.get("name", "")) | _long_words(p.get("description", "")) | _long_words(p.get("brief", ""))
+
+
 SPEAKER_MODES = ("director", "bids")   # who decides who speaks: one director call, or each character for themselves
 BID_SCHEMA = {
     "type": "object",
@@ -172,6 +195,7 @@ class Chatter:
         self.recall_tool = False
         self.max_speakers = MAX_SPEAKERS
         self.speaker_mode = "director"
+        self.offstage_rules = True   # offstage notes stay where the character is; spoken departures are tracked (see _announced_moves)
         self.place_ledger = True   # show what has been reported about a place to whoever is there (see _ledger_text)
         self.life_every = LIFE_EVERY
         self._life_count = 0
@@ -717,6 +741,56 @@ class Chatter:
             ids.append(NARRATOR_ID)
         return ids
 
+    def _announced_moves(self, models: dict, said: list[dict]) -> tuple[list[dict], dict]:
+        """A character who SAYS they are going somewhere ('I'll go and check the pantry') goes, whether or not the watcher notices: they
+        are moved to that place now, so they are out of the scene (and told so: 'Priya leaves for The Kitchen') and their life carries on
+        from there, instead of an offstage note inventing where they got to. Only a spoken line that sounds like going AND names something
+        about the world is asked about, and a destination that is part of a place (a pantry described in the kitchen) is that place.
+        Returns (the moves made, usage)."""
+        w = self.world
+        here = w.scene.get("location")
+        present = {c["id"]: c for c in w.characters if w.is_present(c)}
+        places = [p for p in w.locations if p["id"] != here and not p.get("locked")]
+        vocab = set()
+        for p in places:
+            vocab |= gate_words(p["name"]) | gate_words(p.get("description", "")) | gate_words(p.get("brief", ""))
+        lines = [m for m in said if m["speaker"] in present and not m.get("private_to") and GOING_RE.search(m["content"])
+                 and (gate_words(m["content"]) & vocab)]
+        if not lines or not places:
+            return [], llm.zero_usage()
+        spoke = "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in said if m["speaker"] in present and not m.get("private_to"))
+        prompt = (
+            f"People in a roleplay scene have just spoken. The scene is at {w.place_name(here)}"
+            + (f" ({w.current_location().get('description', '').strip()})" if w.current_location() and w.current_location().get("description") else "")
+            + ". Decide whether any of them SAYS they are going somewhere else right now.\n\nPLACES (id: name, description):\n"
+            + "\n".join(f"- {p['id']}: {p['name']}" + (f", {p['description'].strip()}" if p.get("description") else "") for p in places)
+            + "\n\nPEOPLE HERE (id, name):\n" + "\n".join(f"- {cid}: {c['name']}" for cid, c in present.items())
+            + f"\n\nWHAT THEY JUST SAID:\n{spoke}\n\nRULES:\n"
+            "- A move is a person saying THEY are going, setting off or heading to a place now ('I'll go and check the pantry', 'right, off to "
+            "the library'), or plainly leaving for somewhere. `to` is the id of the place, and a part of a place counts as that place: "
+            "something described inside the kitchen (a pantry) means the kitchen.\n"
+            "- NOT a move: a plan for later ('after dinner we should check the pantry'), a suggestion or an order for someone else, a wish, "
+            "a question, a visit already made, going somewhere in the place they are already in, or a place that is not one of those listed.\n"
+            "- Each person at most once. If nobody moves, return an empty list.\nAnswer in JSON.\n"
+        )
+        schema = {**MOVES_SCHEMA, "properties": {"moves": {**MOVES_SCHEMA["properties"]["moves"], "items": {**MOVES_SCHEMA["properties"]["moves"]["items"], "properties": {
+            "id": {"type": "string", "enum": list(present)}, "to": {"type": "string", "enum": [p["id"] for p in places]}, "why": {"type": "string"}}}}}}
+        response = llm.client().messages.create(**llm.params(
+            models["state"], max_tokens=300, messages=[{"role": "user", "content": prompt}],
+            output_config={"format": {"type": "json_schema", "schema": schema}}))
+        got = json.loads(llm.text(response)).get("moves") or []
+        spoke_ids = {m["speaker"] for m in lines}
+        made, seen = [], set()
+        for mv in got:
+            cid, to = mv.get("id"), mv.get("to")
+            if cid in seen or cid not in present or cid not in spoke_ids or to == here or not w.can_enter(to):
+                continue
+            seen.add(cid)
+            present[cid]["location"] = to
+            present[cid]["arriving"] = False
+            made.append({"id": cid, "to": to})
+        return made, llm.usage(response)
+
     def _premove(self, models: dict, message: str) -> dict | None:
         """Does the player's own line take them to another place? If so the scene goes there NOW, before anyone answers, so the replies
         come from the people in the room they have walked into. (The watcher used to decide this after the replies, from an exchange
@@ -992,7 +1066,9 @@ class Chatter:
             f"What you wrote before, oldest first:\n{before}\n"
             f"The time now: {w.scene.get('fiction_time') or '(unknown)'}\n"
             f"Places nearby: {options}\n"
-            f"The player is at: {scene_place['name'] if scene_place else '(unknown)'}\n\n"
+            f"The player is at: {scene_place['name'] if scene_place else '(unknown)'}"
+            + (f" ({scene_place['description'].strip()[:240]})" if self.offstage_rules and scene_place and (scene_place.get("description") or "").strip() else "")
+            + "\n\n"
             f"WHAT {c['name'].upper()} HAS SEEN AND HEARD LATELY (their own view):\n"
             f"{seen or '(nothing in particular)'}\n{recent}\n\n"
             + (said_here + "\n\n" if said_here else "") +
@@ -1014,7 +1090,10 @@ class Chatter:
             "the player, or react to the scene.\n"
             "- Use only what they could know, and don't invent facts about other "
             "people.\n"
-            f"{reserved_rule}"
+            + ("- They are NOT at the player's place. Never describe them there, in any part of it (the description above says what it has), "
+               "or as having just been there; if they are on their way to it, say so with `heading_here` instead. And keep to where they are: the "
+               "line describes what they are doing at the place they END the line, never somewhere else.\n" if self.offstage_rules else "")
+            + f"{reserved_rule}"
             "Reply in the JSON format asked for."
         )
         schema = {
@@ -1027,15 +1106,30 @@ class Chatter:
             "required": ["note", "location", "heading_here"],
             "additionalProperties": False,
         }
-        response = llm.client().messages.create(
-            **llm.params(
-                model, max_tokens=300, messages=[{"role": "user", "content": prompt}],
-                output_config={"format": {"type": "json_schema", "schema": schema}},
+        # A note that uses words belonging to the player's place and not to theirs ('pantry', 'hatch') is written from the wrong place: it is asked
+        # for again with those words named, and dropped (the last note stands) if it still does.
+        strays = (place_words(scene_place) - place_words(place)) if self.offstage_rules and scene_place else set()
+        total = llm.zero_usage()
+        out, used = {}, set()
+        for attempt in range(2):
+            asked = prompt if attempt == 0 else prompt + (
+                "\n\nYour last attempt was written from the wrong place: it used " + ", ".join(sorted(used)) + ", which belong to where the player is. "
+                "Write it again at the place they are, without those words or anything like them.")
+            response = llm.client().messages.create(
+                **llm.params(
+                    model, max_tokens=300, messages=[{"role": "user", "content": asked}],
+                    output_config={"format": {"type": "json_schema", "schema": schema}},
+                )
             )
-        )
-        out = json.loads(llm.text(response))
-        out["note"] = " ".join(str(out.get("note", "")).split()).lstrip(" ,;:.-")[:240]
-        return out, llm.usage(response)
+            total = {k: total[k] + llm.usage(response)[k] for k in total}
+            out = json.loads(llm.text(response))
+            out["note"] = " ".join(str(out.get("note", "")).split()).lstrip(" ,;:.-")[:240]
+            used = strays & gate_words(out["note"])
+            if not used:
+                break
+        else:
+            out["note"] = ""
+        return out, total
 
     def tick_offscreen(self, model: str) -> dict:
         """Refresh the offscreen note of each active character who is out of
@@ -1527,7 +1621,14 @@ class Chatter:
 
         said = [{"speaker": m["speaker"], "content": m["content"], "private_to": m.get("private_to")}
                 for m in self.history[start:]]
+        u_moves = llm.zero_usage()
+        if self.offstage_rules and not private:
+            try:   # someone who says they are off somewhere is moved there now; the watcher then sees where everyone is
+                _, u_moves = self._announced_moves(models, said)
+            except Exception:
+                log.exception("announced moves failed")
         changes, u_state = self.world.watch(said, models["state"], present=audience)
+        u_state = {k: u_state[k] + u_moves[k] for k in u_state}   # the state model's work: where everyone is
         found, u_disc = [], llm.zero_usage()
         try:
             found, u_disc = self._discover(said, old_loc, audience, models["state"])
