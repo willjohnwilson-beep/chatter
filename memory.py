@@ -433,9 +433,9 @@ class MemoryStore:
                 if visible_to(m, viewer) and not (exclude_core and m.get("core"))]
 
     def index_view(self, exclude_core: bool = False, viewer: str | None = None,
-                   names: dict | None = None) -> str:
+                   names: dict | None = None, exclude_ids: set | None = None) -> str:
         """Cheap view for retrieval: id, subject, tags, one-line summary."""
-        pool = self.pool(viewer, exclude_core)
+        pool = [m for m in self.pool(viewer, exclude_core) if m["id"] not in (exclude_ids or ())]
         if not pool:
             return "(no memories yet)"
         def head(m):
@@ -592,6 +592,8 @@ class MemoryStore:
             # would tell the old knowers something only the new ones witnessed.
             if existing and not _same_audience(existing, knowers, all_ids):
                 existing = None
+            if existing and existing.get("origin") == "place":
+                existing = None  # a place's description is the author's: a pass over the conversation records a new claim beside it
             if op["action"] == "update" and existing:
                 # An update overwrites. Keep what it replaces so a bad edit is
                 # visible and recoverable rather than silently destructive.
@@ -752,9 +754,11 @@ def retrieve(
     `now` is the in-fiction time: a memory that has aged out (see is_stale) is
     still returned if picked, but behind any fresh one when the cap bites, and
     flagged `stale` so it is shown as possibly out of date."""
-    candidates = store.pool(viewer, exclude_core=True)
+    # The place the scene is in is already in the prompt, described as it is perceived; its memory is for when it isn't.
+    candidates = [m for m in store.pool(viewer, exclude_core=True) if not (m.get("origin") == "place" and m.get("place_id") == place)]
     if not candidates:
         return [], llm.zero_usage()
+    in_prompt = {m["id"] for m in store.pool(viewer, exclude_core=True)} - {m["id"] for m in candidates}
 
     names = names or {}
     who = names.get(viewer, "the character") if viewer else "the narrator"
@@ -788,7 +792,7 @@ def retrieve(
         f"Facts {who} always has in mind are listed separately for context. Do "
         "not return those; choose only from CANDIDATES.\n\n"
         f"ALWAYS IN MIND:\n{store.core_view(viewer)}\n\n"
-        f"CANDIDATES:\n{store.index_view(exclude_core=True, viewer=viewer, names=names)}\n\n"
+        f"CANDIDATES:\n{store.index_view(exclude_core=True, viewer=viewer, names=names, exclude_ids=in_prompt)}\n\n"
         f"RECENT CONVERSATION:\n{recent}\n\n"
         f"WHAT WAS JUST SAID:\n{message}\n"
     )
@@ -1232,6 +1236,8 @@ def consolidate(store: MemoryStore, model: str, names: dict | None = None,
     names = names or {}
     groups: dict[tuple, list[dict]] = {}
     for m in store.memories:
+        if m.get("origin") == "place":
+            continue  # authored; never merged into anything else
         kb = m.get("known_by") or [ANYONE]
         key = tuple(sorted(set(all_ids or []) if ANYONE in kb else set(kb)))
         groups.setdefault(key, []).append(m)

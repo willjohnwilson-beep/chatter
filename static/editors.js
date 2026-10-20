@@ -332,6 +332,8 @@ function placeCardHtml(l, idx) {
       <input type="text" class="p-brief" value="${esc(l.brief || "")}"></div>
     <div class="field"><label>Description (what anyone there is told)</label>
       <textarea class="p-desc multi">${esc(l.description || "")}</textarea></div>
+    <div class="field"><label title="Someone who is somewhere else knows this place only if they have been told or have been there. Anyone who spends time here learns it.">Known from the start to</label>
+      ${placeKnownBoxes(l)}</div>
     ${EDIT.live ? `<div class="field"><label>Condition right now<span class="changed p-ch-state"></span></label>
       <input type="text" class="p-state" value="${esc(l.state || "")}" placeholder="kept current by the watcher: lighting, damage, crowd"></div>` : ""}
     <div class="field"><label>Nearby (connects to)</label><div class="p-links"></div></div>
@@ -348,6 +350,12 @@ function placeCardHtml(l, idx) {
       <div class="p-secrets">${(l.secrets || []).map(secretRowHtml).join("")}</div>
       <button class="small" onclick="addSecret(this)">+ hidden fact</button></div>
   </div>`;
+}
+
+function placeKnownBoxes(l) {
+  const kb = new Set(l.known_by || []);
+  const box = (cls, v, label, on) => `<label style="margin-right:10px;font-size:12px"><input type="checkbox" class="${cls}" value="${esc(v)}" ${on ? "checked" : ""}> ${esc(label)}</label>`;
+  return box("p-kb-all", "*", "everyone", kb.has("*")) + (W?.characters || []).map(c => box("p-kb", c.id, c.name, kb.has(c.id))).join("");
 }
 
 let newSecretN = 0;
@@ -443,6 +451,7 @@ function collectPlaces() {
     description: card.querySelector(".p-desc").value,
     state: card.querySelector(".p-state")?.value ?? "",
     connects_to: [...card.querySelectorAll(".p-links input:checked")].map(i => i.value),
+    known_by: card.querySelector(".p-kb-all")?.checked ? ["*"] : [...card.querySelectorAll(".p-kb:checked")].map(i => i.value),
     locked: card.querySelector(".p-locked").checked,
     lock_note: card.querySelector(".p-locknote").value,
     unlock: card.querySelector(".p-unlock").value,
@@ -461,6 +470,7 @@ async function savePlaces() {
   })).json();
   if (res.error) { alert(res.error); return; }
   W = res.world;
+  if (res.memories && typeof setMemories === "function") setMemories(res.memories);   // what is known about each place follows the edit
   renderPlaces([]); renderCast(); EDIT.after("locations");
   const s = document.getElementById("places-saved");
   s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);

@@ -210,6 +210,16 @@ n = len(SENT)
 r = go()
 check(len(SENT) == n + 4 and SENT[n + 3]["body"]["max_tokens"] == 2000 and "provider" not in SENT[n + 3]["body"] and llm.text(r) == "late",
       "after two hosts, the old way: more tokens")
+REPLIES[:] = [ok("", finish="stop", provider="Novita"), ok("fine", provider="GMICloud")]
+n = len(SENT)
+r = go()
+check(llm.text(r) == "fine" and SENT[n + 1]["body"]["provider"] == {"ignore": ["Novita"]}, "an empty reply that said 'stop' also gets another host")
+REPLIES[:] = [ok("", finish="stop", provider="A"), ok("", finish="stop", provider="B"), ok("", finish="stop", provider="C")]
+try:
+    go()
+    check(False, "should raise")
+except llm.LLMError as e:
+    check("returned nothing" in str(e), "after two other hosts it still reports that it got nothing")
 REPLIES[:] = [ok("", finish="length", provider="Novita"), Resp(404, {"error": {"message": "No endpoints found"}}), ok("fine")]
 n = len(SENT)
 r = go()

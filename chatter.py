@@ -71,6 +71,8 @@ log = logging.getLogger(__name__)
 # All are shown to a model without a speaker label.
 NOTICE_KINDS = ("move", "depart", "arrive", "discover", "event")
 LAYOUTS = ("system", "tail")
+# Keep a memory of each place for whoever knows it (see Chatter.sync_places). CHATTER_PLACE_MEMORIES=0 turns it off.
+PLACE_MEMORIES = os.environ.get("CHATTER_PLACE_MEMORIES", "1") != "0"
 MAX_RECALL_CALLS = 2     # most on-demand recall calls within one reply
 
 RECALL_TOOL = {
@@ -134,6 +136,7 @@ class Chatter:
         self.life_every = LIFE_EVERY
         self._life_count = 0
         self._undo = None  # see _checkpoint
+        self.place_memories = PLACE_MEMORIES  # see sync_places
         self.load()
 
     # ---------- persistence ----------
@@ -385,6 +388,7 @@ class Chatter:
         if (opening or "").strip():
             m = self._append(NARRATOR_ID, opening.strip(), self.world.present_ids(), kind="move")
             m["t"] = self.world.scene.get("fiction_time", "")
+        self.sync_places()
         self.save()
 
     def move(self, to: str, bring: list[str] | None = None) -> dict:
@@ -398,6 +402,7 @@ class Chatter:
         m = self._append(NARRATOR_ID, f"(The scene moves to {self.world.place_name(to)}.)",
                          self.world.present_ids(), kind="move")
         m["t"] = self.world.scene.get("fiction_time", "")
+        self.sync_places()
         self.save()
         return info
 
@@ -1049,6 +1054,67 @@ class Chatter:
 
     # ---------- orchestration ----------
 
+    # ---------- what is known about places ----------
+
+    def sync_places(self) -> bool:
+        """Keep one memory per place, known to whoever knows the place: the characters the author listed (or everyone), and
+        anyone who has been there, meaning anyone located at it at a turn boundary. A character perceives the place they are
+        in directly (its description is in their scene); this is what they know of it when they are somewhere else, and it
+        reaches them through retrieval like any other memory, so someone who has not been there knows nothing of it.
+
+        Authored text is never edited by play: the memory follows the place's description, and a model's pass over the
+        conversation cannot change it (see MemoryStore.apply_operations). Returns True if the store changed."""
+        if not self.place_memories:
+            return False
+        w, s = self.world, self.store
+        chars = w.character_ids()
+        old = {m.get("place_id"): m for m in s.memories if m.get("origin") == "place"}
+        changed = False
+        for p in w.locations:
+            detail = (p.get("description") or "").strip() or (p.get("brief") or "").strip()
+            m = old.pop(p["id"], None)
+            authored = p.get("known_by") or []
+            visited = set(m.get("visited_by") or []) if m else set()
+            visited |= {c["id"] for c in w.characters if c.get("location") == p["id"]}
+            visited &= set(chars)
+            if "*" in authored:
+                knowers = ["*"]
+            else:
+                knowers = sorted((set(authored) & set(chars)) | visited)
+            summary = p["name"] + (f": {p['brief'].strip()}" if (p.get("brief") or "").strip() else "")
+            if not detail or not knowers:
+                if m:
+                    s.memories.remove(m)
+                    changed = True
+                continue
+            if m is None:
+                s.memories.append({
+                    "id": f"mem_{s.next_id:04d}", "subject": WORLD_ID, "kind": "canon", "known_by": knowers,
+                    "tags": [p["name"].lower(), "place"], "summary": summary, "detail": detail, "core": False,
+                    "lifetime": "lasting", "lifetime_by": "", "conflicts_with": [], "scene_no": s.scene_no, "as_of": "",
+                    "places": [p["id"]], "source": "scene", "claimed_by": "", "evidence": "", "verified": True, "versions": [],
+                    "created_at": memory._now(), "updated_at": memory._now(), "hits": 0,
+                    "origin": "place", "place_id": p["id"], "visited_by": sorted(visited),
+                })
+                s.next_id += 1
+                changed = True
+                continue
+            if m["summary"] != summary or m["detail"] != detail:
+                m["versions"].append({k: m.get(k) for k in ("summary", "detail", "tags", "core", "as_of", "evidence", "updated_at")})
+                del m["versions"][:-memory.MAX_VERSIONS]
+                m["summary"], m["detail"], m["tags"] = summary, detail, [p["name"].lower(), "place"]
+                m["updated_at"] = memory._now()
+                changed = True
+            if m.get("known_by") != knowers or sorted(m.get("visited_by") or []) != sorted(visited):
+                m["known_by"], m["visited_by"] = knowers, sorted(visited)
+                changed = True
+        for m in old.values():  # the place is gone
+            s.memories.remove(m)
+            changed = True
+        if changed:
+            s.save()
+        return changed
+
     # ---------- redoing a turn ----------
 
     def _checkpoint(self, message: str, to: str | None, notice: bool) -> None:
@@ -1236,6 +1302,11 @@ class Chatter:
                 u_life = self.tick_offscreen(models["state"])
             except Exception:
                 log.exception("offscreen tick failed")
+
+        try:
+            self.sync_places()  # anyone who is somewhere now has been there
+        except Exception:
+            log.exception("place knowledge failed")
 
         # The replies are the turn. Memory formation can fail (a model out of tokens, a provider error) without taking them
         # with it: what hasn't been formed stays unformed, and is picked up again after a later turn.

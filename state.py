@@ -150,6 +150,7 @@ DEFAULT_LOCATION = {
         "taps along it, a handful of tables, windows steamed up against the cold."
     ),
     "connects_to": [],
+    "known_by": [],     # who knows the place before they have been there: character ids, or "*" for everyone
     "state": "",
     "secrets": [],
     "locked": False,    # nobody can be taken here until it is opened
@@ -332,6 +333,10 @@ def _norm_location(l: dict, taken: set[str]) -> dict:
     out["locked"] = bool(l.get("locked"))
     ct = l.get("connects_to") or []
     out["connects_to"] = [str(x) for x in ct] if isinstance(ct, list) else []
+    # Who knows this place from the start: character ids, or "*" for everyone. Authored, so the watcher never touches it; a
+    # character who has spent time there learns it too (see Chatter.sync_places), which is kept in memory, not here.
+    kb = l.get("known_by") or []
+    out["known_by"] = [str(x) for x in dict.fromkeys(kb)] if isinstance(kb, list) else []
     # Hidden facts. Nothing here reaches any prompt until it is discovered; see
     # WorldState.render_scene for the one exception (a character who already knows).
     secrets, used = [], set()

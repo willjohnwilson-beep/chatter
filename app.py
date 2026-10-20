@@ -51,6 +51,7 @@ def _reload_live() -> None:
     chat_engine = Chatter(store, world, path=paths[2])
     for k in ENGINE_SETTINGS:
         setattr(chat_engine, k, getattr(old, k))
+    chat_engine.sync_places()
 
 DEFAULT_MODELS = {
     "retrieval": llm.RETRIEVAL_MODEL,
@@ -267,7 +268,9 @@ def _edit_live(kind: str):
     err = _apply_edit(world, kind, request.get_json() or {})
     if err:
         return jsonify({"error": err}), 400
-    return jsonify({"ok": True, "world": world.snapshot()})
+    if kind in ("locations", "cast"):
+        chat_engine.sync_places()  # what is known about a place follows its description and who knows it
+    return jsonify({"ok": True, "world": world.snapshot(), **({"memories": snapshot()["memories"]} if kind in ("locations", "cast") else {})})
 
 
 @app.route("/api/fixed", methods=["POST"])
@@ -420,6 +423,9 @@ def memory_not_contradicted():
 @app.route("/api/memory/delete", methods=["POST"])
 def delete_memory():
     """Drop one memory (an invention you don't want kept)."""
+    m = store.by_id((request.get_json() or {}).get("memory_id", ""))
+    if m and m.get("origin") == "place":
+        return jsonify({"error": "that memory is a place's description: edit the place (or who knows it) instead"}), 400
     if not store.delete((request.get_json() or {}).get("memory_id", "")):
         return jsonify({"error": "no such memory"}), 400
     store.save()

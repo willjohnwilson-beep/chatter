@@ -439,9 +439,10 @@ def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2, _skip
     finish = choice.get("finish_reason") or ""
     if not any(b.type == "text" for b in blocks) and not any(b.type == "tool_use" for b in blocks):
         host = data.get("provider")
-        if finish == "length" and not effort_on and host and host not in _skip and len(_skip) < 2:
-            # Reasoning was off and the host spent the whole budget on it anyway (some hosts ignore the switch for some
-            # models, and then loop). More tokens don't help; another host usually does, so ask for one.
+        if host and host not in _skip and len(_skip) < 2 and (finish != "length" or not effort_on):
+            # Either reasoning was off and the host spent the whole budget on it anyway (some hosts ignore the switch for
+            # some models, and then loop), or it simply returned nothing. More tokens don't help; another host usually
+            # does, so ask for one.
             try:
                 return _routed_create(kw, _retried, _json_tries, _skip + (host,))
             except LLMError as exc:

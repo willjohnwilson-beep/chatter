@@ -7,6 +7,7 @@ from types import SimpleNamespace as NS
 
 sys.path.insert(0, "D:/Claude/Chatter")
 os.environ.setdefault("ANTHROPIC_API_KEY", "unused")
+os.environ["CHATTER_PLACE_MEMORIES"] = "0"   # the older sections count memories; the place-knowledge section turns it on itself
 import chatter as ch
 import llm
 import memory
@@ -3959,6 +3960,130 @@ assert r.status_code == 200 and len(r.get_json()["replies"]) == 1 and [m["speake
 tmpl = ui_text()
 assert 'id="redo"' in tmpl and "retryLast" in tmpl and "/api/retry" in tmpl and "errorWithRetry" in tmpl and "renderTranscript" in tmpl
 assert "d.form_error" in tmpl, "a failed formation is shown"
+print("   PASS")
+
+print("== 97. what is known about a place: authored audience, learned by being there, kept in memory, never edited by play ==")
+nl = st._norm_location
+assert nl({"name": "A"}, set())["known_by"] == [] and nl({"name": "A", "known_by": ["wren", "wren", "*"]}, set())["known_by"] == ["wren", "*"]
+assert nl({"name": "A", "known_by": "wren"}, set())["known_by"] == [], "junk is ignored"
+
+def place_world():
+    store, world, c = make([WREN, MICK])
+    c.place_memories = True
+    world.set_locations([
+        {"id": "salt-line", "name": "The Salt Line", "brief": "pub", "description": "A low-beamed pub by the harbour.", "connects_to": ["cellar", "pier"]},
+        {"id": "cellar", "name": "The Cellar", "brief": "damp store", "description": "Kegs and a bolted back door.", "known_by": ["*"], "connects_to": ["salt-line"]},
+        {"id": "pier", "name": "The Pier", "brief": "wet planks", "description": "A wet wooden pier.", "connects_to": ["salt-line"]},
+        {"id": "attic", "name": "The Attic", "brief": "", "description": "", "known_by": ["*"]},
+    ])
+    world.character("wren")["location"] = "salt-line"
+    world.character("mick")["location"] = "pier"
+    world.scene["location"] = "salt-line"
+    return store, world, c
+
+store, world, c = place_world()
+assert store.memories == [] and c.sync_places() is True
+by = {m["place_id"]: m for m in store.memories}
+assert set(by) == {"salt-line", "cellar", "pier"}, "a place with no description and no brief has nothing to know"
+assert all(m["origin"] == "place" and m["subject"] == "world" and m["places"] == [m["place_id"]] and m["core"] is False and m["verified"] for m in by.values())
+assert by["salt-line"]["known_by"] == ["wren"] and by["pier"]["known_by"] == ["mick"] and by["cellar"]["known_by"] == ["*"], \
+    "the authored audience, and whoever is there"
+assert by["salt-line"]["detail"] == "A low-beamed pub by the harbour." and by["salt-line"]["summary"] == "The Salt Line: pub"
+assert {m["place_id"] for m in store.pool("mick")} == {"pier", "cellar"} and {m["place_id"] for m in store.pool("wren")} == {"salt-line", "cellar"}, \
+    "a character who has not been to a place knows nothing of it"
+assert c.sync_places() is False, "nothing changed, nothing written"
+# being there adds you, and stays
+world.character("mick")["location"] = "salt-line"
+assert c.sync_places() is True
+by = {m["place_id"]: m for m in store.memories}
+assert by["salt-line"]["known_by"] == ["mick", "wren"] and by["pier"]["known_by"] == ["mick"], "Mick learns the pub; he already knew the pier"
+world.character("mick")["location"] = ""
+c.sync_places()
+assert {m["place_id"]: m for m in store.memories}["salt-line"]["known_by"] == ["mick", "wren"], "and keeps it after leaving"
+# the author's edits are followed: a new description (with the old one kept), a narrower audience, a deleted place
+p0 = world.location("cellar"); p0["description"] = "Kegs, a bolted back door and a drain."; world.save()
+c.sync_places()
+m_cellar = {m["place_id"]: m for m in store.memories}["cellar"]
+assert m_cellar["detail"].endswith("a drain.") and m_cellar["versions"][-1]["detail"] == "Kegs and a bolted back door."
+p0["known_by"] = []
+c.sync_places()
+assert "cellar" not in {m["place_id"] for m in store.memories}, "nobody there and nobody listed: nothing to know"
+world.set_locations([l for l in world.locations if l["id"] != "pier"] )
+c.sync_places()
+assert "pier" not in {m["place_id"] for m in store.memories}, "a deleted place takes its memory"
+# a character who is deleted drops out of the audience
+world.location("salt-line")["known_by"] = ["wren", "ghost"]
+c.sync_places()
+assert {m["place_id"]: m for m in store.memories}["salt-line"]["known_by"] == ["mick", "wren"]
+
+# retrieval: the room the scene is in is already in the prompt, so its memory is not offered
+store, world, c = place_world()
+world.character("mick")["location"] = "salt-line"
+c.sync_places()
+ids = {m["place_id"]: m["id"] for m in store.memories}
+f = install(retrieve={"retrieved": []})
+memory.retrieve(store, "anything?", "(start)", "m", viewer="wren", names=world.names(), place="salt-line")
+asked = f.calls[0][1]["messages"][0]["content"]
+assert ids["cellar"] in asked.split("CANDIDATES:")[1] and ids["salt-line"] not in asked.split("CANDIDATES:")[1], "the cellar is a candidate, the pub she is in is not"
+memory.retrieve(store, "anything?", "(start)", "m", viewer="wren", names=world.names(), place="cellar")
+assert ids["salt-line"] in f.calls[1][1]["messages"][0]["content"].split("CANDIDATES:")[1], "from the cellar, the pub is something she knows about"
+store2, world2, c2 = place_world()
+store2.memories = [m for m in store2.memories if m.get("origin") == "place" and m["place_id"] == "salt-line"] or (c2.sync_places() and [m for m in store2.memories if m["place_id"] == "salt-line"])
+f = install(retrieve={"retrieved": []})
+got, _ = memory.retrieve(store2, "hi", "(start)", "m", viewer="wren", names=world2.names(), place="salt-line")
+assert got == [] and f.calls == [], "with only the current room's memory there is nothing to choose from, so no call"
+
+# play cannot edit it, merge it, or delete it
+store, world, c = place_world()
+c.sync_places()
+pid = next(m["id"] for m in store.memories if m["place_id"] == "salt-line")
+before = dict(store.by_id(pid))
+out = store.apply_operations([{"action": "update", "memory_id": pid, "subject": "world", "tags": ["x"], "summary": "The pub has eight bedrooms",
+                               "detail": "The pub has eight bedrooms.", "core": False, "lifetime": "lasting", "contradicts": [pid], "evidence": ""}],
+                             batch=[], known_by=["wren"], subject_ids=["player", "world", "wren", "mick"], all_ids=["wren", "mick"])
+assert store.by_id(pid)["detail"] == before["detail"] and store.by_id(pid)["summary"] == before["summary"], "the place's own memory is untouched"
+assert out[0]["action"] == "create" and out[0]["id"] != pid and pid in out[0]["conflicts_with"] and out[0]["id"] in store.by_id(pid)["conflicts_with"], \
+    "what was said is recorded beside it, flagged as conflicting with it"
+f = install(consolidate={"merges": []})
+for m in list(store.memories):
+    if m.get("origin") != "place":
+        store.memories.remove(m)
+memory.consolidate(store, "m", names=world.names(), all_ids=["wren", "mick"])
+assert "consolidate" not in f.kinds(), "place memories are never offered to a merge"
+import app as appmod4
+
+appmod4.store, appmod4.world, appmod4.chat_engine = store, world, c
+cl4 = appmod4.app.test_client()
+r = cl4.post("/api/memory/delete", json={"memory_id": pid})
+assert r.status_code == 400 and "edit the place" in r.get_json()["error"] and store.by_id(pid), "it cannot be deleted from the memory tab"
+r = cl4.post("/api/locations", json={"locations": [{"id": "salt-line", "name": "The Salt Line", "description": "Changed in the editor.", "known_by": ["*"]}]})
+assert r.status_code == 200 and store.by_id(pid)["detail"] == "Changed in the editor." and store.by_id(pid)["known_by"] == ["*"], "an edit to the place follows through at once"
+assert any(m["id"] == pid for m in r.get_json()["memories"]), "and the page is given the memories"
+
+# in play: a turn leaves everyone who is somewhere knowing where they are
+store, world, c = place_world()
+install(director=DIR96, character="hello", watch={"updates": []}, retrieve={"retrieved": []})
+c.turn("Hi.", MODELS)
+assert {m["place_id"]: m["known_by"] for m in store.memories}["salt-line"] == ["wren"]
+world.character("mick")["location"] = "salt-line"
+c.turn("And you?", MODELS)
+assert {m["place_id"]: m["known_by"] for m in store.memories}["salt-line"] == ["mick", "wren"], "Mick was there at the end of the turn"
+# redoing a turn puts what places were known back, too
+known_when_spoken = []
+def character_probe(kw):
+    known_when_spoken.append([m["known_by"] for m in store.memories if m.get("place_id") == "salt-line"][0])
+    return "again"
+install(director=DIR96, character=character_probe, watch={"updates": []}, retrieve={"retrieved": []})
+r = c.retry(MODELS)
+assert known_when_spoken == [["wren"]], "the knowledge was put back to what it was before the turn..."
+assert {m["place_id"]: m["known_by"] for m in store.memories}["salt-line"] == ["mick", "wren"], "...and earned again when the turn ran again"
+# a scenario carries who knows a place but not what anyone has learned; and the flag is off for older tests
+assert world.as_scenario()["locations"][1]["known_by"] == ["*"]
+store, world, c = make([WREN])
+assert c.place_memories is False and c.sync_places() is False and store.memories == []
+tmpl = ui_text()
+assert "p-kb-all" in tmpl and "known_by: card.querySelector" in tmpl and "placeKnownBoxes" in tmpl, "the place editor has the control"
+assert 'm.origin === "place"' in tmpl and "opts.noActions || isPlace" in tmpl, "a place's memory shows as one and has no delete"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

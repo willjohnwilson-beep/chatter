@@ -394,8 +394,10 @@ function memCard(m, opts = {}) {
     : `<span class="badge knows" title="Judged short-lived (${esc(life)}). It goes stale at the next scene break or after a few story days">short-lived: ${esc(life)}</span>`;
   const lifeSelect = `<select class="small" title="How long this stays useful" onchange="setLifetime('${m.id}', this.value)">`
     + ["moment", "days", "lasting"].map(v => `<option value="${v}"${v === life ? " selected" : ""}>${v}</option>`).join("") + `</select> `;
+  const isPlace = m.origin === "place";
   const originBadge = m.origin === "offstage"
-    ? `<span class="badge knows" title="Written from what this character did while out of sight">offstage</span>` : "";
+    ? `<span class="badge knows" title="Written from what this character did while out of sight">offstage</span>`
+    : isPlace ? `<span class="badge knows" title="What is known about a place, from its description. It follows the place: edit the place, or who knows it, to change it.">place</span>` : "";
   const contradicted = (m.contradicted_in_play || []).length
     ? `<div class="asof"><span class="badge warn" title="Something said in front of people who don't hold this memory cannot be true alongside it. Only you see this.">contradicted in play</span>
         ${(m.contradicted_in_play || []).map(c => `${esc(c.speaker || "someone")}: “${esc(c.line)}”` + (c.why ? ` <span style="color:var(--dim)">(${esc(c.why)})</span>` : "")).join(" · ")}
@@ -429,7 +431,7 @@ function memCard(m, opts = {}) {
     <div class="detail">${esc(m.detail)}</div>
     <div class="tags">${(m.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
     ${asof}${contradicted}${conflictLines}${merged}${evidence}${versions}${reason}
-    ${opts.noActions ? "" : `<div class="asof">${lifeSelect}${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
+    ${opts.noActions || isPlace ? "" : `<div class="asof">${lifeSelect}${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
 }
 
 function visibleTo(m, who) {
