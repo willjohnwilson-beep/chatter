@@ -190,8 +190,19 @@ const STRUCTURED = new Set(["director", "retrieval", "state", "formation"]);
 let CATALOG = {};          // OpenRouter id -> row from /api/models
 let DIRECT = [];
 let KEYS = {};
+// Only what the author changed from the default is kept, so a new default reaches a browser that never chose one. (The key is
+// versioned: the first version stored every field, which pinned the old Claude defaults in place.)
+const MODELS_KEY = "chatter.models.v2";
 function savedModels() {
-  try { return JSON.parse(localStorage.getItem("chatter.models") || "{}"); } catch (e) { return {}; }
+  try { return JSON.parse(localStorage.getItem(MODELS_KEY) || "{}"); } catch (e) { return {}; }
+}
+function saveModels() {
+  const changed = {};
+  for (const s of STEPS) {
+    const v = document.getElementById("m-" + s).value.trim();
+    if (v && v !== DEFAULTS[s]) changed[s] = v;
+  }
+  try { localStorage.setItem(MODELS_KEY, JSON.stringify(changed)); } catch (e) { /* private window: not kept */ }
 }
 function describeModel(step) {
   const el = document.getElementById("mi-" + step);
@@ -215,10 +226,39 @@ for (const step of STEPS) {
   const inp = document.getElementById("m-" + step);
   inp.value = savedModels()[step] || DEFAULTS[step];
   inp.addEventListener("input", () => describeModel(step));
-  inp.addEventListener("change", () => {
-    try { localStorage.setItem("chatter.models", JSON.stringify(Object.fromEntries(STEPS.map(s => [s, document.getElementById("m-" + s).value.trim()])))); } catch (e) {}
-  });
+  inp.addEventListener("change", saveModels);
   describeModel(step);
+}
+// A browser's own suggestion list only offers what matches the text already in the field, and every field starts out
+// holding a model, so it shows next to nothing. A menu beside each field lists everything, whatever it holds.
+const SUGGESTED = ["deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4-pro", "claude-haiku-5-5", "claude-sonnet-5-5"];
+function fillModelMenus(d) {
+  const ids = new Set([...d.direct, ...d.openrouter.map(r => r.id)]);
+  const suggested = [...new Set([...Object.values(DEFAULTS), ...SUGGESTED])].filter(m => ids.has(m));
+  const opt = (v, label) => `<option value="${esc(v)}">${esc(label || v)}</option>`;
+  const html = `<option value="">choose from the list…</option>`
+    + `<optgroup label="Suggested">${suggested.map(m => opt(m)).join("")}</optgroup>`
+    + `<optgroup label="Anthropic direct">${d.direct.map(m => opt(m)).join("")}</optgroup>`
+    + `<optgroup label="OpenRouter (${d.openrouter.length})">${d.openrouter.map(r => opt(r.id, `${r.name} · $${r.in.toFixed(2)}/$${r.out.toFixed(2)}`)).join("")}</optgroup>`;
+  for (const step of STEPS) {
+    const inp = document.getElementById("m-" + step);
+    let sel = document.getElementById("ms-" + step);
+    if (!sel) {
+      sel = document.createElement("select");
+      sel.id = "ms-" + step;
+      sel.style.marginTop = "4px";
+      sel.title = "Every model you can use. You can also type any id into the field above.";
+      sel.addEventListener("change", () => {
+        if (!sel.value) return;
+        inp.value = sel.value;
+        sel.value = "";
+        inp.dispatchEvent(new Event("input"));
+        inp.dispatchEvent(new Event("change"));
+      });
+      inp.insertAdjacentElement("afterend", sel);
+    }
+    sel.innerHTML = html;
+  }
 }
 async function loadModels() {
   try {
@@ -228,6 +268,7 @@ async function loadModels() {
     const dl = document.getElementById("model-list");
     dl.innerHTML = [...DIRECT.map(m => `<option value="${esc(m)}">Anthropic direct</option>`),
       ...d.openrouter.map(r => `<option value="${esc(r.id)}">${esc(r.name)} · $${r.in.toFixed(2)}/$${r.out.toFixed(2)}</option>`)].join("");
+    fillModelMenus(d);
     const note = document.getElementById("provider-note");
     const missing = [];
     if (!KEYS.openrouter) missing.push("OPENROUTER_API_KEY (needed for vendor/model ids)");

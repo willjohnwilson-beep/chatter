@@ -197,4 +197,15 @@ try:
 except llm.LLMError as e:
     check("OPENROUTER_API_KEY" in str(e), "missing key named")
 
+print("defaults: the working model when OpenRouter is configured, Claude direct when not")
+check(llm._default("claude-haiku-5-5") == "claude-haiku-5-5", "no OpenRouter key set yet: Claude direct")
+os.environ["OPENROUTER_API_KEY"] = "test-key"
+check(llm._default("claude-haiku-5-5") == llm.WORKING_MODEL, "with a key, every step defaults to the working model")
+os.environ["ANTHROPIC_API_KEY"] = "also-set"
+check(llm._default("claude-sonnet-5-5") == llm.WORKING_MODEL, "an Anthropic key as well changes nothing")
+del os.environ["OPENROUTER_API_KEY"]
+check(llm._default("claude-sonnet-5-5") == "claude-sonnet-5-5", "without an OpenRouter key, the Claude model")
+del os.environ["ANTHROPIC_API_KEY"]
+check(llm._default("claude-haiku-5-5") == "claude-haiku-5-5", "with neither, the Claude model")
+
 print("\nALL OPENROUTER TESTS PASSED")

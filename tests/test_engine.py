@@ -3803,4 +3803,17 @@ world.set_scene({"fiction_time": "A very long and rambling hand-written time tha
 assert world.scene["fiction_time"].startswith("A very long")
 print("   PASS")
 
+print("== 95. the model fields: a menu that lists everything, and a saved choice that is only what was changed ==")
+tmpl = ui_text()
+assert "fillModelMenus" in tmpl and 'id = "ms-" + step' in tmpl and "optgroup" in tmpl, "a menu beside each field, not only the browser's filtered suggestions"
+assert 'MODELS_KEY = "chatter.models.v2"' in tmpl and "if (v && v !== DEFAULTS[s]) changed[s] = v;" in tmpl, \
+    "only changes are kept, under a new key, so an old stored set of Claude ids can't pin the default"
+assert 'localStorage.getItem("chatter.models")' not in tmpl, "the old key is no longer read"
+assert llm.WORKING_MODEL and "/" in llm.WORKING_MODEL, "the working model is an OpenRouter id"
+import app as appmod2
+
+page = appmod2.app.test_client().get("/play").get_data(as_text=True)
+assert llm.CHARACTER_MODEL in page and "const DEFAULTS" in page, "the page is given the defaults"
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

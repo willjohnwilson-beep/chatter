@@ -56,28 +56,30 @@ class LLMError(RuntimeError):
         self.status = status
 
 
-def _default(direct: str, routed: str) -> str:
-    """Anthropic direct when its key is there (or nothing is configured);
-    otherwise the same model through OpenRouter."""
-    if os.environ.get("ANTHROPIC_API_KEY") or not os.environ.get("OPENROUTER_API_KEY"):
-        return direct
-    return routed
+# The model the author works with. Every step defaults to it when an OpenRouter key is configured; set
+# CHATTER_DEFAULT_MODEL to use another. Without an OpenRouter key the defaults are Claude, direct.
+WORKING_MODEL = os.environ.get("CHATTER_DEFAULT_MODEL") or "deepseek/deepseek-v4.1-flash"
 
 
-# Default model per step. Retrieval and the state watcher run every turn and
+def _default(direct: str) -> str:
+    """The default for a step: the working model when OpenRouter is configured, else this Claude model direct."""
+    return WORKING_MODEL if os.environ.get("OPENROUTER_API_KEY") else direct
+
+
+# The Claude fallback per step (used without an OpenRouter key). Retrieval and the state watcher run every turn and
 # are cheap to get slightly wrong, so they use Haiku. Formation runs about once
 # per ten messages and writes PERMANENT memory, so errors compound: it uses the
 # bigger model. (Measured: on a future-tense date reading Haiku was wrong 0/7,
 # Sonnet right 3/4, and Haiku garbled facts outright in two runs.)
-RETRIEVAL_MODEL = _default("claude-haiku-5-5", "anthropic/claude-haiku-5.5")
-FORMATION_MODEL = _default("claude-sonnet-5-5", "anthropic/claude-sonnet-5.5")
+RETRIEVAL_MODEL = _default("claude-haiku-5-5")
+FORMATION_MODEL = _default("claude-sonnet-5-5")
 # Per-character summaries are written once per formation pass, one call per
 # character who witnessed something. Like formation they persist, so same tier.
-SUMMARY_MODEL = _default("claude-sonnet-5-5", "anthropic/claude-sonnet-5.5")
-STATE_MODEL = _default("claude-haiku-5-5", "anthropic/claude-haiku-5.5")
+SUMMARY_MODEL = _default("claude-sonnet-5-5")
+STATE_MODEL = _default("claude-haiku-5-5")
 # The director only picks who speaks next (structured output, no prose), so Haiku.
-DIRECTOR_MODEL = _default("claude-haiku-5-5", "anthropic/claude-haiku-5.5")
-CHARACTER_MODEL = _default("claude-sonnet-5-5", "anthropic/claude-sonnet-5.5")
+DIRECTOR_MODEL = _default("claude-haiku-5-5")
+CHARACTER_MODEL = _default("claude-sonnet-5-5")
 
 # Every current Claude model accepts adaptive thinking + output_config.effort,
 # but they differ in whether thinking can be turned off:
