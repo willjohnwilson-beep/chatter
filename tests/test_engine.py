@@ -57,6 +57,8 @@ class Fake:
         last = last if isinstance(last, str) else ""
         if "Please decide whether you want to speak" in last:
             kind = "bid"
+        elif "Decide whether they GO to another place" in first:
+            kind = "premove"
         elif "You direct a roleplay scene" in first:
             kind = "director"
         elif "You track the current situation" in first:
@@ -94,6 +96,7 @@ class Fake:
                              else json.dumps({"memories": []}) if kind == "offstage"
                              else json.dumps({"contradictions": []}) if kind == "crosslines"
                              else json.dumps({"urge": 0, "cue": "", "why": ""}) if kind == "bid"
+                             else json.dumps({"moves": False, "to": "", "companions": [], "why": ""}) if kind == "premove"
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
@@ -4405,6 +4408,90 @@ assert c.speaker_mode == "bids", "an unknown mode is ignored"
 assert "speaker_mode" in appmod7.ENGINE_SETTINGS, "kept across a switch of session"
 tmpl = ui_text()
 assert 'id="cfg-speaker-mode"' in tmpl and "each character decides" in tmpl and "speaker_mode: document.getElementById" in tmpl
+print("   PASS")
+
+print("== 101. the player's own movement is resolved before anyone answers, so the replies come from the room they walk into ==")
+
+
+def walk_world():
+    store, world, c = make([WREN, MICK, SAM])
+    world.set_locations([{"id": "salt-line", "name": "The Salt Line", "description": "A pub.", "connects_to": ["kitchen", "library"]},
+                         {"id": "kitchen", "name": "The Kitchen", "description": "A kitchen.", "connects_to": ["salt-line"]},
+                         {"id": "library", "name": "The Library", "description": "Books.", "connects_to": ["salt-line"], "locked": True}])
+    world.character("wren")["location"] = "salt-line"
+    world.character("sam")["location"] = "salt-line"
+    world.character("mick")["location"] = "kitchen"
+    world.scene["location"] = "salt-line"
+    return store, world, c
+
+
+MOVE = lambda to, comps=(), moves=True: {"moves": moves, "to": to, "companions": list(comps), "why": "x"}
+store, world, c = walk_world()
+f = install(premove=MOVE("kitchen"), character=lambda kw: "Mick-reply", watch={"updates": []}, director=DIR96)
+r = c.turn("*I walk into the kitchen*", MODELS)
+assert world.scene["location"] == "kitchen" and world.present_ids() == ["mick"], "they are in the kitchen with whoever was there"
+assert [x["speaker"] for x in r["replies"]] == ["mick"] and r["premoved"] == "The Kitchen", "the person who answers is the one in the room they walked into"
+assert f.kinds().index("premove") < f.kinds().index("character"), "decided before anyone spoke"
+kinds = [(m["speaker"], m.get("kind"), m.get("present")) for m in c.history]
+assert kinds[0] == ("player", None, ["wren", "sam"]), "the old room heard them say it"
+assert ("narrator", "depart", ["wren", "sam"]) in kinds and ("narrator", "move", ["mick"]) in kinds, kinds
+assert c.history[-1]["speaker"] == "mick" and c.history[-1]["present"] == ["mick"], "and the reply was heard by the new room only"
+assert world.character("wren")["location"] == "salt-line" and world.character("sam")["location"] == "salt-line", "nobody was dragged along"
+# companions: only those the line invites
+store, world, c = walk_world()
+install(premove=MOVE("kitchen", ["wren", "ghost", "mick"]), character="hi", watch={"updates": []}, director=DIR96)
+r = c.turn("Come with me, Wren. *I head to the kitchen*", MODELS)
+assert sorted(world.present_ids()) == ["mick", "wren"] and world.character("sam")["location"] == "salt-line", "Wren came (Mick was already there); Sam and an invented id did not"
+# not a move
+for result in (MOVE("kitchen", moves=False), MOVE(""), MOVE("nowhere"), MOVE("salt-line"), MOVE("library")):
+    store, world, c = walk_world()
+    install(premove=result, character="hi", watch={"updates": []}, director=DIR96)
+    r = c.turn("What's in the kitchen?", MODELS)
+    assert world.scene["location"] == "salt-line" and r["premoved"] is None, result
+# the model is only asked about a line that names a place, and never offered the one that is locked
+f = install(premove=MOVE("kitchen", moves=False), character="hi", watch={"updates": []}, director=DIR96)
+store, world, c = walk_world()
+c.turn("Hello there.", MODELS)
+assert "premove" not in f.kinds(), "no place in the line: no call"
+c.turn("Is the kitchen far?", MODELS)
+assert f.kinds().count("premove") == 1
+prompt = next(kw for k, kw in f.calls if k == "premove")["messages"][0]["content"]
+assert "- kitchen: The Kitchen" in prompt and "- library:" not in prompt and "- salt-line:" not in prompt, "it is offered the places it could go, not the locked one or where it already is"
+assert "- wren: Wren" in prompt and "Is the kitchen far?" in prompt and "Decide whether they GO to another place" in prompt
+c.turn("*I look at the Salt Line's old sign*", MODELS)
+assert f.kinds().count("premove") == 1, "the place they are already in does not count"
+# a place's name as a whole phrase, and a part of it, count; common words on their own do not
+store, world, c = walk_world()
+world.set_locations([{"id": "a", "name": "The Great Room"}, {"id": "b", "name": "The Blue Room", "known_by": []}, {"id": "c", "name": "The Pool Terrace"}])
+world.scene["location"] = "c"
+f = install(premove=MOVE("a", moves=False))
+for line, asked in (("I go back to the great room", True), ("Anyone in the blue room?", True), ("What a lovely room", False), ("back to the house", False), ("up to the terrace", False)):
+    n = f.kinds().count("premove")
+    c._premove(MODELS, line)
+    assert (f.kinds().count("premove") - n == 1) == asked, line
+# a failed call is not a move, and a private line is not asked at all
+store, world, c = walk_world()
+f = install(premove=lambda kw: (_ for _ in ()).throw(llm.LLMError("down")), character="hi", watch={"updates": []}, director=DIR96)
+r = c.turn("*I walk into the kitchen*", MODELS)
+assert world.scene["location"] == "salt-line" and r["replies"], "the turn goes on"
+f = install(premove=MOVE("kitchen"), character="psst", watch={"updates": []})
+r = c.turn("*I walk into the kitchen*", MODELS, to="wren")
+assert "premove" not in f.kinds() and world.scene["location"] == "salt-line", "a private line to someone stays where it is"
+# redoing the turn puts the scene back and asks again
+store, world, c = walk_world()
+install(premove=MOVE("kitchen"), character="first", watch={"updates": []}, director=DIR96)
+c.turn("*I walk into the kitchen*", MODELS)
+assert world.scene["location"] == "kitchen"
+seen_at = []
+def where(kw):
+    seen_at.append(world.scene["location"])
+    return "again"
+install(premove=MOVE("kitchen"), character=where, watch={"updates": []}, director=DIR96)
+r = c.retry(MODELS)
+assert seen_at == ["kitchen"] and r["premoved"] == "The Kitchen" and [m["speaker"] for m in c.history if m["speaker"] != "narrator"] == ["player", "mick"], \
+    "the old scene was restored, the move made again, and one line each"
+tmpl = ui_text()
+assert "d.premoved" in tmpl, "the page shows the move before the replies"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

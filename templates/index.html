@@ -825,6 +825,7 @@ async function send() {
     const d = await res.json();
     pending.remove();
     if (d.error) { errorWithRetry(d.error); return; }
+    if (d.premoved) addMsg("sys", "", `(The scene moves to ${d.premoved}.)`);   // they walked first, and the people there answer
     if (!d.replies.length) addMsg("sys", "", "(no one replies)");
     for (const r of d.replies) addSpoken(r.speaker, r.name, r.content, r.private ? to : null);
     if (d.moved) addMsg("sys", "", `(The scene moves to ${d.moved}.)`);

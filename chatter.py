@@ -83,6 +83,18 @@ BID_INSTRUCTION = (
     "a glance usually draws little.{extra} `cue`: under 15 words on what you would do or say (your angle, not your "
     "words), empty if your urge is 0. Answer in JSON."
 )
+MOVE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "moves": {"type": "boolean"},
+        "to": {"type": "string", "description": "The id of the place they go to, or empty."},
+        "companions": {"type": "array", "items": {"type": "string"}, "description": "Ids of people here who go with them."},
+        "why": {"type": "string"},
+    },
+    "required": ["moves", "to", "companions", "why"],
+    "additionalProperties": False,
+}
+GENERIC_PLACE_WORDS = {"room", "house", "the", "upstairs", "downstairs"}   # too common in a line to mean a place on their own
 SPEAKER_MODES = ("director", "bids")   # who decides who speaks: one director call, or each character for themselves
 BID_SCHEMA = {
     "type": "object",
@@ -685,6 +697,55 @@ class Chatter:
         if self.world.narrator_enabled():
             ids.append(NARRATOR_ID)
         return ids
+
+    def _premove(self, models: dict, message: str) -> dict | None:
+        """Does the player's own line take them to another place? If so the scene goes there NOW, before anyone answers, so the replies
+        come from the people in the room they have walked into. (The watcher used to decide this after the replies, from an exchange
+        whose replies carried on in the old room, and often hedged.) Only people the line invites, or who plainly agree to come, go with
+        them; everyone else stays where they were. Only a line that names a place is asked about, and a failed call means no move."""
+        w = self.world
+        here = w.scene.get("location")
+        places = [p for p in w.locations if p["id"] != here and not p.get("locked")]
+        low = message.lower()
+        hit = False
+        for p in places:
+            name = re.sub(r"^the\s+", "", p["name"].lower())
+            words = {x for x in re.findall(r"[a-z]{4,}", name) if x not in GENERIC_PLACE_WORDS}
+            if re.search(r"\b" + re.escape(name) + r"\b", low) or any(re.search(r"\b" + re.escape(x) + r"\b", low) for x in words):
+                hit = True
+                break
+        if not hit:
+            return None
+        present = [c for c in w.characters if w.is_present(c)]
+        player = self._name(PLAYER_ID)
+        prompt = (
+            f"{player}, the player, is in {w.place_name(here)}. Below is what they just wrote. Decide whether they GO to another place in "
+            "this line.\n\nPLACES (id: name):\n" + "\n".join(f"- {p['id']}: {p['name']}" for p in places) + "\n\nPEOPLE HERE (id, name):\n"
+            + ("\n".join(f"- {c['id']}: {c['name']}" for c in present) or "(no one)") + f"\n\nTHEIR LINE: {message}\n\n"
+            "RULES:\n- moves is true only if the line has them actually going: walking, heading, entering, leaving or setting off for "
+            "one of the places now, as an action or a plain statement ('*I walk into the kitchen*', 'Right, off to the library', 'I head "
+            "up to the Blue Room'). A question, a wish, a plan, a suggestion or a mention of a place ('What's in the kitchen?', 'maybe we "
+            "should try the library', 'Winifred, how is the kitchen?') is not going.\n- `to` is the id of the place they go to, or empty.\n"
+            "- `companions` are the people here who go WITH them: only those the line invites or who plainly agree to come ('come with me, "
+            "Priya', 'let's all go'). Otherwise leave it empty: everyone else stays where they are.\nAnswer in JSON.\n"
+        )
+        try:
+            response = llm.client().messages.create(**llm.params(
+                models["state"], max_tokens=300, messages=[{"role": "user", "content": prompt}],
+                output_config={"format": {"type": "json_schema", "schema": MOVE_SCHEMA}}))
+            got = json.loads(llm.text(response))
+        except Exception:  # not being able to tell is not a move
+            log.exception("move check failed")
+            return None
+        to = w.resolve_place(got.get("to")) if got.get("moves") else None
+        if not to or to == here or to not in {p["id"] for p in places}:
+            return None
+        companions = [c for c in dict.fromkeys(got.get("companions") or []) if c in {x["id"] for x in present}]
+        try:
+            info = self.move(to, companions)
+        except ValueError:
+            return None
+        return info
 
     def _direct(self, models: dict, latest: str, message: str | None = None) -> dict:
         cands = self.candidates()
@@ -1377,6 +1438,7 @@ class Chatter:
         start = len(self.history)
 
         note = ""
+        premoved = None
         if private:
             others = [p for p in public if p != to]
             if notice and others:
@@ -1397,6 +1459,14 @@ class Chatter:
             )
         else:
             self._append(PLAYER_ID, message, public)
+            gone = self._premove(models, message)
+            if gone:
+                # They have walked somewhere: from here on, the people in that room are the scene.
+                public = self.world.present_ids()
+                audience = public
+                old_loc = self.world.scene.get("location")
+                came_from = {c["id"]: c.get("location") or "" for c in self.world.characters}
+                premoved = self.world.place_name(gone["to"])
             decision = self._direct(models, self.latest_for(None), message=message)
 
         extra = {"private_to": to} if private else {}
@@ -1529,6 +1599,7 @@ class Chatter:
             },
             "scene_changes": changes,
             "moved": moved["value"] if moved else None,
+            "premoved": premoved,
             "arrived": arrived,
             "discovered": found,
             "happened": [h["text"] for h in happened if h["seen"]],
