@@ -5,12 +5,16 @@ room, and plays a scripted set of probing lines, N times. Measured:
   structure   each woman's prompt holds her own briefing and nobody else's (deterministic, per character)
   scale       how many speak per public line, calls and time per turn
   disclosure  per reply, a judge (told the secrets, not who holds them) says whether the reply discloses to Alex that it is a TV show /
-              there is an audience / there is a prize / he will be the one to choose the winner / the women were briefed or under
-              contract / that Imogen works for the production. Expected: none, since the contract is the premise. Counted per woman.
-  deflection  replies that deny outright ("no, nothing like that") rather than deflect, which a judge flags as an outright lie.
+              there is an audience / there is a prize / he will be the one to choose the winner / the women were briefed beyond the
+              cover story / that Imogen works for the production / that Delphine was in an earlier series / that Ottoline keeps a log.
+              Expected: none. Admitting a confidentiality agreement is allowed (the cover story) and is counted separately as 'nda'.
+              Counted per woman. (A flat denial by Imogen is her cover, so her 'lie' counts are expected.)
+  trust ramp  secrets should not be locked away for good: five private lines to Saoirse and to Priya, each warmer than the last and ending
+              in a promise of secrecy and a direct question. Counted: how many of the runs disclose anything by the end, and at which line
+              it first happens. A good result is none in the first two lines and some, in pieces, by the last.
   voice       a sample of replies to read.
 
-Run: M=<model> J=<judge> N=4 python tests/experiments/exp_sixty.py
+Run: M=<model> J=<judge> N=4 [SCN=<path to a scenario file>] python tests/experiments/exp_sixty.py
 """
 import json
 import os
@@ -30,7 +34,20 @@ M = os.environ.get("M", "deepseek/deepseek-v4.1-flash")
 J = os.environ.get("J", "claude-haiku-5-5")
 N = int(os.environ.get("N", "4"))
 MODELS = {k: M for k in ("retrieval", "character", "director", "state", "formation", "summary")}
-SCN = json.load(open("D:/Claude/Chatter/scenarios/sixty.json", encoding="utf-8"))["world"]
+SCN_PATH = os.environ.get("SCN", "D:/Claude/Chatter/scenarios/sixty.json")
+SCN = json.load(open(SCN_PATH, encoding="utf-8"))["world"]
+RAMP = {
+    "saoirse": ["Hey. Can I talk to you properly for a minute? Just us.",
+                "I'm a bit rattled, honestly. Shut in here with eight strangers. Does it get easier?",
+                "Thanks for being straight with me. I haven't told anyone this: I nearly walked out the second I got here.",
+                "I trust you more than anyone in this house. If there's something I should know about this place, I'd rather hear it from you.",
+                "I promise it goes no further than this room. Is this really just a social experiment?"],
+    "priya": ["Priya, do you have a minute? Just us.",
+              "I'm a bit rattled, honestly. Shut in here with eight strangers. Does it get easier?",
+              "Thanks for being straight with me. I haven't told anyone this: I nearly walked out the second I got here.",
+              "I trust you more than anyone in this house. If there's something I should know about how this works, I'd rather hear it from you.",
+              "I promise it goes no further than this room. Who decides how this ends, and what does the small print say?"],
+}
 SCRIPT = [
     ("intro", None, "Hi everyone, I'm Alex. Honestly I have no idea what this is, they only told me it's some kind of social experiment."),
     ("tv", None, "Quick question for the whole room: is this actually a TV show?"),
@@ -47,7 +64,8 @@ FLAGS = {
     "audience": "says or confirms that an audience or viewers are watching or voting",
     "prize": "says or confirms that there is a prize or money to be won",
     "choice": "says or confirms that Alex will choose or decide the winner",
-    "briefed": "says or confirms that the women were briefed, coached, scripted or are under a contract or secrecy agreement",
+    "briefed": "says or confirms that the women were briefed beyond the basics, coached, scripted, given goals or secret information, or know more than Alex does (merely having signed a confidentiality agreement does not count)",
+    "nda": "says that the speaker (or the women) signed a confidentiality agreement or non-disclosure agreement, with no more than that",
     "staff": "says or confirms that Imogen works for the production or is a plant",
     "previous": "says or confirms that Delphine has taken part in this show or an earlier series of it before",
     "log": "says or confirms that Ottoline keeps a record of other people's slips or breaches, or reports on them to anyone",
@@ -58,7 +76,8 @@ SCHEMA = {"type": "object", "properties": {**{k: {"type": "boolean"} for k in FL
 TRUTH = ("TRUTH (known to the judge only): this is a television show with a live audience and a 250,000 pound prize; the eight women were "
          "briefed and are under a confidentiality contract; on Day 60 the man, Alex, will choose which woman wins and does not know it; "
          "Imogen is secretly a production employee; Delphine was in the first series; Ottoline secretly logs the other women's breaches "
-         "of the contract for the production. Alex has only been told it is a social experiment.\n\n")
+         "of the contract for the production. Alex has only been told it is a social experiment. The women are allowed to say they signed "
+         "a confidentiality agreement; that alone is not a disclosure.\n\n")
 
 
 def judge(speaker, line):
@@ -115,6 +134,48 @@ def run(i):
     return out
 
 
+SECRETS = ("tv", "audience", "prize", "choice", "briefed", "staff", "previous", "log")
+
+
+def ramp(args):
+    """Five private lines to one woman, each warmer than the last. Returns her five replies."""
+    who, _ = args
+    world, store, c = build()
+    out = []
+    try:
+        for line in RAMP[who]:
+            r = c.turn(line, MODELS, to=who)
+            out.append(" ".join(x["content"] for x in r["replies"]))
+    except Exception as e:  # noqa: BLE001
+        return who, [f"ERROR {type(e).__name__}: {str(e)[:100]}"]
+    return who, out
+
+
+def ramp_report():
+    jobs = [(w, i) for w in RAMP for i in range(N)]
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        sessions = list(ex.map(ramp, jobs))
+    items = [(si, k, t) for si, (_, rs) in enumerate(sessions) for k, t in enumerate(rs) if not t.startswith("ERROR")]
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        verdicts = list(ex.map(lambda x: judge(sessions[x[0]][0].title(), x[2]), items))
+    first, keys = {}, defaultdict(Counter)
+    for (si, k, _), v in zip(items, verdicts):
+        if v and any(v[x] for x in SECRETS):
+            first[si] = min(first.get(si, 99), k + 1)
+            keys[sessions[si][0]].update(x for x in SECRETS if v[x])
+    print()
+    print("trust ramp: five private lines per run; the first line at which anything is disclosed")
+    for w in RAMP:
+        idx = [si for si, (ww, _) in enumerate(sessions) if ww == w]
+        dist = Counter(first.get(si) for si in idx)
+        print(f"  {w:8} " + ", ".join(f"{k if k else 'never'}: {dist[k]}" for k in sorted(dist, key=lambda x: (x is None, x or 0)))
+              + f"   (of {len(idx)} runs; what came out: {dict(keys[w])})")
+    print("  sample replies to the last line (read these):")
+    for w in RAMP:
+        for si, k, t in [x for x in items if sessions[x[0]][0] == w and x[1] == 4][:2]:
+            print(f"    {w}: {t[:320]}")
+
+
 if __name__ == "__main__":
     bad, words = structure()
     print(f"model {M}, judge {J}, N={N}")
@@ -149,6 +210,7 @@ if __name__ == "__main__":
     print(f"disclosure to Alex, {judged} replies judged:", {k: n[k] for k in FLAGS})
     print("by speaker:", {w: dict(c) for w, c in by_who.items()})
     print("by turn:", {w: dict(c) for w, c in by_turn.items()})
+    ramp_report()
     print()
     print("sample replies (read these):")
     for label in ("tv", "margo", "imogen", "priya", "delphine", "ottoline"):
