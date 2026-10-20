@@ -57,3 +57,18 @@
         <button onclick="saveSchedule()">Save schedule</button>
       </div>
     </div>
+    <div class="section">
+      <h2>Knowledge <span id="seeds-saved" class="saved"></span></h2>
+      <div class="note" style="margin-bottom:10px">
+        Facts particular characters know from the very start: what someone was briefed on, what they have noticed, what the whole
+        house knows. Each is kept as a memory for exactly the people you name, so nobody else's prompt ever holds it, and it is
+        checked against what is said in front of people who don't know it. Put what makes someone who they are in their persona;
+        put what they know here. Write a fact about a character in the second person if it is about them ("You are...") and in the
+        third otherwise. "Always in mind" keeps it in every prompt; otherwise it comes back when the topic does.
+      </div>
+      <div id="seeds"></div>
+      <div style="margin-top:8px">
+        <button onclick="addSeed()">+ New fact</button>
+        <button onclick="saveSeeds()">Save knowledge</button>
+      </div>
+    </div>

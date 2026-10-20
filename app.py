@@ -51,7 +51,7 @@ def _reload_live() -> None:
     chat_engine = Chatter(store, world, path=paths[2])
     for k in ENGINE_SETTINGS:
         setattr(chat_engine, k, getattr(old, k))
-    chat_engine.sync_places()
+    chat_engine.sync_knowledge()
 
 DEFAULT_MODELS = {
     "retrieval": llm.RETRIEVAL_MODEL,
@@ -213,7 +213,7 @@ def retry_turn():
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 
-EDIT_KINDS = ("fixed", "scene", "cast", "locations", "presets", "reserved", "schedule")
+EDIT_KINDS = ("fixed", "scene", "cast", "locations", "presets", "reserved", "schedule", "seeds")
 
 
 def _apply_edit(w: state_mod.WorldState, kind: str, body: dict, scenario: bool = False) -> str | None:
@@ -254,6 +254,11 @@ def _apply_edit(w: state_mod.WorldState, kind: str, body: dict, scenario: bool =
         if not isinstance(topics, list):
             return "reserved must be a list"
         w.set_reserved([t for t in topics if isinstance(t, dict)])
+    elif kind == "seeds":
+        seeds = body.get("seeds")
+        if not isinstance(seeds, list):
+            return "seeds must be a list"
+        w.set_seeds([e for e in seeds if isinstance(e, dict)])
     elif kind == "schedule":
         events = body.get("schedule")
         if not isinstance(events, list):
@@ -268,9 +273,9 @@ def _edit_live(kind: str):
     err = _apply_edit(world, kind, request.get_json() or {})
     if err:
         return jsonify({"error": err}), 400
-    if kind in ("locations", "cast"):
-        chat_engine.sync_places()  # what is known about a place follows its description and who knows it
-    return jsonify({"ok": True, "world": world.snapshot(), **({"memories": snapshot()["memories"]} if kind in ("locations", "cast") else {})})
+    if kind in ("locations", "cast", "seeds"):
+        chat_engine.sync_knowledge()  # what is known about a place, and each seeded fact, follows what the author wrote
+    return jsonify({"ok": True, "world": world.snapshot(), **({"memories": snapshot()["memories"]} if kind in ("locations", "cast", "seeds") else {})})
 
 
 @app.route("/api/fixed", methods=["POST"])
@@ -335,6 +340,12 @@ def save_reserved():
     """Replace the reserved topics: lore the author keeps for themselves, which no character
     is allowed to invent anything about. Each is a name for the topic, with optional tags."""
     return _edit_live("reserved")
+
+
+@app.route("/api/seeds", methods=["POST"])
+def save_seeds():
+    """Replace the seeded facts: what particular characters know from the very start."""
+    return _edit_live("seeds")
 
 
 @app.route("/api/schedule", methods=["POST"])
@@ -424,8 +435,8 @@ def memory_not_contradicted():
 def delete_memory():
     """Drop one memory (an invention you don't want kept)."""
     m = store.by_id((request.get_json() or {}).get("memory_id", ""))
-    if m and m.get("origin") == "place":
-        return jsonify({"error": "that memory is a place's description: edit the place (or who knows it) instead"}), 400
+    if m and m.get("origin") in memory.AUTHORED:
+        return jsonify({"error": "that memory is something you wrote: edit it where you wrote it (the place, or the scenario's seeded facts)"}), 400
     if not store.delete((request.get_json() or {}).get("memory_id", "")):
         return jsonify({"error": "no such memory"}), 400
     store.save()

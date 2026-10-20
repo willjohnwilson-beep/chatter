@@ -107,16 +107,34 @@ def build():
 
 
 def structure():
-    """Each prompt holds the speaker's own briefing and none of the others'."""
+    """Nobody's prompt holds anyone else's briefing. With the briefings in the personas: each prompt holds its own and none of the
+    others'. With them seeded: every seeded fact is visible to exactly the characters it names (and not to the narrator unless it is
+    for everyone), and what is always in mind for a character holds none of another's."""
     world, store, c = build()
-    marks = {"imogen": "key card", "ottoline": "notebook", "winifred": "sealed note", "delphine": "first series", "priya": "read the whole contract",
-             "yasmin": "drone", "margo": "followers", "saoirse": "Galway"}
     bad = []
-    for viewer in world.character_ids():
-        system, _ = c.build_context(viewer, [])
-        for owner, mark in marks.items():
-            if (mark.lower() in system.lower()) != (owner == viewer):
-                bad.append((viewer, mark))
+    if SCN.get("seeds"):
+        for m in store.memories:
+            if m.get("origin") != "seed":
+                continue
+            kb = m["known_by"]
+            for viewer in world.character_ids() + ["narrator"]:
+                want = "*" in kb or (viewer in kb)
+                if memory.visible_to(m, viewer) != want:
+                    bad.append((viewer, m["seed_id"]))
+        mine = {m["id"]: m for m in store.memories if m.get("origin") == "seed"}
+        for viewer in world.character_ids():
+            system, _ = c.build_context(viewer, [])
+            for m in mine.values():
+                if m["core"] and m["known_by"] != ["*"] and viewer not in m["known_by"] and m["detail"].lower()[:40] in system.lower():
+                    bad.append((viewer, "core:" + m["seed_id"]))
+    else:
+        marks = {"imogen": "key card", "ottoline": "notebook", "winifred": "sealed note", "delphine": "first series", "priya": "read the whole contract",
+                 "yasmin": "drone", "margo": "followers", "saoirse": "Galway"}
+        for viewer in world.character_ids():
+            system, _ = c.build_context(viewer, [])
+            for owner, mark in marks.items():
+                if (mark.lower() in system.lower()) != (owner == viewer):
+                    bad.append((viewer, mark))
     return bad, len(c.build_context("imogen", [])[0].split())
 
 

@@ -71,8 +71,9 @@ log = logging.getLogger(__name__)
 # All are shown to a model without a speaker label.
 NOTICE_KINDS = ("move", "depart", "arrive", "discover", "event")
 LAYOUTS = ("system", "tail")
-# Keep a memory of each place for whoever knows it (see Chatter.sync_places). CHATTER_PLACE_MEMORIES=0 turns it off.
-PLACE_MEMORIES = os.environ.get("CHATTER_PLACE_MEMORIES", "1") != "0"
+# Keep a memory of each place, and of each seeded fact, for whoever knows it (see Chatter.sync_places and sync_seeds).
+# CHATTER_AUTHORED_MEMORIES=0 turns it off.
+AUTHORED_MEMORIES = os.environ.get("CHATTER_AUTHORED_MEMORIES", "1") != "0"
 MAX_RECALL_CALLS = 2     # most on-demand recall calls within one reply
 
 RECALL_TOOL = {
@@ -112,6 +113,8 @@ def _dated(m: dict, dated: bool, here: str | None = None, names: dict | None = N
     claim = memory.claim_text(m, names, viewer)
     if claim:
         bits.append(claim)
+    if m.get("origin") == "seed" and "*" not in (m.get("known_by") or []):
+        bits.append("not common knowledge: keep it to yourself unless you have a real reason to share it")
     return f"- {m['detail']}" + (f" ({', '.join(bits)})" if bits else "")
 
 
@@ -136,7 +139,7 @@ class Chatter:
         self.life_every = LIFE_EVERY
         self._life_count = 0
         self._undo = None  # see _checkpoint
-        self.place_memories = PLACE_MEMORIES  # see sync_places
+        self.authored_memories = AUTHORED_MEMORIES  # see sync_places, sync_seeds
         self.load()
 
     # ---------- persistence ----------
@@ -388,7 +391,7 @@ class Chatter:
         if (opening or "").strip():
             m = self._append(NARRATOR_ID, opening.strip(), self.world.present_ids(), kind="move")
             m["t"] = self.world.scene.get("fiction_time", "")
-        self.sync_places()
+        self.sync_knowledge()
         self.save()
 
     def move(self, to: str, bring: list[str] | None = None) -> dict:
@@ -402,7 +405,7 @@ class Chatter:
         m = self._append(NARRATOR_ID, f"(The scene moves to {self.world.place_name(to)}.)",
                          self.world.present_ids(), kind="move")
         m["t"] = self.world.scene.get("fiction_time", "")
-        self.sync_places()
+        self.sync_knowledge()
         self.save()
         return info
 
@@ -517,7 +520,7 @@ class Chatter:
         if scene:
             pieces.append(("Right now:\n" + scene, True))
 
-        for block in self._memory_blocks(self.store.core_memories(mem_viewer), viewer, retrieved=False):
+        for block in self._memory_blocks(self.store.core_memories(viewer), viewer, retrieved=False):
             pieces.append((block, False))
 
         # The shared summary describes everything, so in a multi-party scene it
@@ -592,7 +595,7 @@ class Chatter:
             self.recent_text(mem_viewer),
             retrieval_model,
             limit=3,
-            viewer=mem_viewer,
+            viewer=viewer,   # the narrator too: it reads what has happened, but not the author's private facts
             names=self.world.names(),
             place=self.world.scene.get("location"),
             now=self.world.scene.get("fiction_time"),
@@ -615,7 +618,7 @@ class Chatter:
             messages.append({"role": "system", "content": tail})
 
         mem_viewer = None if viewer == NARRATOR_ID else viewer
-        use_tool = self.recall_tool and bool(self.store.pool(mem_viewer, exclude_core=True))
+        use_tool = self.recall_tool and bool(self.store.pool(viewer, exclude_core=True))
         used = llm.zero_usage()
         recall_used = llm.zero_usage()
         recalled: list[dict] = []
@@ -1064,7 +1067,7 @@ class Chatter:
 
         Authored text is never edited by play: the memory follows the place's description, and a model's pass over the
         conversation cannot change it (see MemoryStore.apply_operations). Returns True if the store changed."""
-        if not self.place_memories:
+        if not self.authored_memories:
             return False
         w, s = self.world, self.store
         chars = w.character_ids()
@@ -1114,6 +1117,65 @@ class Chatter:
         if changed:
             s.save()
         return changed
+
+    def sync_seeds(self) -> bool:
+        """Keep one memory per seeded fact the author wrote, known to whoever the author named from the start. These are the
+        scenario's own facts (what a character was briefed on, what they have noticed), kept where facts are kept, so they
+        are filtered by who knows them like any other memory, can be always in mind (`core`) or recalled when relevant, and
+        are checked against what is said in front of people who don't hold them. Like a place's memory they follow the author's
+        text and cannot be rewritten, merged or deleted by play. Returns True if the store changed."""
+        if not self.authored_memories:
+            return False
+        w, s = self.world, self.store
+        chars = set(w.character_ids())
+        old = {m.get("seed_id"): m for m in s.memories if m.get("origin") == "seed"}
+        changed = False
+        for e in w.seeds:
+            m = old.pop(e["id"], None)
+            kb = e.get("known_by") or []
+            knowers = ["*"] if "*" in kb else sorted(set(kb) & (chars | {NARRATOR_ID}))   # the narrator can be told, if the author says so
+            subject = e["subject"] if (e["subject"] in chars or e["subject"] in (WORLD_ID, PLAYER_ID)) else WORLD_ID
+            tags = e.get("tags") or []
+            core = bool(e.get("core"))
+            if not knowers:   # nobody knows it (yet): there is nothing to remember
+                if m:
+                    s.memories.remove(m)
+                    changed = True
+                continue
+            if m is None:
+                s.memories.append({
+                    "id": f"mem_{s.next_id:04d}", "subject": subject, "kind": memory.kind_of(subject), "known_by": knowers,
+                    "tags": tags, "summary": e["summary"], "detail": e["text"], "core": core, "lifetime": "lasting", "lifetime_by": "",
+                    "conflicts_with": [], "scene_no": s.scene_no, "as_of": "", "places": [], "source": "confirmed", "claimed_by": "",
+                    "evidence": "", "verified": True, "versions": [], "created_at": memory._now(), "updated_at": memory._now(),
+                    "hits": 0, "origin": "seed", "seed_id": e["id"],
+                })
+                s.next_id += 1
+                changed = True
+                continue
+            if m["detail"] != e["text"] or m["summary"] != e["summary"] or m["tags"] != tags:
+                m["versions"].append({k: m.get(k) for k in ("summary", "detail", "tags", "core", "as_of", "evidence", "updated_at")})
+                del m["versions"][:-memory.MAX_VERSIONS]
+                m["summary"], m["detail"], m["tags"], m["updated_at"] = e["summary"], e["text"], tags, memory._now()
+                changed = True
+            for key, val in (("known_by", knowers), ("subject", subject), ("core", core)):
+                if m.get(key) != val:
+                    m[key] = val
+                    if key == "subject":
+                        m["kind"] = memory.kind_of(subject)
+                    changed = True
+        for m in old.values():  # the seed is gone
+            s.memories.remove(m)
+            changed = True
+        if changed:
+            s.save()
+        return changed
+
+    def sync_knowledge(self) -> bool:
+        """Places and seeded facts, together."""
+        a = self.sync_places()
+        b = self.sync_seeds()
+        return a or b
 
     # ---------- redoing a turn ----------
 
@@ -1216,7 +1278,7 @@ class Chatter:
             if self.recall_cap > 0:
                 retrieved, ur = memory.retrieve(
                     self.store, self.latest_for(mem_viewer), self.recent_text(mem_viewer),
-                    models["retrieval"], limit=self.recall_cap, viewer=mem_viewer, names=names,
+                    models["retrieval"], limit=self.recall_cap, viewer=viewer, names=names,
                     place=self.world.scene.get("location"), now=self.world.scene.get("fiction_time"),
                 )
                 u_retrieve = {k: u_retrieve[k] + ur[k] for k in u_retrieve}
@@ -1304,7 +1366,7 @@ class Chatter:
                 log.exception("offscreen tick failed")
 
         try:
-            self.sync_places()  # anyone who is somewhere now has been there
+            self.sync_knowledge()  # anyone who is somewhere now has been there
         except Exception:
             log.exception("place knowledge failed")
 

@@ -425,6 +425,25 @@ def _norm_event(e: dict, taken: set[str]) -> dict | None:
             "where": str(e.get("where") or "").strip(), "since": str(e.get("since") or ""), "last": str(e.get("last") or "")}
 
 
+def _norm_seed(e: dict, taken: set[str]) -> dict | None:
+    """One seeded fact, or None if it has no text. A seed becomes a memory known to whoever the author names (character ids, or
+    "*" for everyone) from the very start. `subject` is who or what it is about ("world", "player" or a character id; the
+    engine falls back to "world" if that character no longer exists). `core` makes it always in mind rather than recalled when
+    relevant. `summary` is the one line retrieval chooses by, taken from the text if left blank."""
+    text = " ".join(str((e or {}).get("text") or "").split())
+    if not text:
+        return None
+    sid = str(e.get("id") or "").strip()
+    if not sid or sid.startswith("new-") or sid in taken:
+        sid = slugify(" ".join(text.split()[:4]), taken, "fact")
+    kb = e.get("known_by")
+    tags = e.get("tags")
+    summary = " ".join(str(e.get("summary") or "").split()) or (re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0][:140])
+    return {"id": sid, "text": text, "summary": summary, "subject": str(e.get("subject") or "world").strip() or "world",
+            "known_by": [str(x) for x in dict.fromkeys(kb)] if isinstance(kb, list) else [],
+            "core": bool(e.get("core")), "tags": [str(t).strip() for t in tags if str(t).strip()] if isinstance(tags, list) else []}
+
+
 def _norm_preset(p: dict, taken: set[str], loc_ids: set[str], char_ids: set[str]) -> dict:
     """A scene preset. Per-character `location` is a place id, "none" (offstage)
     or "keep" (leave them where they are)."""
@@ -467,6 +486,7 @@ class WorldState:
         self.presets: list[dict] = []
         self.reserved: list[dict] = []
         self.schedule: list[dict] = []
+        self.seeds: list[dict] = []
         self.narrator = dict(DEFAULT_NARRATOR)
         self.player = dict(DEFAULT_PLAYER)
         self.load()
@@ -494,6 +514,7 @@ class WorldState:
             self._load_presets(data.get("presets") or [])
             self._load_reserved(data.get("reserved") or [])
             self._load_schedule(data.get("schedule") or [])
+            self._load_seeds(data.get("seeds") or [])
         else:
             self._migrate_legacy(data)
 
@@ -525,6 +546,16 @@ class WorldState:
                 taken.add(n["id"])
                 out.append(n)
         self.schedule = out
+
+    def _load_seeds(self, raw: list) -> None:
+        taken: set[str] = set()
+        out = []
+        for e in raw:
+            n = _norm_seed(e, taken)
+            if n:
+                taken.add(n["id"])
+                out.append(n)
+        self.seeds = out
 
     def _load_places(self, data: dict) -> None:
         """Pre-places worlds kept the location as one free-text line in the
@@ -593,7 +624,7 @@ class WorldState:
         starts the next playthrough just there."""
         d = copy.deepcopy({"fixed": self.fixed, "scene": self.scene, "locations": self.locations,
                            "characters": self.characters, "presets": self.presets, "reserved": self.reserved,
-                           "schedule": self.schedule, "narrator": self.narrator, "player": self.player})
+                           "schedule": self.schedule, "seeds": self.seeds, "narrator": self.narrator, "player": self.player})
         for e in d["schedule"]:
             e.update({"since": "", "last": ""})
         for place in d["locations"]:
@@ -615,6 +646,7 @@ class WorldState:
                     "presets": self.presets,
                     "reserved": self.reserved,
                     "schedule": self.schedule,
+                    "seeds": self.seeds,
                     "narrator": self.narrator,
                     "player": self.player,
                 },
@@ -625,6 +657,7 @@ class WorldState:
     def reset_all(self) -> None:
         self.reserved = []
         self.schedule = []
+        self.seeds = []
         self.fixed = dict(DEFAULT_FIXED)
         self.scene = copy.deepcopy(DEFAULT_SCENE)
         self.locations = [copy.deepcopy(DEFAULT_LOCATION)]
@@ -842,6 +875,13 @@ class WorldState:
             return ""
         tmpl = RESERVED_NARRATOR if viewer == NARRATOR_ID else RESERVED_CHARACTER
         return tmpl.format(topics="\n".join(f"- {t}" for t in topics))
+
+    # ---------- seeded facts ----------
+
+    def set_seeds(self, seeds: list[dict]) -> None:
+        """Replace the seeded facts wholesale (the UI saves them as one unit)."""
+        self._load_seeds(seeds)
+        self.save()
 
     # ---------- schedule ----------
 
@@ -1132,6 +1172,7 @@ class WorldState:
             "presets": self.presets,
             "reserved": self.reserved,
             "schedule": [{**e, "readable": sched.parse_when(e["when"]) is not None} for e in self.schedule],
+            "seeds": self.seeds,
             "characters": [{**c, "present": self.is_present(c)} for c in self.characters],
             "narrator": self.narrator,
             "player": self.player,

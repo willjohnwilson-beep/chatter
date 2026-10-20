@@ -164,6 +164,71 @@ async function saveReserved() {
   s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
 }
 
+let seedsSig = "", newSeedN = 0;
+
+function seedCardHtml(e, idx) {
+  const kb = new Set(e.known_by || []);
+  const box = (cls, v, label, on) => `<label style="margin-right:10px;font-size:12px"><input type="checkbox" class="${cls}" value="${esc(v)}" ${on ? "checked" : ""}> ${esc(label)}</label>`;
+  const who = box("sd-kb-all", "*", "everyone", kb.has("*")) + (W?.characters || []).map(c => box("sd-kb", c.id, c.name, kb.has(c.id))).join("")
+    + (W?.narrator?.enabled ? box("sd-kb", "narrator", "the narrator", kb.has("narrator")) : "");
+  const subj = e.subject || "world";
+  const about = `<option value="world" ${subj === "world" ? "selected" : ""}>the world</option>`
+    + `<option value="player" ${subj === "player" ? "selected" : ""}>${esc(W?.player?.name || "the player")}</option>`
+    + (W?.characters || []).map(c => `<option value="${esc(c.id)}" ${subj === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("");
+  return `<div class="char-card seed-card" data-id="${esc(e.id || "")}" style="border-left-color:${PALETTE[(idx + 6) % PALETTE.length]}">
+    <div class="head">
+      <label style="font-size:12px"><input type="checkbox" class="sd-core" ${e.core ? "checked" : ""}> always in mind</label>
+      <button class="small danger" onclick="this.closest('.seed-card').remove()">remove</button>
+    </div>
+    <div class="field"><label>The fact</label>
+      <textarea class="sd-text multi" placeholder="You are an assistant producer placed in the house to keep the story moving.">${esc(e.text || "")}</textarea></div>
+    <div class="field"><label>Known to</label>${who}</div>
+    <div class="field"><label>About</label><select class="sd-subject">${about}</select></div>
+    <div class="field"><label>One line to recall it by (optional)</label>
+      <input type="text" class="sd-summary" value="${esc(e.summary && e.summary !== (e.text || "").split(/(?<=[.!?])\s/)[0].slice(0, 140) ? e.summary : "")}" placeholder="taken from the first sentence"></div>
+  </div>`;
+}
+
+function renderSeeds(force) {
+  if (!W) return;
+  const holder = document.getElementById("seeds");
+  if (!holder) return;
+  const sig = JSON.stringify([W.seeds || [], W.characters.map(c => c.id + c.name)]);
+  if (!force && (sig === seedsSig || holder.contains(document.activeElement))) return;
+  seedsSig = sig;
+  holder.innerHTML = (W.seeds || []).map((e, i) => seedCardHtml(e, i)).join("") || `<div class="empty">no seeded facts</div>`;
+}
+
+function addSeed() {
+  const holder = document.getElementById("seeds");
+  if (!holder.querySelector(".seed-card")) holder.innerHTML = "";
+  const idx = holder.querySelectorAll(".seed-card").length;
+  holder.insertAdjacentHTML("beforeend", seedCardHtml({ id: "new-" + (++newSeedN), text: "", known_by: [], subject: "world", core: false }, idx));
+  holder.lastElementChild.querySelector(".sd-text").focus();
+}
+
+function collectSeeds() {
+  return [...document.querySelectorAll("#seeds .seed-card")].map(card => ({
+    id: card.dataset.id,
+    text: card.querySelector(".sd-text").value,
+    summary: card.querySelector(".sd-summary").value,
+    subject: card.querySelector(".sd-subject").value,
+    known_by: card.querySelector(".sd-kb-all").checked ? ["*"] : [...card.querySelectorAll(".sd-kb:checked")].map(i => i.value),
+    core: card.querySelector(".sd-core").checked,
+  })).filter(e => e.text.trim());
+}
+
+async function saveSeeds() {
+  const res = await (await fetch(editUrl("seeds"), {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ seeds: collectSeeds() }),
+  })).json();
+  if (res.error) { alert(res.error); return; }
+  W = res.world; renderSeeds(true);
+  if (res.memories && typeof setMemories === "function") setMemories(res.memories);   // each fact is kept as a memory for whoever knows it
+  const s = document.getElementById("seeds-saved");
+  s.textContent = "saved"; setTimeout(() => (s.textContent = ""), 1500);
+}
+
 let scheduleSig = "", newEventN = 0;
 
 function eventCardHtml(e, idx) {

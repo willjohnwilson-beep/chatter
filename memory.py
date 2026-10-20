@@ -129,6 +129,7 @@ MAX_PLACES = 3
 # the model: a character's own statement about the world or someone else is only a
 # CLAIM (hearsay), whereas a stage direction, the narrator, the player (about their own
 # character) or a character about themselves establish it. The author can CONFIRM a claim.
+AUTHORED = ("place", "seed")   # memories the author wrote (a place, a seeded fact): play never edits, merges or deletes them
 PRIORITY = {"confirmed": 5, "scene": 4, "player": 3, "self": 2, "claim": 1, "": 0}
 _NOTICE = ("move", "depart", "arrive", "discover", "aside")
 
@@ -248,12 +249,19 @@ def kind_of(subject: str) -> str:
 
 # ---------- visibility ----------
 
+NARRATOR = "narrator"
+
+
 def visible_to(mem: dict, viewer: str | None) -> bool:
-    """Does this viewer know this memory? viewer=None is the omniscient
-    director/narrator, who knows everything."""
+    """Does this viewer know this memory? viewer=None is the omniscient author-side view, who knows everything. The narrator
+    is omniscient about what has happened, but not about the author's private facts: a seeded fact (or a place nobody has told
+    it about) is its own only if the author listed it, or made it known to everyone, so it cannot describe or hint at a
+    secret it was never given."""
     if viewer is None:
         return True
     kb = mem.get("known_by") or [ANYONE]
+    if viewer == NARRATOR:
+        return mem.get("origin") not in AUTHORED or ANYONE in kb or NARRATOR in kb
     return ANYONE in kb or viewer in kb
 
 
@@ -592,8 +600,8 @@ class MemoryStore:
             # would tell the old knowers something only the new ones witnessed.
             if existing and not _same_audience(existing, knowers, all_ids):
                 existing = None
-            if existing and existing.get("origin") == "place":
-                existing = None  # a place's description is the author's: a pass over the conversation records a new claim beside it
+            if existing and existing.get("origin") in AUTHORED:
+                existing = None  # the author's own facts: a pass over the conversation records a new claim beside them
             if op["action"] == "update" and existing:
                 # An update overwrites. Keep what it replaces so a bad edit is
                 # visible and recoverable rather than silently destructive.
@@ -761,7 +769,7 @@ def retrieve(
     in_prompt = {m["id"] for m in store.pool(viewer, exclude_core=True)} - {m["id"] for m in candidates}
 
     names = names or {}
-    who = names.get(viewer, "the character") if viewer else "the narrator"
+    who = "the narrator" if viewer in (None, NARRATOR) else names.get(viewer, "the character")
     player = names.get(PLAYER, "the player")
     cap_text = f"Return at most {limit} memories, most important first.\n\n" if limit else ""
 
@@ -1236,7 +1244,7 @@ def consolidate(store: MemoryStore, model: str, names: dict | None = None,
     names = names or {}
     groups: dict[tuple, list[dict]] = {}
     for m in store.memories:
-        if m.get("origin") == "place":
+        if m.get("origin") in AUTHORED:
             continue  # authored; never merged into anything else
         kb = m.get("known_by") or [ANYONE]
         key = tuple(sorted(set(all_ids or []) if ANYONE in kb else set(kb)))

@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 
 sys.path.insert(0, "D:/Claude/Chatter")
 os.environ.setdefault("ANTHROPIC_API_KEY", "unused")
-os.environ["CHATTER_PLACE_MEMORIES"] = "0"   # the older sections count memories; the place-knowledge section turns it on itself
+os.environ["CHATTER_AUTHORED_MEMORIES"] = "0"   # the older sections count memories; the place-knowledge section turns it on itself
 import chatter as ch
 import llm
 import memory
@@ -3969,7 +3969,7 @@ assert nl({"name": "A", "known_by": "wren"}, set())["known_by"] == [], "junk is 
 
 def place_world():
     store, world, c = make([WREN, MICK])
-    c.place_memories = True
+    c.authored_memories = True
     world.set_locations([
         {"id": "salt-line", "name": "The Salt Line", "brief": "pub", "description": "A low-beamed pub by the harbour.", "connects_to": ["cellar", "pier"]},
         {"id": "cellar", "name": "The Cellar", "brief": "damp store", "description": "Kegs and a bolted back door.", "known_by": ["*"], "connects_to": ["salt-line"]},
@@ -4055,7 +4055,7 @@ import app as appmod4
 appmod4.store, appmod4.world, appmod4.chat_engine = store, world, c
 cl4 = appmod4.app.test_client()
 r = cl4.post("/api/memory/delete", json={"memory_id": pid})
-assert r.status_code == 400 and "edit the place" in r.get_json()["error"] and store.by_id(pid), "it cannot be deleted from the memory tab"
+assert r.status_code == 400 and "edit it where you wrote it" in r.get_json()["error"] and store.by_id(pid), "it cannot be deleted from the memory tab"
 r = cl4.post("/api/locations", json={"locations": [{"id": "salt-line", "name": "The Salt Line", "description": "Changed in the editor.", "known_by": ["*"]}]})
 assert r.status_code == 200 and store.by_id(pid)["detail"] == "Changed in the editor." and store.by_id(pid)["known_by"] == ["*"], "an edit to the place follows through at once"
 assert any(m["id"] == pid for m in r.get_json()["memories"]), "and the page is given the memories"
@@ -4080,10 +4080,130 @@ assert {m["place_id"]: m["known_by"] for m in store.memories}["salt-line"] == ["
 # a scenario carries who knows a place but not what anyone has learned; and the flag is off for older tests
 assert world.as_scenario()["locations"][1]["known_by"] == ["*"]
 store, world, c = make([WREN])
-assert c.place_memories is False and c.sync_places() is False and store.memories == []
+assert c.authored_memories is False and c.sync_places() is False and store.memories == []
 tmpl = ui_text()
 assert "p-kb-all" in tmpl and "known_by: card.querySelector" in tmpl and "placeKnownBoxes" in tmpl, "the place editor has the control"
 assert 'm.origin === "place"' in tmpl and "opts.noActions || isPlace" in tmpl, "a place's memory shows as one and has no delete"
+print("   PASS")
+
+print("== 98. seeded facts: what particular characters know from the start, kept as memories only they hold ==")
+ns = st._norm_seed
+assert ns({"text": "  "}, set()) is None and ns({}, set()) is None
+e_ = ns({"id": "new-1", "text": "You are an assistant producer.  Keep it quiet.", "known_by": ["imogen", "imogen"], "core": 1}, set())
+assert e_ == {"id": "you-are-an-assistant", "text": "You are an assistant producer. Keep it quiet.", "summary": "You are an assistant producer.",
+              "subject": "world", "known_by": ["imogen"], "core": True, "tags": []}, e_
+assert ns({"text": "x" * 400}, set())["summary"] == "x" * 140, "a long first sentence is cut"
+assert ns({"text": "A.", "summary": "  my  line ", "known_by": "wren", "tags": [" a ", "", "b"]}, set()) == \
+    {"id": "a", "text": "A.", "summary": "my line", "subject": "world", "known_by": [], "core": False, "tags": ["a", "b"]}
+assert ns({"id": "x", "text": "t"}, {"x"})["id"] != "x", "an id already taken is replaced"
+
+store, world, c = make([WREN, MICK])
+c.authored_memories = True
+SEEDS = [
+    {"id": "new-1", "text": "You are an undercover producer.", "known_by": ["wren"], "subject": "wren", "core": True},
+    {"id": "new-2", "text": "Everyone in the house knows the pump is broken. The plumber is coming Friday.", "known_by": ["*"]},
+    {"id": "new-3", "text": "Nobody knows this yet.", "known_by": []},
+    {"id": "new-4", "text": "Only a ghost knows this.", "known_by": ["ghost"]},
+    {"id": "new-5", "text": "Mick saw the harbourmaster take cash.", "known_by": ["mick"], "subject": "ghost", "tags": ["harbourmaster"]},
+]
+world.set_seeds(SEEDS + [{"text": ""}, "junk"] if False else SEEDS + [{"text": ""}])
+assert [e["id"] for e in world.seeds] == ["you-are-an-undercover", "everyone-in-the-house", "nobody-knows-this-yet", "only-a-ghost-knows", "mick-saw-the-harbourmaster"]
+assert st.WorldState(world.path).seeds == world.seeds and world.snapshot()["seeds"] == world.seeds, "persisted, and in the snapshot"
+assert world.as_scenario()["seeds"] == world.seeds
+assert store.memories == [] and c.sync_seeds() is True
+sd = {m["seed_id"]: m for m in store.memories}
+assert set(sd) == {"you-are-an-undercover", "everyone-in-the-house", "mick-saw-the-harbourmaster"}, "nobody knows it, or only someone who isn't here: nothing to remember"
+assert all(m["origin"] == "seed" and m["source"] == "confirmed" and m["verified"] and m["lifetime"] == "lasting" for m in sd.values())
+a_, b_, e5 = sd["you-are-an-undercover"], sd["everyone-in-the-house"], sd["mick-saw-the-harbourmaster"]
+assert (a_["subject"], a_["known_by"], a_["core"], a_["detail"], a_["summary"]) == ("wren", ["wren"], True, "You are an undercover producer.", "You are an undercover producer.")
+assert (b_["subject"], b_["known_by"], b_["core"], b_["summary"]) == ("world", ["*"], False, "Everyone in the house knows the pump is broken.")
+assert (e5["subject"], e5["known_by"], e5["tags"]) == ("world", ["mick"], ["harbourmaster"]), "a subject that isn't anyone falls back to the world"
+assert {m["seed_id"] for m in store.pool("mick")} == {"everyone-in-the-house", "mick-saw-the-harbourmaster"} and {m["seed_id"] for m in store.pool("wren")} == \
+    {"you-are-an-undercover", "everyone-in-the-house"}, "each character holds only what they were told"
+assert c.sync_seeds() is False, "nothing changed, nothing written"
+# it reaches the prompt: the always-in-mind one for its owner only, in the voice of an established fact
+sys_w, _ = c.build_context("wren", [])
+sys_m, _ = c.build_context("mick", [])
+assert "Established about you, and always true:\n- You are an undercover producer." in sys_w and "undercover" not in sys_m, "core: always in mind, for her alone"
+assert "pump is broken" not in sys_w, "a recalled fact is not in the prompt until it is recalled"
+sys_m2, tail_m2 = c.build_context("mick", [store.by_id(e5["id"])])
+assert "harbourmaster take cash" in sys_m2 + tail_m2 and "harbourmaster take cash" not in sys_m, "recalled when the topic comes up, with the turn's context"
+# the author's edits are followed
+world.seeds[0]["text"] = "You are an undercover producer called Sam."; world.seeds[0]["summary"] = "You are an undercover producer called Sam."
+world.seeds[1]["known_by"] = ["mick"]
+world.seeds[1]["core"] = True
+world.seeds.pop(4)
+world.save()
+assert c.sync_seeds() is True
+sd = {m["seed_id"]: m for m in store.memories}
+assert sd["you-are-an-undercover"]["detail"].endswith("called Sam.") and sd["you-are-an-undercover"]["versions"][-1]["detail"] == "You are an undercover producer."
+assert sd["everyone-in-the-house"]["known_by"] == ["mick"] and sd["everyone-in-the-house"]["core"] is True
+assert "mick-saw-the-harbourmaster" not in sd, "a seed taken out takes its memory"
+# play cannot rewrite, merge or delete them
+sid = sd["you-are-an-undercover"]["id"]
+out = store.apply_operations([{"action": "update", "memory_id": sid, "subject": "wren", "tags": ["x"], "summary": "Wren is a plumber", "detail": "Wren is a plumber.",
+                               "core": False, "lifetime": "lasting", "contradicts": [sid], "evidence": ""}], batch=[], known_by=["wren"],
+                             subject_ids=["player", "world", "wren", "mick"], all_ids=["wren", "mick"])
+assert store.by_id(sid)["detail"].endswith("called Sam.") and out[0]["action"] == "create" and sid in out[0]["conflicts_with"], "recorded beside it, flagged"
+store.memories[:] = [m for m in store.memories if m.get("origin") == "seed"]
+f = install(consolidate={"merges": []})
+memory.consolidate(store, "m", names=world.names(), all_ids=["wren", "mick"])
+assert "consolidate" not in f.kinds()
+import app as appmod5
+
+appmod5.store, appmod5.world, appmod5.chat_engine = store, world, c
+cl5 = appmod5.app.test_client()
+r = cl5.post("/api/memory/delete", json={"memory_id": sid})
+assert r.status_code == 400 and "edit it where you wrote it" in r.get_json()["error"] and store.by_id(sid)
+# the endpoint and what follows from it
+r = cl5.post("/api/seeds", json={"seeds": [{"id": "new-1", "text": "You know the cellar key is under the mat.", "known_by": ["wren"], "subject": "wren"}, "junk"]})
+assert r.status_code == 200 and [x["text"] for x in r.get_json()["world"]["seeds"]] == ["You know the cellar key is under the mat."]
+assert [m["detail"] for m in r.get_json()["memories"] if m.get("origin") == "seed"] == ["You know the cellar key is under the mat."], "the page is given the memories"
+assert cl5.post("/api/seeds", json={"seeds": "no"}).status_code == 400
+assert cl5.get("/api/state").get_json()["world"]["seeds"][0]["known_by"] == ["wren"]
+# a public line that contradicts a seed only one person knows is flagged for the author, as with any hidden memory
+seed_mid = next(m["id"] for m in store.memories if m.get("origin") == "seed")
+line = {"speaker": "mick", "content": "The cellar key? Went missing years ago, nobody has seen it.", "t": "Thursday 15 October 2026, 9pm", "present": ["wren", "mick"]}
+install(crosslines={"contradictions": [{"memory_id": seed_mid, "line_quote": "Went missing years ago, nobody has seen it", "memory_quote": "the cellar key is under the mat",
+                                        "why": "the key cannot be both under the mat and missing for years"}]})
+NM98 = {"mick": "Mick", "wren": "Wren", "player": "Alex", "narrator": "Narrator"}
+store.by_id(seed_mid)["known_by"] = ["wren"]
+n_, _ = memory.cross_lines(store, [dict(line, speaker="wren", present=["wren"])], ["wren"], ["wren", "mick"], "m", NM98)
+assert n_ == 0, "said in front of the one person who holds it: nothing is hidden from that audience"
+n_, _ = memory.cross_lines(store, [dict(line, present=["mick"])], ["mick"], ["wren", "mick"], "m", {"mick": "Mick", "wren": "Wren", "player": "Alex", "narrator": "Narrator"})
+assert n_ == 1 and store.by_id(seed_mid)["contradicted_in_play"][0]["speaker"] == "Mick", "said in front of someone who doesn't hold it: flagged"
+# the narrator is omniscient about what happened, but is never given the author's private facts
+store, world, c = make([WREN, MICK], narrator=True)
+c.authored_memories = True
+world.set_seeds([{"text": "You are an undercover producer.", "known_by": ["wren"], "subject": "wren", "core": True},
+                 {"text": "The pump is broken.", "known_by": ["*"], "core": True},
+                 {"text": "The narrator may know this one.", "known_by": ["narrator", "wren"]}])
+world.set_locations([{"id": "salt-line", "name": "The Salt Line", "description": "A pub.", "known_by": ["wren"]}])
+c.sync_knowledge()
+addmem(store, "mem_0900", "Wren told Mick a secret.", ["wren", "mick"])
+assert {m.get("seed_id") or m.get("place_id") or m["id"] for m in store.pool("narrator")} == {"the-pump-is-broken", "the-narrator-may-know", "mem_0900"}, \
+    {m.get("seed_id") or m.get("place_id") or m["id"] for m in store.pool("narrator")}
+assert {m["id"] for m in store.pool(None)} == {m["id"] for m in store.memories}, "the author-side view still sees everything"
+assert "undercover" not in c.build_context("narrator", [])[0] and "pump is broken" in c.build_context("narrator", [])[0], "its core facts: the public one, not the private one"
+f = install(retrieve={"retrieved": []})
+memory.retrieve(store, "anything?", "(start)", "m", viewer="narrator", names=world.names(), place="elsewhere")
+asked = f.calls[0][1]["messages"][0]["content"]
+assert "undercover" not in asked and "Wren told Mick a sec" in asked and "may know this one" in asked and "The Salt Line" not in asked.split("CANDIDATES:")[1], \
+    "the narrator's retrieval is offered what happened and what it may know, not the private seed or a place only Wren knows"
+assert "who the narrator" not in asked and "the narrator's memories" in asked
+
+# reset, an older world, the flag, the page
+world.reset_all()
+assert world.seeds == []
+json.dump({"fixed": {"core_instructions": "C", "scenario": "S"}, "scene": {}, "characters": [{"name": "Wren"}], "narrator": {}, "player": {}},
+          open(os.path.join(tmp, "oldseed.json"), "w"))
+assert st.WorldState(os.path.join(tmp, "oldseed.json")).seeds == [], "a world saved before seeds existed"
+store, world, c = make([WREN])
+world.set_seeds([{"text": "A fact.", "known_by": ["*"]}])
+assert c.authored_memories is False and c.sync_seeds() is False and c.sync_knowledge() is False and store.memories == []
+tmpl = ui_text()
+assert 'id="seeds"' in tmpl and "saveSeeds" in tmpl and 'editUrl("seeds")' in tmpl and "renderSeeds(true)" in tmpl and "sd-kb-all" in tmpl and "sd-core" in tmpl
+assert 'm.origin === "seed"' in tmpl and "seeded" in tmpl, "a seeded fact shows as one, with no delete"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
