@@ -10,9 +10,10 @@ measured (no replies are written, so it is quick and cheap):
   provoke     "I think at least one of you isn't being straight..."   several should want to answer, but not all eight
   aside       "*I look up at the chandelier for a while.*"            nobody, or one
   chain       (Priya has just asked Winifred a question) "Mm. I'd like to hear that too."   Winifred must answer
-Configurations: base (an older director.py, cap 2, no forced answer), new at cap 4, new at cap 8 (cap as a ceiling).
+Configurations: base (an older director.py, cap 2, no forced answer), new at cap 4, new at cap 8 (cap as a ceiling), and 'bids':
+each character decides for themselves whether they want to speak (cap 4).
 
-Run: M=<model> N=8 [BASE=<path to an older director.py>] [CONFIGS='cap 4,cap 8'] python tests/experiments/exp_speakers.py
+Run: M=<model> N=8 [BASE=<path to an older director.py>] [CONFIGS='cap 4,bids'] python tests/experiments/exp_speakers.py
 """
 import importlib.util
 import json
@@ -62,6 +63,9 @@ def old_director():
     return mod
 
 
+KEEN = {}   # (config, line, run) -> (how many bid 2 or more, how many bid 3), before the ceiling cut anyone
+
+
 def one(args):
     config, label, line, must, i = args
     tmp = tempfile.mkdtemp()
@@ -80,6 +84,9 @@ def one(args):
         c.max_speakers = 2
         c._addressed = lambda *a, **k: []
         c._quiet = lambda *a, **k: []
+    elif config == "bids":
+        ch.director = director_new
+        c.speaker_mode, c.max_speakers = "bids", 4
     else:
         ch.director = director_new
         c.max_speakers = 4 if config == "cap 4" else 8
@@ -88,6 +95,8 @@ def one(args):
     except Exception as e:  # noqa: BLE001
         return config, label, None, f"{type(e).__name__}: {str(e)[:80]}"
     ids = [s["id"] for s in d["speakers"]]
+    if "bids" in d:
+        KEEN[(config, label, i)] = (sum(b["urge"] >= 2 for b in d["bids"]), sum(b["urge"] >= 3 for b in d["bids"]))
     return config, label, ids, ""
 
 
@@ -111,6 +120,12 @@ for lb, _, _ in LINES:
         full = sum(1 for r in rows if len(set(r[2])) >= 8)
         dist = ", ".join(f"{k}: {counts[k]}" for k in sorted(counts))
         print(f"{lb:10} {cf:6} {dist:34} {mean:5.1f} {(str(ok) + '/' + str(len(rows))) if must else '-':>12} {full:>10}")
+if "bids" in configs:
+    print("\nbids mode: how many characters were keen (bid 2+, and 3) before the ceiling, mean over runs")
+    for lb, _, _ in LINES:
+        ks = [v for (cf, l, i), v in KEEN.items() if cf == "bids" and l == lb]
+        if ks:
+            print(f"  {lb:10} keen {sum(k[0] for k in ks) / len(ks):.1f}   must-react {sum(k[1] for k in ks) / len(ks):.1f}")
 errs = [r[3] for r in res if r[2] is None]
 print(f"\nerrors: {len(errs)} {errs[:2]}")
 q = [r for r in res if r[1] in ("room", "provoke") and r[2] is not None]

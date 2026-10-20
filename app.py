@@ -14,7 +14,7 @@ import llm  # noqa: E402
 import memory  # noqa: E402
 import scenario as scenario_mod  # noqa: E402
 import state as state_mod  # noqa: E402
-from chatter import LAYOUTS, Chatter  # noqa: E402
+from chatter import LAYOUTS, SPEAKER_MODES, Chatter  # noqa: E402
 
 app = Flask(__name__)
 # Pick up template edits without restarting — Flask otherwise caches templates
@@ -28,7 +28,7 @@ chat_engine = Chatter(store, world)
 LIBRARY_BASE = library_mod.BASE  # where scenarios/ and sessions/ live; the tests point it at a temp dir
 
 # What the UI sets on the engine each turn. Kept across a switch so the settings don't snap back to defaults.
-ENGINE_SETTINGS = ("batch", "verbatim", "recall_cap", "layout", "recall_tool", "max_speakers", "life_every")
+ENGINE_SETTINGS = ("batch", "verbatim", "recall_cap", "layout", "recall_tool", "max_speakers", "life_every", "speaker_mode")
 
 
 def _library() -> library_mod.Library:
@@ -81,6 +81,7 @@ def snapshot() -> dict:
         "layout": chat_engine.layout,
         "recall_tool": chat_engine.recall_tool,
         "max_speakers": chat_engine.max_speakers,
+        "speaker_mode": chat_engine.speaker_mode,
         "life_every": chat_engine.life_every,
         "archived": len(store.archive),
         "can_retry": chat_engine.can_retry(),
@@ -182,6 +183,8 @@ def chat():
         chat_engine.layout = body["layout"]
     if body.get("recall_tool") is not None:
         chat_engine.recall_tool = bool(body["recall_tool"])
+    if body.get("speaker_mode") in SPEAKER_MODES:
+        chat_engine.speaker_mode = body["speaker_mode"]
     if body.get("max_speakers") is not None:
         chat_engine.max_speakers = max(1, min(8, int(body["max_speakers"])))
     if body.get("life_every") is not None:

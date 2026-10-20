@@ -71,6 +71,29 @@ log = logging.getLogger(__name__)
 # All are shown to a model without a speaker label.
 NOTICE_KINDS = ("move", "depart", "arrive", "discover", "event")
 LAYOUTS = ("system", "tail")
+BID_INSTRUCTION = (
+    "(Not your reply yet.) Please decide whether you want to speak. Think as {who}: given who you are, what you know and what has "
+    "just been said, do you want to say something in reply right now? Rate your urge:\n"
+    "  0 = nothing to add; you would stay quiet\n"
+    "  1 = you could say something, but it isn't needed\n"
+    "  2 = you want to chip in\n"
+    "  3 = you have to react: you were addressed or asked, it concerns you, or you can't let it pass\n"
+    "Most people in a crowded room stay quiet most of the time. Don't bid high just to be heard; someone else answering a "
+    "question does not make it yours; if what you would say has already been said, bid low; a line that is only an action or "
+    "a glance usually draws little.{extra} `cue`: under 15 words on what you would do or say (your angle, not your "
+    "words), empty if your urge is 0. Answer in JSON."
+)
+SPEAKER_MODES = ("director", "bids")   # who decides who speaks: one director call, or each character for themselves
+BID_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "urge": {"type": "integer", "enum": [0, 1, 2, 3]},
+        "cue": {"type": "string", "description": "Under 15 words: what you would do or say (your angle, not your words). Empty if urge is 0."},
+        "why": {"type": "string", "description": "One short clause."},
+    },
+    "required": ["urge", "cue", "why"],
+    "additionalProperties": False,
+}
 # Keep a memory of each place, and of each seeded fact, for whoever knows it (see Chatter.sync_places and sync_seeds).
 # CHATTER_AUTHORED_MEMORIES=0 turns it off.
 AUTHORED_MEMORIES = os.environ.get("CHATTER_AUTHORED_MEMORIES", "1") != "0"
@@ -136,6 +159,7 @@ class Chatter:
         self.layout = "tail"
         self.recall_tool = False
         self.max_speakers = MAX_SPEAKERS
+        self.speaker_mode = "director"
         self.life_every = LIFE_EVERY
         self._life_count = 0
         self._undo = None  # see _checkpoint
@@ -686,31 +710,44 @@ class Chatter:
         if len(cands) == 1 and not arriving and not hints:
             return {"speakers": [{"id": cands[0], "cue": ""}], "reason": "only one possible speaker",
                     "bypassed": True, "usage": llm.zero_usage(), "arrivals": []}
-        roster = []
-        for cid in cands:
-            if cid == NARRATOR_ID:
-                roster.append({"id": NARRATOR_ID, "name": "Narrator"})
-            else:
-                c = self.world.character(cid)
-                roster.append({"id": cid, "name": c["name"], "brief": c.get("brief", ""),
-                               "status": c.get("status", "")})
-        offstage = [
-            f"{c['name']} (at {self.world.place_name(c.get('location'))}): {c['offscreen']}"
-            for c in self.world.characters
-            if c["id"] in self.world.offstage_ids() and (c.get("offscreen") or "").strip()
-        ]
-        speakers, reason, usage, arrivals, foreshadow = director.decide(
-            offstage=offstage,
-            arriving=arriving,
-            hints=hints,
-            roster=roster,
-            scene_text=self.world.render_scene(NARRATOR_ID),
-            recent_text=self.recent_text(None),
-            latest=latest,
-            player_name=self._name(PLAYER_ID),
-            cap=self.max_speakers,
-            model=models["director"],
-        )
+        bids = None
+        if self.speaker_mode == "bids" and len(speakers_here) >= 2:
+            bids = self._collect_bids(cands, models)
+        if bids is not None and not arriving and not hints:
+            speakers, reason, usage, arrivals, foreshadow = [], "", llm.zero_usage(), [], []   # nothing left for a director to do
+        else:
+            roster = []
+            for cid in cands:
+                if cid == NARRATOR_ID:
+                    roster.append({"id": NARRATOR_ID, "name": "Narrator"})
+                else:
+                    c = self.world.character(cid)
+                    roster.append({"id": cid, "name": c["name"], "brief": c.get("brief", ""),
+                                   "status": c.get("status", "")})
+            offstage = [
+                f"{c['name']} (at {self.world.place_name(c.get('location'))}): {c['offscreen']}"
+                for c in self.world.characters
+                if c["id"] in self.world.offstage_ids() and (c.get("offscreen") or "").strip()
+            ]
+            speakers, reason, usage, arrivals, foreshadow = director.decide(
+                offstage=offstage,
+                arriving=arriving,
+                hints=hints,
+                roster=roster,
+                scene_text=self.world.render_scene(NARRATOR_ID),
+                recent_text=self.recent_text(None),
+                latest=latest,
+                player_name=self._name(PLAYER_ID),
+                cap=self.max_speakers,
+                model=models["director"],
+            )
+        if bids is not None:
+            # In bids mode the speakers are the characters who each said they wanted to; a director, if there was one, only
+            # handled arrivals and hints.
+            speakers, reason, u_bids = self._speakers_from_bids(bids, message)
+            usage = {k: usage[k] + u_bids[k] for k in usage}
+            chosen = {s["id"] for s in speakers}
+            foreshadow = [f for f in foreshadow if f["to"] in chosen]
         if not speakers and message is not None and self._expects_reply(message):
             # The director sometimes talks itself out of an answer ("everyone is busy,
             # nobody was addressed"). A line meant for the room should get one.
@@ -729,7 +766,64 @@ class Chatter:
                 if added:
                     reason = (reason + " " if reason else "") + "(added: addressed by name)"
         return {"speakers": speakers, "reason": reason, "bypassed": False, "usage": usage,
-                "arrivals": arrivals, "foreshadow": foreshadow}
+                "arrivals": arrivals, "foreshadow": foreshadow,
+                **({"bids": [{"id": b["id"], "urge": b["urge"], "cue": b["cue"], "why": b["why"]} for b in bids]} if bids is not None else {})}
+
+    # ---------- each character decides whether to speak ----------
+
+    def _bid_one(self, cid: str, models: dict) -> dict:
+        """One character's own answer to 'do you want to say something?': an urge from 0 to 3 and what they would do. The call is made
+        from THEIR point of view, with their own prompt and only what they witnessed, so it needs no one to see the whole room."""
+        w = self.world
+        who = "the narrator" if cid == NARRATOR_ID else self._name(cid)
+        system, tail = self.build_context(cid, [])
+        messages = self.viewer_messages(cid)
+        if tail:
+            messages.append({"role": "system", "content": tail})
+        extra = (" The narrator speaks only when the scene needs describing, a moment needs a transition, or something happens that no "
+                 "character would voice." if cid == NARRATOR_ID else "")
+        n_here = len([c for c in self.world.present_ids()])
+        messages.append({"role": "user", "content": BID_INSTRUCTION.format(who=who, n=n_here, extra=extra)})
+        try:
+            response = llm.client().messages.create(**llm.params(
+                models["director"], max_tokens=300, system=system, messages=messages,
+                output_config={"format": {"type": "json_schema", "schema": BID_SCHEMA}}))
+            got = json.loads(llm.text(response))
+            urge = got["urge"] if got.get("urge") in (0, 1, 2, 3) else 0
+            return {"id": cid, "urge": urge, "cue": (got.get("cue") or "").strip() if urge else "", "why": (got.get("why") or "").strip(),
+                    "usage": llm.usage(response)}
+        except Exception:  # a character whose bid fails simply doesn't bid: the others still do
+            log.exception("bid for %s failed", cid)
+            return {"id": cid, "urge": 0, "cue": "", "why": "(no bid)", "usage": llm.zero_usage()}
+
+    def _collect_bids(self, cands: list[str], models: dict) -> list[dict]:
+        with ThreadPoolExecutor(max_workers=len(cands)) as ex:
+            return list(ex.map(lambda cid: self._bid_one(cid, models), cands))
+
+    def _last_spoke(self, cid: str) -> int:
+        for i in range(len(self.history) - 1, -1, -1):
+            if self.history[i]["speaker"] == cid:
+                return i
+        return -1
+
+    def _speakers_from_bids(self, bids: list[dict], message: str | None) -> tuple[list[dict], str, dict]:
+        """The ones who said they have to react (urge 3), keenest-and-longest-quiet first, up to the ceiling. Asked on their own, almost
+        everyone is 'keen' to chip in (a 2), so that is not what decides: a 3, 'it would be odd to stay silent', is the signal, and it
+        runs from one for a plain question to several for something that lands on many people. If nobody has to but a spoken line needs
+        an answer, the most willing person gives it (then the one who has been quiet longest, never just the last to speak); an action or
+        an aside can draw no one."""
+        usage = llm.zero_usage()
+        for b in bids:
+            usage = {k: usage[k] + b["usage"][k] for k in usage}
+        order = lambda bs: sorted(bs, key=lambda b: (-b["urge"], self._last_spoke(b["id"])))
+        chosen = order([b for b in bids if b["urge"] >= 3])[:self.max_speakers]
+        note = ""
+        if not chosen and (message is None or self._expects_reply(message)):
+            pool = order([b for b in bids if b["id"] != NARRATOR_ID])
+            if pool:
+                chosen, note = [pool[0]], " (nobody has to: the most willing answers)"
+        shown = ", ".join(f"{self._name(b['id'])} {b['urge']}" for b in sorted(bids, key=lambda b: -b["urge"]) if b["urge"])
+        return [{"id": b["id"], "cue": b["cue"]} for b in chosen], "bids: " + (shown or "nobody wants to speak") + note, usage
 
     def _addressed(self, message: str, cands: list[str]) -> list[str]:
         """The characters a line speaks TO, by name: a name opening the line or a sentence and followed by a comma, colon, question or

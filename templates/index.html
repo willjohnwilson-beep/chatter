@@ -74,6 +74,8 @@
         <label>Summary</label><div><input id="m-summary" list="model-list" spellcheck="false"><div class="mi" id="mi-summary"></div></div>
         <label title="OpenRouter models only. Direct Claude models keep their own settings.">Thinking: characters</label><select id="r-character" onchange="saveReasoning()"><option value="none">off</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
         <label title="Director, retrieval, state, formation and summaries. OpenRouter models only.">Thinking: background</label><select id="r-background" onchange="saveReasoning()"><option value="none">off</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
+        <label title="Who decides who answers a line: one director call reads the room, or each character decides for themselves whether they want to speak (one small call each, so more calls per turn)">Who speaks</label>
+        <select id="cfg-speaker-mode"><option value="director">a director chooses</option><option value="bids">each character decides</option></select>
         <label>Max speakers</label><input id="cfg-speakers" type="number" min="1" max="8" title="The most people who can answer one line. How many do is the director's call: it is a ceiling.">
         <label title="Turns between updates of what characters out of sight are up to. 0 = never">Offstage every</label><input id="cfg-life" type="number" min="0" max="50">
         <label>Window</label><input id="cfg-verbatim" type="number" min="2" step="2">
@@ -741,6 +743,7 @@ function cfg() {
     layout: document.getElementById("cfg-layout").value,
     recall_tool: document.getElementById("cfg-tool").value === "true",
     max_speakers: +document.getElementById("cfg-speakers").value,
+    speaker_mode: document.getElementById("cfg-speaker-mode").value,
     life_every: +document.getElementById("cfg-life").value,
     notice: document.getElementById("cfg-notice").value === "true",
   };
@@ -929,6 +932,7 @@ document.getElementById("msg").addEventListener("keydown", e => {
   document.getElementById("cfg-layout").value = s.layout;
   document.getElementById("cfg-tool").value = String(s.recall_tool);
   document.getElementById("cfg-speakers").value = s.max_speakers;
+  document.getElementById("cfg-speaker-mode").value = s.speaker_mode || "director";
   document.getElementById("cfg-life").value = s.life_every ?? 6;
   document.getElementById("archived-count").textContent = s.archived ?? 0;
   if (s.session_summary) {

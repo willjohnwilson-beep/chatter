@@ -53,7 +53,11 @@ class Fake:
     def create(self, **kw):
         first = kw["messages"][0]["content"] if kw["messages"] else ""
         first = first if isinstance(first, str) else ""
-        if "You direct a roleplay scene" in first:
+        last = kw["messages"][-1]["content"] if kw["messages"] else ""
+        last = last if isinstance(last, str) else ""
+        if "Please decide whether you want to speak" in last:
+            kind = "bid"
+        elif "You direct a roleplay scene" in first:
             kind = "director"
         elif "You track the current situation" in first:
             kind = "watch"
@@ -89,6 +93,7 @@ class Fake:
                              else json.dumps({"discovered": []}) if kind == "discover"
                              else json.dumps({"memories": []}) if kind == "offstage"
                              else json.dumps({"contradictions": []}) if kind == "crosslines"
+                             else json.dumps({"urge": 0, "cue": "", "why": ""}) if kind == "bid"
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
@@ -4264,6 +4269,142 @@ assert c.max_speakers == 8
 appmod6.app.test_client().post("/api/chat", json={"message": "Hi", "max_speakers": 20, "models": MODELS})
 assert c.max_speakers == 8, "the ceiling on the setting is eight"
 assert 'id="cfg-speakers" type="number" min="1" max="8"' in ui_text()
+print("   PASS")
+
+print("== 100. each character decides whether they want to speak, from their own point of view ==")
+SAM = {"name": "Sam", "persona": "You are Sam.", "reminder": "R-SAM", "brief": "x"}
+NED = {"name": "Ned", "persona": "You are Ned.", "reminder": "R-NED", "brief": "x"}
+
+
+def bid_world(narrator=False, speakers=3):
+    store, world, c = make([WREN, MICK, SAM] + ([NED] if False else []), narrator=narrator)
+    for cc in world.characters:
+        cc["location"] = world.scene["location"]
+    c.speaker_mode, c.max_speakers = "bids", 3
+    return store, world, c
+
+
+def bidder(**by):
+    """A scripted bid per character, found by whose prompt the call carries. by = {id: (urge, cue)}; a missing id bids 0."""
+    def h(kw):
+        who = next((cid for cid, nm in (("wren", "You are Wren"), ("mick", "You are Mick"), ("sam", "You are Sam"), ("narrator", "You are the narrator"))
+                    if nm in kw["system"]), None)
+        got = by.get(who, (0, ""))
+        if isinstance(got, Exception):
+            raise got
+        return {"urge": got[0], "cue": got[1], "why": "because"}
+    return h
+
+
+store, world, c = bid_world()
+c._append("player", "Does anyone know where the key is?", ["wren", "mick", "sam"])
+f = install(bid=bidder(wren=(3, "answers plainly"), mick=(2, "adds a doubt"), sam=(0, "")))
+d = c._direct(MODELS, c.latest_for(None), message="Does anyone know where the key is?")
+assert [(s["id"], s["cue"]) for s in d["speakers"]] == [("wren", "answers plainly")], "a 3 speaks; a 2 (almost everyone's answer) does not decide"
+assert d["reason"] == "bids: Wren 3, Mick 2" and f.kinds().count("bid") == 3 and "director" not in f.kinds(), "one bid each, no director call"
+assert [b["id"] for b in d["bids"]] == ["wren", "mick", "sam"] and d["bids"][0]["urge"] == 3 and d["usage"]["output_tokens"] == 6, "their own cues; the calls' usage adds up"
+# the prompt each character is asked from is theirs alone, and ends with the question
+bid_call = [kw for k, kw in f.calls if k == "bid"]
+sys_w = next(kw["system"] for kw in bid_call if "You are Wren" in kw["system"])
+assert "You are Mick" not in sys_w and "You are Sam" not in sys_w
+assert bid_call[0]["messages"][-1]["role"] == "user" and "Rate your urge" in bid_call[0]["messages"][-1]["content"] and "Don't bid high just to be heard" in bid_call[0]["messages"][-1]["content"]
+# those who have to react, keenest first; among the equally keen, whoever has spoken least recently; up to the ceiling
+store, world, c = bid_world()
+c._append("player", "Hm.", ["wren", "mick", "sam"]); c._append("mick", "early", ["wren", "mick", "sam"]); c._append("wren", "late", ["wren", "mick", "sam"])
+c._append("player", "Thoughts?", ["wren", "mick", "sam"])
+install(bid=bidder(wren=(3, "a"), mick=(3, "b"), sam=(3, "c")))
+d = c._direct(MODELS, c.latest_for(None), message="Thoughts?")
+assert [s["id"] for s in d["speakers"]] == ["sam", "mick", "wren"], "sam never has, mick earlier than wren"
+c.max_speakers = 2
+d = c._direct(MODELS, c.latest_for(None), message="Thoughts?")
+assert [s["id"] for s in d["speakers"]] == ["sam", "mick"], "the ceiling holds"
+install(bid=bidder(wren=(3, "a"), mick=(2, "b"), sam=(3, "c")))
+assert [s["id"] for s in c._direct(MODELS, c.latest_for(None), message="Thoughts?")["speakers"]] == ["sam", "wren"], "only the 3s, least recent first"
+install(bid=bidder(wren=(2, "a"), mick=(2, "b"), sam=(2, "c")))
+d = c._direct(MODELS, c.latest_for(None), message="Thoughts?")
+assert [s["id"] for s in d["speakers"]] == ["sam"] and "nobody has to" in d["reason"], "everyone merely keen: one answers, the one who has been quiet longest"
+# nobody keen: a spoken line still gets an answer from the most willing; an action can get none
+c.max_speakers = 3
+install(bid=bidder(wren=(1, "if pushed"), mick=(0, ""), sam=(1, "perhaps")))
+d = c._direct(MODELS, c.latest_for(None), message="Anyone there?")
+assert [s["id"] for s in d["speakers"]] == ["sam"] and "nobody has to" in d["reason"], "equally willing: the one who has spoken least recently"
+d = c._direct(MODELS, c.latest_for(None), message="*I look around the room.*")
+assert d["speakers"] == [] and "Wren 1" in d["reason"], "an action alone: nobody has to answer"
+install(bid=bidder())
+d = c._direct(MODELS, c.latest_for(None), message="Anyone there?")
+assert [s["id"] for s in d["speakers"]] == ["sam"] and d["reason"] == "bids: nobody wants to speak (nobody has to: the most willing answers)",     "everyone content to stay quiet but a question was put to the room: the one who has been quiet longest, not the last to speak"
+d = c._direct(MODELS, c.latest_for(None), message="*I wait.*")
+assert d["speakers"] == [], "and an action still needs no answer"
+# a person spoken to by name still answers, first, whatever they bid
+install(bid=bidder(wren=(3, "x"), mick=(3, "y"), sam=(0, "")))
+d = c._direct(MODELS, c.latest_for(None), message="Sam, are you there?")
+assert [s["id"] for s in d["speakers"]] == ["sam", "mick", "wren"] and d["speakers"][0]["cue"] == "addressed by name" and "(added: addressed by name)" in d["reason"]
+# a bid that fails is a bid of nothing; the others carry on
+install(bid=bidder(wren=(3, "ok"), mick=RuntimeError("provider down"), sam=(2, "ok")))
+d = c._direct(MODELS, c.latest_for(None), message="Hello?")
+assert [s["id"] for s in d["speakers"]] == ["wren"], d["speakers"]
+assert [b for b in d["bids"] if b["id"] == "mick"][0]["why"] == "(no bid)"
+# the narrator bids too, but is never the one picked just to have someone answer
+store, world, c = bid_world(narrator=True)
+install(bid=bidder(narrator=(3, "describes the rain"), wren=(0, ""), mick=(0, ""), sam=(0, "")))
+d = c._direct(MODELS, c.latest_for(None), message="Hm.")
+assert [s["id"] for s in d["speakers"]] == ["narrator"] and d["bids"][0]["id"] in ("wren", "mick", "sam", "narrator")
+install(bid=bidder(narrator=(1, "something"), wren=(0, ""), mick=(0, ""), sam=(0, "")))
+d = c._direct(MODELS, c.latest_for(None), message="*Hm.*")
+assert d["speakers"] == [], "only the narrator would speak, and not keenly: nobody"
+d = c._direct(MODELS, c.latest_for(None), message="Hm?")
+assert [s["id"] for s in d["speakers"]] != ["narrator"] and len(d["speakers"]) == 1, "the narrator is never picked just to have someone answer"
+# privacy: a character's bid is made from their own prompt, which holds only what they know
+store, world, c = bid_world()
+store.memories.append({"id": "mem_0001", "subject": "world", "kind": "canon", "known_by": ["mick"], "tags": [], "summary": "s", "detail": "MICKS-SECRET-FACT",
+                       "core": True, "as_of": "", "versions": [], "places": [], "source": "player", "claimed_by": "", "evidence": "", "verified": True})
+c._append("player", "Hello?", ["wren", "mick", "sam"])
+f = install(bid=bidder())
+c._direct(MODELS, c.latest_for(None), message="Hello?")
+by_who = {("mick" if "You are Mick" in kw["system"] else "wren" if "You are Wren" in kw["system"] else "sam"): kw for k, kw in f.calls if k == "bid"}
+assert "MICKS-SECRET-FACT" in by_who["mick"]["system"] and "MICKS-SECRET-FACT" not in by_who["wren"]["system"] + by_who["sam"]["system"], \
+    "each bid is written from that character's own knowledge"
+# a lone character needs no bids; with someone on their way, a director still handles the arrival (and its speakers are ignored)
+store, world, c = make([WREN])
+c.speaker_mode = "bids"
+f = install(bid=bidder(wren=(3, "x")))
+d = c.turn("Hi.", MODELS) if False else c._direct(MODELS, "Hi.", message="Hi.")
+assert d["bypassed"] and "bid" not in f.kinds(), "one possible speaker: nothing to decide"
+store, world, c = bid_world()
+world.set_cast([WREN, MICK, SAM, NED], None, None)
+for cid in ("wren", "mick", "sam"):
+    world.character(cid)["location"] = world.scene["location"]
+world.character("ned")["location"] = ""
+world.character("ned")["arriving"] = True
+c.speaker_mode, c.max_speakers = "bids", 3
+install(bid=bidder(wren=(3, "x")), director={"speakers": [{"id": "mick", "cue": "no"}], "reason": "d", "arrivals": ["ned"]})
+d = c._direct(MODELS, "Hello?", message="Hello?")
+assert [s["id"] for s in d["speakers"]] == ["wren"] and d["arrivals"] == ["ned"], "the bidders speak; the director only brought Ned in"
+# a whole turn: the cue the character wrote for themselves is what they are given
+store, world, c = bid_world()
+seen_cues = []
+def character_probe2(kw):
+    seen_cues.append(kw["system"] + str(kw["messages"][-1]["content"]))
+    return "reply"
+install(bid=bidder(wren=(3, "answers with a joke"), mick=(0, ""), sam=(0, "")), character=character_probe2, watch={"updates": []}, retrieve={"retrieved": []})
+r = c.turn("Where is the key?", MODELS)
+assert [x["speaker"] for x in r["replies"]] == ["wren"] and any("answers with a joke" in t for t in seen_cues), "their own cue reaches them"
+assert r["director"]["reason"].startswith("bids:") and r["usage"]["director"]["output_tokens"] == 6
+# the setting
+import app as appmod7
+
+appmod7.store, appmod7.world, appmod7.chat_engine = store, world, c
+cl7 = appmod7.app.test_client()
+install(bid=bidder(), character="ok", watch={"updates": []}, director={"speakers": [], "reason": "x"})
+cl7.post("/api/chat", json={"message": "Hi", "speaker_mode": "director", "models": MODELS})
+assert c.speaker_mode == "director" and cl7.get("/api/state").get_json()["speaker_mode"] == "director"
+cl7.post("/api/chat", json={"message": "Hi", "speaker_mode": "bids", "models": MODELS})
+assert c.speaker_mode == "bids"
+cl7.post("/api/chat", json={"message": "Hi", "speaker_mode": "nonsense", "models": MODELS})
+assert c.speaker_mode == "bids", "an unknown mode is ignored"
+assert "speaker_mode" in appmod7.ENGINE_SETTINGS, "kept across a switch of session"
+tmpl = ui_text()
+assert 'id="cfg-speaker-mode"' in tmpl and "each character decides" in tmpl and "speaker_mode: document.getElementById" in tmpl
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
