@@ -139,6 +139,8 @@
   a.btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); padding: 5px 11px;
           border-radius: 6px; font-size: 12px; text-decoration: none; display: inline-block; }
   a.btn:hover { border-color: var(--accent); }
+  a.btn.primary { background: var(--accent); border-color: var(--accent); color: #10131c; font-weight: 600; font-size: 13px; padding: 7px 16px; }
+  a.btn.primary:hover { filter: brightness(1.1); }
   body.page { display: block; height: auto; min-height: 100vh; overflow: auto; }
   body.page .wrap { max-width: 980px; margin: 0 auto; padding: 20px 18px 60px; }
   body.page .pagehead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }

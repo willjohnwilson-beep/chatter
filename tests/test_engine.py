@@ -4206,4 +4206,64 @@ assert 'id="seeds"' in tmpl and "saveSeeds" in tmpl and 'editUrl("seeds")' in tm
 assert 'm.origin === "seed"' in tmpl and "seeded" in tmpl, "a seeded fact shows as one, with no delete"
 print("   PASS")
 
+print("== 99. who speaks: the director chooses who wants to, and a person spoken to by name always answers ==")
+assert ch.MAX_SPEAKERS == 4, "a ceiling, not a target"
+store, world, c = make([PRIYA, YAS, DEL, DEL2])
+cands = ["priya", "yasmin", "delphine-okafor", "delphine-moss"]
+cands = [x["id"] for x in world.characters]
+ad = lambda msg: [world.character(i)["name"].split()[0] for i in c._addressed(msg, cands)]
+assert ad("Priya, what do you make of it?") == ["Priya"], "a name opening the line, then a comma"
+assert ad("What do you think, Yasmin?") == ["Yasmin"], "a name closing the line after a comma"
+assert ad("Hey Yasmin, over here") == ["Yasmin"] and ad("so Priya: any thoughts") == ["Priya"], "a greeting or a hand-over"
+assert ad("Yasmin, Priya: which of you counted the beds?") == ["Yasmin", "Priya"], "two, in the order named"
+assert ad("I liked Priya's story about the house, Yasmin. Say more?") == ["Yasmin"], "mentioning someone is not addressing them"
+assert ad("Priya said something odd earlier") == [] and ad("Does anyone know where the kitchen is?") == []
+assert ad("Delphine, a word?") == [], "a first name two people share is not guessed at"
+assert ad("Delphine Okafor, a word?") == ["Delphine"] and world.character(c._addressed("Delphine Okafor, a word?", cands)[0])["name"] == "Delphine Okafor"
+assert ad("*I look around.* Priya? Are you there?") == ["Priya"], "after an action"
+assert ad("") == [] and ad("   ") == []
+
+PICK = lambda *ids: {"speakers": [{"id": i, "cue": f"cue-{i}"} for i in ids], "reason": "x"}
+store, world, c = make([WREN, MICK, {"name": "Sam", "persona": "You are Sam.", "reminder": "R", "brief": "x"}])
+for cc in world.characters:
+    cc["location"] = world.scene["location"]
+c.max_speakers = 2
+c._append("player", "Wren, where's the key?", ["wren", "mick", "sam"])
+install(director=PICK("mick", "sam"))
+d = c._direct(MODELS, c.latest_for(None), message="Wren, where's the key?")
+assert [s["id"] for s in d["speakers"]] == ["wren", "mick"] and d["speakers"][0]["cue"] == "addressed by name", d["speakers"]
+assert "(added: addressed by name)" in d["reason"], "an addressed person the director left out is added, first, and the cap holds for the rest"
+install(director=PICK("mick", "wren"))
+d = c._direct(MODELS, c.latest_for(None), message="Wren, where's the key?")
+assert [s["id"] for s in d["speakers"]] == ["wren", "mick"] and d["speakers"][0]["cue"] == "cue-wren" and "added" not in d["reason"], \
+    "already chosen: moved to the front, keeping the director's cue"
+install(director=PICK("mick"))
+d = c._direct(MODELS, c.latest_for(None), message="Does anyone know where the key is?")
+assert [s["id"] for s in d["speakers"]] == ["mick"], "nothing named: the director's choice stands"
+install(director=PICK())
+d = c._direct(MODELS, c.latest_for(None), message="Sam, Mick, Wren: all of you!")
+assert [s["id"] for s in d["speakers"]] == ["sam", "mick", "wren"], "everyone named speaks, even past the cap (and the order is the order named)"
+f = install(director=PICK("wren", "wren", "mick", "mick", "sam"))
+d = c._direct(MODELS, c.latest_for(None), message="Hello?")
+assert [s["id"] for s in d["speakers"]] == ["wren", "mick"], "the cap, and no one twice in a row"
+prompt = next(kw for k, kw in f.calls if k == "director")["messages"][0]["content"]
+assert "Decide who WANTS to speak" in prompt and "ONE person for most lines" in prompt and "NO ONE when the line is plainly not for anyone" in prompt, "it is asked who wants to"
+assert "Never more than 2" in prompt and "never everyone just because they are present" in prompt and "goes first" in prompt
+assert "usually one, sometimes two" not in prompt, "the old nudge towards one or two is gone"
+# a private line bypasses the director and the naming rule: only the person it was said to answers
+install(director=PICK("mick"), character="psst")
+r = c.turn("Mick, a quiet word.", MODELS, to="wren")
+assert [x["speaker"] for x in r["replies"]] == ["wren"] and r["director"]["bypassed"]
+import app as appmod6
+
+assert appmod6.app.test_client().post("/api/chat", json={"message": "", "max_speakers": 8}).status_code == 400
+appmod6.store, appmod6.world, appmod6.chat_engine = store, world, c
+install(director=PICK("wren"), character="ok", watch={"updates": []})
+appmod6.app.test_client().post("/api/chat", json={"message": "Hi", "max_speakers": 8, "models": MODELS})
+assert c.max_speakers == 8
+appmod6.app.test_client().post("/api/chat", json={"message": "Hi", "max_speakers": 20, "models": MODELS})
+assert c.max_speakers == 8, "the ceiling on the setting is eight"
+assert 'id="cfg-speakers" type="number" min="1" max="8"' in ui_text()
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

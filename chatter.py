@@ -54,7 +54,7 @@ CONVERSATION_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "co
 VERBATIM_MESSAGES = 20   # nominal recent messages kept verbatim
 FORM_BATCH = 10          # aged-out messages that trigger a formation pass
 RECALL_CAP = 5           # most memories the prefetch may bring in per speaker. 0 disables it
-MAX_SPEAKERS = 2         # most characters the director may have speak per player line
+MAX_SPEAKERS = 4         # most characters the director may have speak per player line (a ceiling: how many is its call)
 LIFE_EVERY = 6           # turns between offscreen updates for characters out of sight. 0 disables them
 MAX_OFFSCREEN = 4        # most characters simulated per update; the rest keep their last note
 MAX_HINTS = 2            # times a hidden fact's hint may be let through to a character
@@ -717,8 +717,45 @@ class Chatter:
             who = self._fallback_speaker(message, [c for c in cands if c != NARRATOR_ID] or cands)
             speakers = [{"id": who, "cue": ""}]
             reason = (reason + " " if reason else "") + "(fallback: the line wasn't an aside, so someone answers)"
+        if message is not None:
+            # Someone the player speaks to by name answers, and first, whatever the director chose.
+            named = self._addressed(message, [c for c in cands if c != NARRATOR_ID])
+            if named:
+                have = {s["id"] for s in speakers}
+                added = [n for n in named if n not in have]
+                speakers = [{"id": n, "cue": next((s["cue"] for s in speakers if s["id"] == n), "") or "addressed by name"} for n in named] \
+                    + [s for s in speakers if s["id"] not in named]
+                speakers = speakers[:max(self.max_speakers, len(named))]
+                if added:
+                    reason = (reason + " " if reason else "") + "(added: addressed by name)"
         return {"speakers": speakers, "reason": reason, "bypassed": False, "usage": usage,
                 "arrivals": arrivals, "foreshadow": foreshadow}
+
+    def _addressed(self, message: str, cands: list[str]) -> list[str]:
+        """The characters a line speaks TO, by name: a name opening the line or a sentence and followed by a comma, colon, question or
+        exclamation mark ('Winifred, what do you make of it?'), one closing the line after a comma ('What do you think, Winifred?'),
+        or after a greeting or a hand-over ('hey Priya', 'what about Margo'). A first name counts only if one character has it. In the
+        order named. Mentioning someone ('I liked Winifred's coat') is not addressing them."""
+        full = {cid: self._name(cid) for cid in cands}
+        firsts = {}
+        for cid, name in full.items():
+            parts = name.split()
+            if len(parts) > 1:
+                firsts.setdefault(parts[0].lower(), []).append(cid)
+        hits = []
+        for cid, name in full.items():
+            forms = [name] + [name.split()[0]] if (len(name.split()) > 1 and len(firsts.get(name.split()[0].lower(), [])) == 1) else [name]
+            for form in forms:
+                n = re.escape(form)
+                pats = (rf"(?:^|[.!?;:,]\s*|\*\s*)(?:and\s+)?{n}\s*[,:?!]",
+                        rf",\s*{n}\s*[?!.]*\s*$",
+                        rf",\s*{n}\s*[.?!]\s+\S",
+                        rf"\b(?:hey|hi|hello|ok|okay|so|and|what about|how about|ask|you,)\s+{n}\b(?!['’]s)")
+                m = next((re.search(p, message, re.I | re.M) for p in pats if re.search(p, message, re.I | re.M)), None)
+                if m:
+                    hits.append((m.start(), cid))
+                    break
+        return [cid for _, cid in sorted(hits)]
 
     @staticmethod
     def _expects_reply(message: str) -> bool:

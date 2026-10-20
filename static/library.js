@@ -46,9 +46,9 @@ function renderCurrent(s) {
   const w = s.world, cast = w.characters.map(c => c.name).join(", ");
   const here = (w.locations.find(l => l.id === w.scene.location) || {}).name || "";
   document.getElementById("cur-card").innerHTML = `
-    <div class="head"><strong style="flex:1">${esc((w.fixed.scenario || "").slice(0, 110) || "(no premise)")}</strong>
-      <a class="btn small" href="/play">continue playing</a></div>
+    <div class="head"><strong style="flex:1">${esc((w.fixed.scenario || "").slice(0, 110) || "(no premise)")}</strong></div>
     <div class="cid">${esc(cast)} · at ${esc(here)} · ${s.messages} messages · ${s.memories.length} memories</div>
+    <a class="btn primary" href="/play" style="display:block;text-align:center;margin:10px 0 4px">Continue playing →</a>
     <div class="field" style="display:flex;gap:6px;margin-top:8px">
       <input type="text" id="lib-session-name" placeholder="name this session" style="flex:1">
       <button class="small" onclick="saveSession()">Save session</button></div>

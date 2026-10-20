@@ -84,6 +84,7 @@ def decide(
     `hints`: [{"id", "hint"}], atmosphere the author wrote about things hidden at this
     place (the hidden facts themselves are never given here). One may be let through
     to one chosen speaker.
+    `cap` is a ceiling, not a target: how many speak is the director's call.
     Returns (speakers, reason, usage, arrivals, foreshadow); each speaker is
     {"id", "cue"} and each foreshadow entry {"id", "to"}."""
     ids = [r["id"] for r in roster]
@@ -121,23 +122,23 @@ def decide(
             if offstage else ""
         ) +
         f"RECENT CONVERSATION:\n{recent_text}\n\n"
-        f"WHAT WAS JUST SAID:\n{latest}\n\n"
+        + f"WHAT WAS JUST SAID:\n{latest}\n\n"
         "RULES:\n"
-        f"- Choose between 0 and {cap} speakers, in speaking order. Pick only "
-        "people who would naturally react or be addressed — usually one, "
-        "sometimes two. Someone addressed by name answers.\n"
-        "- The player's line is almost always meant for the people here, so "
-        "somebody answers it: a question, a greeting or an invitation to the room "
-        "gets a reply from whoever is best placed to give it, even when nobody is "
-        "named and even when everyone is busy. Being occupied is not a reason to "
-        "say nothing; it just colours how they answer.\n"
-        "- Don't give everyone a line just because they're present. A character "
-        "who has nothing to add stays out.\n"
+        "- Decide who WANTS to speak, in speaking order. How many depends on the moment, and it is usually "
+        "small: ONE person for most lines; two or three only when the line lands on several people at "
+        "once (a question put to the whole room, an announcement, something that affects or implicates "
+        "them, a provocation); NO ONE when the line is plainly not for anyone present (a private "
+        "thought, a bare pause, an action or a glance with nothing in it to answer; if an action does "
+        "invite a reaction, one person's is enough). "
+        f"Never more than {cap}, and never everyone just because they are present. A character who has "
+        "nothing to add stays out.\n"
+        "- Someone addressed by name, by the player or by another character in the last few lines, "
+        "who has not answered yet, speaks, and goes first.\n"
+        "- A spoken question, greeting or invitation is meant for the people here, so somebody answers "
+        "it, whoever is best placed to, even when nobody is named and even when everyone is busy; "
+        "being occupied only colours how they answer.\n"
         "- Don't pick the same person twice in a row unless they genuinely "
         "have more to say after someone else has spoken.\n"
-        "- Choose no one ONLY when the line is plainly not for anyone present: "
-        "a private thought, a bare pause or an aside to no one, an action with "
-        "nothing in it to respond to. If in doubt, someone answers.\n"
         + (
             "ARRIVING (hidden; on their way here and able to walk in):\n"
             + "\n".join(

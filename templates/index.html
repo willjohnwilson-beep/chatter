@@ -10,7 +10,7 @@
 
 <div id="left">
   <div id="topbar">
-    <a class="btn" href="/" title="Sessions, scenarios and the scenario editor">← Library</a>
+    <a class="btn" href="/" title="Sessions, scenarios and the scenario editor. Your game is kept as you go: come back with Continue playing.">← Library</a>
     <div class="title">Chatter <span>— roleplay harness</span></div>
     <button onclick="newSession()">End scene</button>
     <button id="wipe" class="danger" onclick="wipe()">Wipe everything</button>
@@ -74,7 +74,7 @@
         <label>Summary</label><div><input id="m-summary" list="model-list" spellcheck="false"><div class="mi" id="mi-summary"></div></div>
         <label title="OpenRouter models only. Direct Claude models keep their own settings.">Thinking: characters</label><select id="r-character" onchange="saveReasoning()"><option value="none">off</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
         <label title="Director, retrieval, state, formation and summaries. OpenRouter models only.">Thinking: background</label><select id="r-background" onchange="saveReasoning()"><option value="none">off</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select>
-        <label>Max speakers</label><input id="cfg-speakers" type="number" min="1" max="6">
+        <label>Max speakers</label><input id="cfg-speakers" type="number" min="1" max="8" title="The most people who can answer one line. How many do is the director's call: it is a ceiling.">
         <label title="Turns between updates of what characters out of sight are up to. 0 = never">Offstage every</label><input id="cfg-life" type="number" min="0" max="50">
         <label>Window</label><input id="cfg-verbatim" type="number" min="2" step="2">
         <label>Batch</label><input id="cfg-batch" type="number" min="1">

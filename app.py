@@ -183,7 +183,7 @@ def chat():
     if body.get("recall_tool") is not None:
         chat_engine.recall_tool = bool(body["recall_tool"])
     if body.get("max_speakers") is not None:
-        chat_engine.max_speakers = max(1, min(6, int(body["max_speakers"])))
+        chat_engine.max_speakers = max(1, min(8, int(body["max_speakers"])))
     if body.get("life_every") is not None:
         chat_engine.life_every = max(0, min(50, int(body["life_every"])))
 
