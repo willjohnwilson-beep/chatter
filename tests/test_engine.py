@@ -4494,4 +4494,136 @@ tmpl = ui_text()
 assert "d.premoved" in tmpl, "the page shows the move before the replies"
 print("   PASS")
 
+print("== 102. a place keeps a ledger of facts: what was reliably observed there, dated, for anyone who is there ==")
+
+
+def rep(mid, detail, places=("kitchen",), public=True, source="observed", claimed_by="mick", known_by=("mick",), as_of="Monday 5 October 2026, 7:13pm", **kw):
+    return {"id": mid, "subject": "world", "kind": "canon", "known_by": list(known_by), "tags": ["t"], "summary": detail[:30], "detail": detail, "core": False,
+            "lifetime": "lasting", "scene_no": 0, "as_of": as_of, "places": list(places), "source": source, "claimed_by": claimed_by, "evidence": "",
+            "verified": True, "public": public, "versions": [], "conflicts_with": [], "hits": 0, **kw}
+
+
+# which memories are facts about a place, and how they read
+assert memory.is_place_report(rep("m1", "The pantry holds nine jars.")) and memory.is_place_report(rep("m", "x", source="scene", claimed_by="")) \
+    and memory.is_place_report(rep("m", "x", source="confirmed", claimed_by=""))
+for bad in (rep("m", "x", source="claim"), rep("m", "x", public=False), rep("m", "x", public=None), rep("m", "x", places=()), rep("m", "x", source="self"),
+            rep("m", "x", source="player"), rep("m", "x", origin="offstage"), rep("m", "x", origin="place"), rep("m", "x", origin="seed"), rep("m", "x", subject="wren")):
+    assert not memory.is_place_report(bad), bad
+assert memory.report_line(rep("m", "The pantry holds nine jars.")) == "- The pantry holds nine jars. (noted Monday 5 October 2026, 7:13pm)", "plain fact, dated, no one's name on it"
+assert memory.report_line(rep("m", "It is bolted.", as_of=""), {}, "mick") == "- It is bolted."
+s102 = memory.MemoryStore(os.path.join(tmp, "led.json"))
+s102.memories = [rep(f"r{i}", f"fact {i}") for i in range(8)] + [rep("o", "other place", places=("cellar",)), rep("p", "private", public=False), rep("c", "a claim", source="claim")]
+assert [m["id"] for m in s102.place_reports("kitchen")] == ["r2", "r3", "r4", "r5", "r6", "r7"], "the latest six, oldest first, facts only"
+assert [m["id"] for m in s102.place_reports("cellar")] == ["o"] and s102.place_reports("nowhere") == [] and s102.place_reports(None) == []
+
+# the judgment: a reliable first-hand observation said aloud becomes a fact; anything else stays a claim
+store, world, c = make([WREN, MICK])
+batch = [{"speaker": "mick", "content": "Update from inside the pantry: nine jars and a ham.", "t": "T", "present": ["wren", "mick"], "loc": "kitchen"},
+         {"speaker": "player", "content": "Quietly: the key is under the mat.", "t": "T", "present": ["wren"], "private_to": "wren", "loc": "kitchen"},
+         {"speaker": "mick", "content": "I'm a fine cook, me.", "t": "T", "present": ["wren", "mick"], "loc": "kitchen"}]
+op = lambda ev, **k: {"action": "create", "memory_id": "", "subject": "world", "tags": ["t"], "summary": "s", "detail": "d", "core": False, "lifetime": "lasting",
+                      "contradicts": [], "evidence": ev, **k}
+AP = dict(batch=batch, all_ids=["wren", "mick"], subject_ids=["player", "world", "wren", "mick"])
+out = store.apply_operations([op("nine jars and a ham", observed=True), op("nine jars and a ham"), op("the key is under the mat", observed=True),
+                              op("a line nobody said", observed=True), op("I'm a fine cook", observed=True, subject="mick"), op("nine jars and a ham", observed=False)], **AP)
+assert [(m["source"], m["claimed_by"], m["public"]) for m in out] == [("observed", "mick", True), ("claim", "mick", True), ("player", "", False), ("", "", False),
+                                                                      ("self", "", True), ("claim", "mick", True)], \
+    [(m["source"], m["claimed_by"], m["public"]) for m in out]
+assert memory.is_place_report({**out[0], "places": ["kitchen"]}) and not any(memory.is_place_report(m) for m in out[1:]), "only the judged fact reaches the ledger"
+nar = [{"speaker": "narrator", "kind": "move", "content": "(The pantry light is on.)", "t": "T", "present": ["wren", "mick"], "loc": "kitchen"}]
+assert store.apply_operations([op("The pantry light is on", observed=True)], batch=nar, all_ids=["wren", "mick"], subject_ids=["player", "world", "wren", "mick"])[0]["source"] == "scene", \
+    "what the narrator establishes is a fact already"
+# an update from a private line makes it private; PRIORITY puts an observation above a claim and below the scene
+mid = out[0]["id"]
+store.apply_operations([{**op("the key is under the mat"), "action": "update", "memory_id": mid}], known_by=["wren", "mick"], **AP)
+assert store.by_id(mid)["public"] is False
+assert memory.PRIORITY["claim"] < memory.PRIORITY["observed"] < memory.PRIORITY["scene"]
+# a store from before: each memory's quote is looked up
+s_old = memory.MemoryStore(os.path.join(tmp, "oldpub.json"))
+s_old.memories = [rep("a", "d", public=None, evidence="nine jars and a ham"), rep("b", "d", public=None, evidence="the key is under the mat"),
+                  rep("c", "d", public=None, evidence="nobody said this"), rep("d", "d", public=None, evidence=""), rep("e", "d", public=True)]
+assert s_old.backfill_public(batch) == 4 and [m["public"] for m in s_old.memories] == [True, False, False, False, True]
+json.dump({"memories": [{"id": "mem_0001", "subject": "world", "detail": "d", "summary": "s", "tags": [], "evidence": "x"}]}, open(os.path.join(tmp, "legacy.json"), "w"))
+assert memory.MemoryStore(os.path.join(tmp, "legacy.json")).memories[0]["public"] is None, "an old memory loads not knowing"
+
+# a fact that cannot be true alongside a claim shows the claim wrong; two facts that disagree stay a conflict for the author
+store, world, c = make([WREN, MICK])
+store.memories = [rep("mem_0001", "The pantry holds a ham.", source="claim", claimed_by="mick", known_by=("mick",)), rep("mem_0002", "The pantry holds nine jars.")]
+store.next_id = 3
+batch2 = [{"speaker": "wren", "content": "I've looked: there is no ham in the pantry, none at all.", "t": "Monday 5 October 2026, 7:30pm", "present": ["wren", "mick"], "loc": "kitchen"}]
+done = store.apply_operations([op("there is no ham in the pantry", observed=True, contradicts=["mem_0001"], detail="On Monday 5 October the pantry held no ham.")],
+                              batch=batch2, all_ids=["wren", "mick"], subject_ids=["player", "world", "wren", "mick"])
+fact = done[0]
+assert fact["source"] == "observed" and fact["claimed_by"] == "wren" and fact["conflicts_with"] == ["mem_0001"]
+assert store.by_id("mem_0001")["refuted_by"] == [fact["id"]] and "mem_0001" not in fact.get("refuted_by", []), "the claim is marked; the fact is not"
+assert memory.claim_text(store.by_id("mem_0001"), NM, "wren") == "said by Mick, unconfirmed, and since contradicted by what was observed"
+assert memory.claim_text(store.by_id("mem_0001"), NM, "mick") == "you said so, and since contradicted by what was observed"
+done2 = store.apply_operations([op("there is no ham in the pantry", observed=True, contradicts=["mem_0002"], detail="d2")], batch=batch2, all_ids=["wren", "mick"],
+                               subject_ids=["player", "world", "wren", "mick"])
+assert "refuted_by" not in store.by_id("mem_0002") and "mem_0002" in done2[0]["conflicts_with"], "two facts disagreeing: flagged for the author, neither refuted"
+# the author can say it is not a fact after all
+assert store.demote(fact["id"]) is True and store.by_id(fact["id"])["source"] == "claim" and store.by_id(fact["id"])["demoted"] is True
+assert fact["id"] not in [m["id"] for m in store.place_reports("kitchen")], "and it leaves the ledger"
+assert store.demote(fact["id"]) is False and store.demote("nope") is False and store.demote("mem_0001") is False
+
+# what a character is given: the facts for the place they are in, plainly
+store, world, c = make([WREN, MICK, SAM])
+world.set_locations([{"id": "salt-line", "name": "The Salt Line", "description": "A pub."}, {"id": "kitchen", "name": "The Kitchen", "description": "A kitchen."}])
+world.character("wren")["location"] = "salt-line"; world.character("mick")["location"] = "kitchen"; world.character("sam")["location"] = "kitchen"
+world.scene["location"] = "kitchen"
+store.memories = [rep("m1", "On Monday the pantry held nine jars and a ham.", claimed_by="mick", known_by=("mick",)), rep("m2", "Private note", public=False),
+                  rep("m3", "The cellar is damp.", places=("cellar",)), rep("m4", "The pantry holds a tin of peaches.", source="claim", claimed_by="mick")]
+sys_s, tail_s = c.build_context("sam", [])
+text_s = sys_s + tail_s
+assert "- On Monday the pantry held nine jars and a ham. (noted Monday 5 October 2026, 7:13pm)" in text_s, "Sam did not hear it said, but he is in the kitchen"
+assert "What is known about this place" in text_s and "does not make it otherwise" in text_s and "a person may of course say otherwise" in text_s
+assert "reported" not in text_s.split("What is known about this place")[1].split("\n\n")[0], "no one's report: the place is what it is"
+assert "Private note" not in text_s and "cellar is damp" not in text_s and "tin of peaches" not in text_s, "not private, not another place, not a mere claim"
+assert "nine jars" in "".join(c.build_context("mick", [])) and "nine jars" in "".join(c.build_context("narrator", []))
+c.place_ledger = False
+assert "nine jars" not in "".join(c.build_context("sam", [])), "switched off"
+c.place_ledger = True
+world.scene["location"] = "salt-line"
+assert "nine jars" not in "".join(c.build_context("wren", [])), "a different place has a different ledger"
+f = install(offscreen={"note": "Counts tins.", "location": "unchanged", "heading_here": False})
+c._offscreen_line("sam", "m")
+prompt = next(kw for k, kw in f.calls if k == "offscreen")["messages"][0]["content"]
+assert "- On Monday the pantry held nine jars and a ham. (noted Monday 5 October 2026, 7:13pm)" in prompt and "What is known about this place" in prompt
+c._offscreen_line("wren", "m")
+assert "nine jars" not in [kw for k, kw in f.calls if k == "offscreen"][1]["messages"][0]["content"], "Wren is not in the kitchen"
+
+# formation is asked to judge, and is shown the facts of the place so a clash is flagged
+sch = memory.formation_schema(["player", "world", "wren"])["properties"]["operations"]["items"]
+assert "observed" in sch["properties"] and "observed" in sch["required"] and sch["properties"]["observed"]["type"] == "boolean"
+store, world, c = make([WREN, MICK, SAM])
+store.memories = [rep("mem_0001", "On Monday the pantry held nine jars and a ham.", claimed_by="mick", known_by=("mick", "sam")),
+                  rep("mem_0002", "The cellar is damp.", places=("cellar",), known_by=("mick", "sam")), rep("mem_0003", "A claim", source="claim", known_by=("mick", "sam"))]
+store.next_id = 4
+view = store.full_view(NM, ["wren", "sam"], ["wren", "mick", "sam"], places={"kitchen"})
+assert "mem_0001" in view and "heard by only some of those here" in view and "mem_0002" not in view and "mem_0003" not in view, "facts for this place, marked"
+assert "mem_0001" not in store.full_view(NM, ["wren", "sam"], ["wren", "mick", "sam"]), "without a place, only what the whole group knows, as before"
+lines102 = [{"speaker": "wren", "content": "The pantry? A dented tin of peaches and nothing else.", "t": "Monday 5 October 2026, 7:28pm", "present": ["wren", "sam"], "loc": "kitchen"}]
+f = install(form={"operations": [{"action": "create", "memory_id": "", "subject": "world", "tags": ["pantry"], "summary": "Pantry holds a tin of peaches",
+                                  "detail": "On Monday 5 October the pantry held a dented tin of peaches and nothing else.", "core": False, "lifetime": "lasting", "observed": True,
+                                  "contradicts": ["mem_0001"], "evidence": "A dented tin of peaches and nothing else"}], "session_summary": "s"})
+done, _, _ = memory.form(store, lines102, "m", names=NM, subject_ids=["player", "world", "wren", "mick", "sam"], all_ids=["wren", "mick", "sam"], audience=["wren", "sam"])
+pf = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert "mem_0001" in pf and "shown only so that a line that disagrees with one can name it" in pf
+assert "OBSERVED: the one exception is what a place is like" in pf and "When in doubt, false" in pf and "Never record the opposite of a claim just because it seems unlikely" in pf
+new = store.by_id(done[0]["id"])
+assert new["source"] == "observed" and new["claimed_by"] == "wren" and new["known_by"] == ["sam", "wren"] and new["public"] is True
+assert new["conflicts_with"] == ["mem_0001"] and new["id"] in store.by_id("mem_0001")["conflicts_with"], "two observations that disagree: flagged for the author, on both"
+assert "refuted_by" not in store.by_id("mem_0001")
+# the page and the demote endpoint
+import app as appmod8
+
+appmod8.store, appmod8.world, appmod8.chat_engine = store, world, c
+cl8 = appmod8.app.test_client()
+r = cl8.post("/api/memory/demote", json={"memory_id": new["id"]})
+assert r.status_code == 200 and store.by_id(new["id"])["source"] == "claim", "demoted from the page"
+assert cl8.post("/api/memory/demote", json={"memory_id": new["id"]}).status_code == 400
+tmpl = ui_text()
+assert "observedBadge" in tmpl and "not a fact" in tmpl and "demoteMemory" in tmpl and "since contradicted" in tmpl and "/api/memory/demote" in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

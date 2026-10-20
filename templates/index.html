@@ -387,6 +387,10 @@ function memCard(m, opts = {}) {
   const subjBadge = `<span class="badge subject">${esc(subjLabel)}</span>`;
   const claimBadge = m.source === "claim"
     ? `<span class="badge warn" title="A character said this about the world or someone else. Nobody has confirmed it.">claimed by ${esc(nameOf(m.claimed_by))}</span>` : "";
+  const observedBadge = m.source === "observed"
+    ? `<span class="badge create" title="Judged a reliable first-hand observation of the place, so recorded as fact. Anyone there is told it. Observed by ${esc(nameOf(m.claimed_by))}.">observed by ${esc(nameOf(m.claimed_by))}</span>` : "";
+  const refutedBadge = (m.refuted_by || []).length
+    ? `<span class="badge warn" title="Something observed or established since cannot be true alongside this claim (${esc(m.refuted_by.join(", "))}).">since contradicted</span>` : "";
   const confirmedBadge = m.source === "confirmed" ? `<span class="badge create" title="You confirmed this">confirmed</span>` : "";
   const placeBadge = (m.places || []).length
     ? `<span class="badge knows" title="Where it was formed">at ${esc(m.places.map(nameOf).join(", "))}</span>` : "";
@@ -429,12 +433,12 @@ function memCard(m, opts = {}) {
          <button class="small" style="margin-left:6px" onclick="undoMerge('${m.id}')">undo</button></div>` : "";
   const canon = subj !== "player";
   return `<div class="card${m.core ? " is-core" : ""}${canon ? " is-canon" : ""}">
-    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${confirmedBadge}${originBadge}${lifeBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
+    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${refutedBadge}${observedBadge}${confirmedBadge}${originBadge}${lifeBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
     <div class="summary">${esc(m.summary)}</div>
     <div class="detail">${esc(m.detail)}</div>
     <div class="tags">${(m.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>
     ${asof}${contradicted}${conflictLines}${merged}${evidence}${versions}${reason}
-    ${opts.noActions || isPlace ? "" : `<div class="asof">${lifeSelect}${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
+    ${opts.noActions || isPlace ? "" : `<div class="asof">${lifeSelect}${m.source === "claim" ? `<button class="small" onclick="confirmMemory('${m.id}')">confirm as canon</button> ` : ""}${m.source === "observed" ? `<button class="small" onclick="demoteMemory('${m.id}')" title="Not a fact after all: back to what ${esc(nameOf(m.claimed_by))} said">not a fact</button> ` : ""}<button class="small danger" onclick="deleteMemory(this,'${m.id}')">delete</button></div>`}</div>`;
 }
 
 function visibleTo(m, who) {
@@ -465,6 +469,11 @@ async function notContradicted(id) {
 }
 async function notConflict(id, other) {
   const d = await (await fetch("/api/memory/not_conflict", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id, other_id: other }) })).json();
+  if (d.error) { alert(d.error); return; }
+  setMemories(d.memories);
+}
+async function demoteMemory(id) {
+  const d = await (await fetch("/api/memory/demote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memory_id: id }) })).json();
   if (d.error) { alert(d.error); return; }
   setMemories(d.memories);
 }

@@ -404,6 +404,15 @@ def confirm_memory():
     return jsonify({"ok": True, **snapshot()})
 
 
+@app.route("/api/memory/demote", methods=["POST"])
+def demote_memory():
+    """The author says an observed fact about a place is not a fact: it goes back to being a claim, held by those who heard it."""
+    if not store.demote((request.get_json() or {}).get("memory_id", "")):
+        return jsonify({"error": "no such observed fact"}), 400
+    store.save()
+    return jsonify({"ok": True, **snapshot()})
+
+
 @app.route("/api/memory/lifetime", methods=["POST"])
 def set_memory_lifetime():
     """The author overrides how long a memory stays useful: moment, days or lasting."""

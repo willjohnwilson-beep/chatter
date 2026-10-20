@@ -172,6 +172,7 @@ class Chatter:
         self.recall_tool = False
         self.max_speakers = MAX_SPEAKERS
         self.speaker_mode = "director"
+        self.place_ledger = True   # show what has been reported about a place to whoever is there (see _ledger_text)
         self.life_every = LIFE_EVERY
         self._life_count = 0
         self._undo = None  # see _checkpoint
@@ -194,6 +195,7 @@ class Chatter:
                 data = json.load(f)
             self.history = [self._migrate(m) for m in data.get("history", [])]
             self.formed_upto = min(data.get("formed_upto", 0), len(self.history))
+        self.store.backfill_public(self.history)   # a store from before memories said whether they were said aloud
 
     def save(self) -> None:
         with open(self.path, "w", encoding="utf-8") as f:
@@ -514,6 +516,20 @@ class Chatter:
 
     # ---------- a speaker's context ----------
 
+    def _ledger_text(self, place_id: str | None, viewer: str) -> str:
+        """What has been said about the place the viewer is in, attributed and dated, so a character who was not there when it was said can
+        still be consistent with it (and an offstage simulation of someone there can too). It is what people REPORTED, not the truth:
+        they are told to say so if they find it different, and a report can be a mistake or a lie."""
+        if not self.place_ledger or not place_id:
+            return ""
+        names = self.world.names()
+        lines = [memory.report_line(m, names, viewer if viewer != NARRATOR_ID else None) for m in self.store.place_reports(place_id)]
+        if not lines:
+            return ""
+        return ("What is known about this place, with when each thing was noted. These were observed or established there. They can change "
+                "over time, and a person may of course say otherwise if they have a reason to, but that does not make it otherwise:\n"
+                + "\n".join(lines))
+
     def _memory_blocks(self, mems: list[dict], viewer: str, retrieved: bool) -> list[str]:
         """Group memories by subject, each under its own heading."""
         names = self.world.names()
@@ -555,6 +571,9 @@ class Chatter:
         scene = w.render_scene(viewer)
         if scene:
             pieces.append(("Right now:\n" + scene, True))
+        ledger = self._ledger_text(w.scene.get("location"), viewer)
+        if ledger:
+            pieces.append((ledger, True))
 
         for block in self._memory_blocks(self.store.core_memories(viewer), viewer, retrieved=False):
             pieces.append((block, False))
@@ -949,6 +968,7 @@ class Chatter:
                  else "somewhere that isn't on the map")
         seen = self.store.summaries.get(cid, "").strip() if w.multi_party() else ""
         recent = self.recent_text(cid, n=4)
+        said_here = self._ledger_text(c.get("location"), cid)
         history = c.get("offscreen_history") or []
         before = "\n".join(f"- ({h.get('at') or '?'}) {h['note']}" for h in history) or "(nothing yet)"
         scene_place = w.current_location()
@@ -975,6 +995,7 @@ class Chatter:
             f"The player is at: {scene_place['name'] if scene_place else '(unknown)'}\n\n"
             f"WHAT {c['name'].upper()} HAS SEEN AND HEARD LATELY (their own view):\n"
             f"{seen or '(nothing in particular)'}\n{recent}\n\n"
+            + (said_here + "\n\n" if said_here else "") +
             "RULES:\n"
             "- Ordinary, plausible life that suits who they are and where they are: "
             "small concrete details rather than drama.\n"

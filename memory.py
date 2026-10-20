@@ -95,6 +95,14 @@ def formation_schema(subject_ids: list[str]) -> dict:
                                 "something changes it). When unsure, choose the longer."
                             ),
                         },
+                        "observed": {
+                            "type": "boolean",
+                            "description": (
+                                "For a `world` entry: true only if a character states what a place is like or contains RIGHT NOW "
+                                "from their own looking at it, with no sign of joking, boasting, guessing or doubt. False for "
+                                "everything else."
+                            ),
+                        },
                         "contradicts": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -112,7 +120,7 @@ def formation_schema(subject_ids: list[str]) -> dict:
                         },
                     },
                     "required": ["action", "memory_id", "subject", "tags", "summary", "detail",
-                                 "core", "lifetime", "contradicts", "evidence"],
+                                 "core", "lifetime", "observed", "contradicts", "evidence"],
                     "additionalProperties": False,
                 },
             },
@@ -130,7 +138,7 @@ MAX_PLACES = 3
 # CLAIM (hearsay), whereas a stage direction, the narrator, the player (about their own
 # character) or a character about themselves establish it. The author can CONFIRM a claim.
 AUTHORED = ("place", "seed")   # memories the author wrote (a place, a seeded fact): play never edits, merges or deletes them
-PRIORITY = {"confirmed": 5, "scene": 4, "player": 3, "self": 2, "claim": 1, "": 0}
+PRIORITY = {"confirmed": 5, "scene": 4, "observed": 3, "player": 3, "self": 2, "claim": 1, "": 0}
 _NOTICE = ("move", "depart", "arrive", "discover", "aside")
 
 
@@ -151,9 +159,23 @@ def claim_text(m: dict, names: dict | None, viewer: str | None = None) -> str:
     if m.get("source") != "claim":
         return ""
     who = m.get("claimed_by") or ""
+    since = ", and since contradicted by what was observed" if m.get("refuted_by") else ""
     if viewer and who == viewer:
-        return "you said so"
-    return f"said by {(names or {}).get(who, who) or 'someone'}, unconfirmed"
+        return "you said so" + since
+    return f"said by {(names or {}).get(who, who) or 'someone'}, unconfirmed" + since
+
+
+def is_place_report(m: dict) -> bool:
+    """A recorded fact about a place: something a character reliably observed there and said aloud, or the narrator or the author
+    established. Not a claim (a claim stays with those who heard it), not what a character says about themselves, not a private word,
+    not the author's own text, not an offstage note."""
+    return (m.get("origin") not in AUTHORED + ("offstage",) and m.get("subject") == WORLD and m.get("public") is True
+            and bool(m.get("places")) and m.get("source") in ("observed", "scene", "confirmed"))
+
+
+def report_line(m: dict, names: dict | None = None, viewer: str | None = None) -> str:
+    """One fact about a place as a character is shown it: plainly, with when it was noted. (Who observed it is kept for the author.)"""
+    return f"- {m['detail']}" + (f" (noted {m['as_of']})" if m.get("as_of") else "")
 
 
 # How long a memory stays useful, judged by the formation model (the one step that has
@@ -376,6 +398,7 @@ class MemoryStore:
             m.setdefault("places", [])  # where it was formed; stamped, never guessed
             m.setdefault("source", "")      # how it is known: scene / player / self / claim / confirmed
             m.setdefault("claimed_by", "")
+            m.setdefault("public", None)    # said aloud to the room (True) or privately (False); None = not known yet (see backfill_public)
 
     def save(self) -> None:
         with open(self.path, "w", encoding="utf-8") as f:
@@ -457,24 +480,50 @@ class MemoryStore:
         )
 
     def full_view(self, names: dict | None = None, audience: list[str] | None = None,
-                  all_ids: list[str] | None = None) -> str:
+                  all_ids: list[str] | None = None, places: set | None = None) -> str:
         """Fuller view for formation, which has to update memories without
         losing nuance the one-line summary doesn't carry. With an audience, only
         memories that the WHOLE group already knows, so a pass for that group is
-        never handed (and then repeats) anything narrower than the group."""
+        never handed (and then repeats) anything narrower than the group. Also, for `places` (where the lines being read happened), the
+        public reports about those places that only some of the group heard: anyone there can see the place, so a line that disagrees with
+        one can be flagged, though nothing is to be restated from it."""
         pool = self.memories
+        extra_ids: set = set()
         if audience is not None:
-            pool = [m for m in pool if known_to_all(m, audience, all_ids)]
+            known = [m for m in pool if known_to_all(m, audience, all_ids)]
+            have = {m["id"] for m in known}
+            extra = [m for m in pool if m["id"] not in have and places and is_place_report(m) and set(m["places"]) & set(places)]
+            extra_ids = {m["id"] for m in extra}
+            pool = known + extra
         if not pool:
             return "(no memories yet)"
         return "\n".join(
             f"- {m['id']} ({self._label(m, names)}"
             + (f", at {place_text(m, names)}" if place_text(m, names) else "")
-            + (f", {claim_text(m, names)}" if claim_text(m, names) else "") + f") [{', '.join(m['tags'])}] "
+            + (f", {claim_text(m, names)}" if claim_text(m, names) else "")
+            + (", heard by only some of those here" if m["id"] in extra_ids else "") + f") [{', '.join(m['tags'])}] "
             f"{m['summary']} — {m['detail']}"
             + (f" (noted {m['as_of']})" if m.get("as_of") else "")
             for m in pool
         )
+
+    def place_reports(self, place_id: str | None, limit: int = 6) -> list[dict]:
+        """What has been reported about a place, oldest first, the latest few. Whoever is there may be told of these, whether or not they
+        were there to hear them said (the place is what it is), and each is attributed so it can still be wrong, or a lie."""
+        if not place_id:
+            return []
+        return [m for m in self.memories if is_place_report(m) and place_id in m["places"]][-limit:]
+
+    def backfill_public(self, history: list[dict]) -> int:
+        """A store from before memories recorded whether they were said aloud: find the line each one quotes. Said in public if that line
+        was; if the line can't be found, treated as private. Returns how many were settled."""
+        n = 0
+        for m in self.memories:
+            if m.get("public") is None:
+                idx = match_evidence(m.get("evidence", ""), history) if m.get("evidence") else None
+                m["public"] = bool(idx is not None and not history[idx].get("private_to"))
+                n += 1
+        return n
 
     def core_memories(self, viewer: str | None = None) -> list[dict]:
         return [m for m in self.memories if m.get("core") and visible_to(m, viewer)]
@@ -500,6 +549,28 @@ class MemoryStore:
         return True
 
     # ---------- conflicts (for the author; no character is ever told) ----------
+
+    def _refute(self, new: dict, others: list[str] | None) -> None:
+        """A fact (observed, established or confirmed) that cannot be true alongside a claim shows that claim to be wrong: mark it, so the people
+        who hold the claim are told it has since been contradicted. Two facts that disagree stay a conflict for the author, nothing more."""
+        if new.get("source") not in ("observed", "scene", "confirmed"):
+            return
+        for oid in others or []:
+            old = self.by_id(oid)
+            if old and old["id"] != new["id"] and old.get("source") == "claim":
+                old.setdefault("refuted_by", [])
+                if new["id"] not in old["refuted_by"]:
+                    old["refuted_by"].append(new["id"])
+
+    def demote(self, memory_id: str) -> bool:
+        """The author says an observed fact is not one after all: it goes back to being what its observer said (a claim, held by those who
+        heard it), and leaves the place's ledger."""
+        m = self.by_id(memory_id)
+        if m is None or m.get("source") != "observed":
+            return False
+        m["source"] = "claim"
+        m["demoted"] = True
+        return True
 
     def link_conflicts(self, memory_id: str, others: list[str] | None) -> list[str]:
         """Record that `memory_id` cannot be true alongside each of `others`, on both sides.
@@ -592,6 +663,11 @@ class MemoryStore:
                 who = (names or {}).get(claimant, claimant)
                 if who.lower() not in (op.get("detail") or "").lower():
                     op = {**op, "detail": f"{who} said: {op.get('detail', '')}"}
+            # Reliable first-hand observation of a place, said aloud: recorded as a fact (by the formation model's judgment), with who saw it
+            # kept for the author. Only a claim can be lifted this way; and a fact needs the quote to be real and the line to be public.
+            public = bool(verified and not batch[idx].get("private_to"))
+            if op.get("observed") and subject == WORLD and source == "claim" and verified and public:
+                source = "observed"
             lifetime = op.get("lifetime") if op.get("lifetime") in LIFETIMES else "lasting"
             if op.get("core"):
                 lifetime = "lasting"  # a durable fact is never short-lived, whatever else was said
@@ -620,11 +696,13 @@ class MemoryStore:
                     existing["lifetime"] = _longer(existing.get("lifetime", "lasting"), lifetime)
                 existing["places"] = _add_place(existing.get("places"), loc)
                 if PRIORITY.get(source, 0) > PRIORITY.get(existing.get("source", ""), 0):
-                    existing["source"], existing["claimed_by"] = source, (claimant if source == "claim" else "")
+                    existing["source"], existing["claimed_by"] = source, (claimant if source in ("claim", "observed") else "")
                 existing["evidence"] = op.get("evidence", "")
                 existing["verified"] = verified
+                existing["public"] = bool(existing.get("public")) and public   # one private source makes it private
                 existing["updated_at"] = _now()
                 self.link_conflicts(existing["id"], op.get("contradicts"))
+                self._refute(existing, op.get("contradicts"))
                 applied.append({"action": "update", **existing})
             else:
                 mem = {
@@ -643,9 +721,10 @@ class MemoryStore:
                     "as_of": as_of,
                     "places": _add_place([], loc),
                     "source": source,
-                    "claimed_by": claimant if source == "claim" else "",
+                    "claimed_by": claimant if source in ("claim", "observed") else "",
                     "evidence": op.get("evidence", ""),
                     "verified": verified,
+                    "public": public,
                     "versions": [],
                     "created_at": _now(),
                     "updated_at": _now(),
@@ -654,6 +733,7 @@ class MemoryStore:
                 self.next_id += 1
                 self.memories.append(mem)
                 self.link_conflicts(mem["id"], op.get("contradicts"))
+                self._refute(mem, op.get("contradicts"))
                 applied.append({"action": "create", **mem})
         return applied
 
@@ -695,6 +775,7 @@ class MemoryStore:
                 "contradicted_in_play": [f for s in sources for f in s.get("contradicted_in_play", [])],
                 "as_of": newest.get("as_of", ""),
                 "places": [p for p in dict.fromkeys(p for s in sources for p in s.get("places") or [])][-MAX_PLACES:],
+                "public": all(bool(s_.get("public")) for s_ in sources),
                 "source": best,
                 "claimed_by": next((s.get("claimed_by", "") for s in sources if s.get("source") == "claim"), "")
                 if best == "claim" else "",
@@ -913,6 +994,11 @@ def form(
         [f"player = {names.get(PLAYER, 'the player')}'s character", "world = the setting"] + cast
     )
 
+    view = store.full_view(names, audience, all_ids, places={ln.get("loc") for ln in batch if ln.get("loc")})
+    if audience is not None and "heard by only some of those here" in view:
+        aud_text += ("A few existing memories are marked 'heard by only some of those here': they are reports about this place that not "
+                     "everyone in this group heard, shown only so that a line that disagrees with one can name it in `contradicts`. "
+                     "Don't restate them.\n\n")
     prompt = (
         "A roleplay scene is under way, played by a human (the PLAYER) and "
         "several characters. You maintain the long-term memory of the scene. "
@@ -951,7 +1037,18 @@ def form(
         "is only a CLAIM unless the scene confirms it. Word its detail as what they said "
         "('Wren said Mick was away in Tenerife'), never as established fact. Only what "
         "the narrator, a stage direction, the player (about their own character) or a "
-        "character about themselves establishes is plain fact.\n\n"
+        "character about themselves establishes is plain fact.\n"
+        "OBSERVED: the one exception is what a place is like. For an entry about the `world`, set `observed` true ONLY "
+        "when a character states what a place is like or contains RIGHT NOW from their own looking at it ('update from "
+        "inside the pantry: nine jars and a ham', 'the hatch is bolted from behind', 'I checked, there's no ham'), with "
+        "nothing to suggest they are joking, boasting, guessing or unsure, and where they were in a position to see it. "
+        "Then it is recorded as an observed fact: word `detail` as plain fact, dated by the stamp ('On Monday 5 October the "
+        "pantry held nine jars...'), not as what they said. Everything else stays a claim with observed false: hearsay, "
+        "opinions, jokes and boasts, a guess ('probably', 'I think', 'might be'), a story about the past, a plan, anything "
+        "about another place or another person, anything they could not see from where they are. When in doubt, false. "
+        "If a line shows an earlier entry to be wrong (someone looks and finds the opposite), record what was observed "
+        "and name the earlier entry in `contradicts`. Never record the opposite of a claim just because it seems "
+        "unlikely: only what someone actually observed or the narrator established.\n\n"
         "EVIDENCE: every entry needs `evidence` — a short quote (under 25 "
         "words) copied exactly from the conversation that supports it. If you "
         "cannot quote support for something, do not write it. Never record a "
@@ -1020,7 +1117,7 @@ def form(
         "Also return a refreshed one-paragraph summary of where the scene "
         "stands.\n\n"
         f"{aud_text}"
-        f"EXISTING MEMORIES:\n{store.full_view(names, audience, all_ids)}\n\n"
+        f"EXISTING MEMORIES:\n{view}\n\n"
         f"CURRENT SESSION SUMMARY:\n{summary_text}\n\n"
         f"THE CONVERSATION AGEING OUT:\n{transcript}\n"
     )
