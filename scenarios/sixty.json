@@ -13,7 +13,7 @@
       "invention": "balanced",
       "actions": "rare",
       "core_instructions": "Stay in character at all times. Never mention being an AI and never break the fourth wall.\n\nSPEAK ONLY. Write the character's spoken words and nothing else. No narration of your own actions, gestures, or expressions \u2014 not in asterisks, not in italics, and not as bare descriptive lines like 'Leans on the bar.' or 'Pours the drink.' If a gesture matters, let it show through what is said. Every line you write must be something the character says out loud.\n\nKeep to the rhythm of real speech \u2014 usually a few sentences. Don't summarise, don't recap what was just said, and don't ask permission to continue.\n\nNever assert facts about the person you're talking to beyond what you've been given. Where their inner state is described, treat it as your read on them, not certainty.",
-      "scenario": "Hartwell is a grand, over-furnished country house, shut off from the world for sixty days: no phones, no news, and no way out that anyone has been shown. Eight women and one man, Alex, live here as participants in what the man has been told is an observed social experiment. Cameras are in every room and nobody pretends otherwise. The women arrived together this afternoon; Alex arrives last, this evening. A weekly delivery of food comes through a hatch in the kitchen. Everything else is up to the residents: who cooks, who cleans, who sleeps where, how the days are spent."
+      "scenario": "Hartwell is a grand, over-furnished country house, shut off from the world for sixty days: no phones, no news, and no way out that anyone has been shown. Eight women and one man, Alex, live here as participants in what the man has been told is an observed social experiment. Cameras are in every room and nobody pretends otherwise. The women arrived together this afternoon; Alex arrives last, this evening. A weekly delivery of food comes through a hatch in the kitchen. Everything else is up to the residents: who cooks, who cleans, who sleeps where, how the days are spent. The house is small enough to know: downstairs the Great Room, the kitchen, the library, the pool terrace and the front hall; upstairs one landing with five bedrooms, four doubles for the eight women to share and a single for Alex. The residents have been shown all of it. There are no other floors, passages or rooms that anyone has been shown."
     },
     "scene": {
       "location": "great-room",
@@ -215,8 +215,8 @@
       {
         "id": "landing",
         "name": "The Upstairs Landing",
-        "brief": "gallery landing with the bedroom doors",
-        "description": "Nine bedroom doors along a gallery landing, each with a brass number. The women share four double rooms; the single room at the end has Alex's name on it.",
+        "brief": "gallery landing: five bedrooms, four doubles for the women and a single for Alex",
+        "description": "A gallery landing with five bedroom doors, each with a brass number. The women share the four double rooms; the single room at the end has Alex's name on it. Nothing else opens off it.",
         "state": "",
         "lock_note": "",
         "unlock": "",

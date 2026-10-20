@@ -3816,4 +3816,149 @@ page = appmod2.app.test_client().get("/play").get_data(as_text=True)
 assert llm.CHARACTER_MODEL in page and "const DEFAULTS" in page, "the page is given the defaults"
 print("   PASS")
 
+print("== 96. a reply stays its speaker's own; a failing background step can't lose a turn; the last turn can be redone ==")
+# the reply cleaner cuts off where a model carries on the transcript for other people
+PRIYA = {"name": "Priya Raman", "persona": "You are Priya Raman.", "reminder": "R-PRIYA", "brief": "doctor"}
+YAS = {"name": "Yasmin Haddad", "persona": "You are Yasmin Haddad.", "reminder": "R-YAS", "brief": "trainer"}
+DEL = {"name": "Delphine Okafor", "persona": "You are Delphine Okafor.", "reminder": "R-DEL", "brief": "actress"}
+DEL2 = {"name": "Delphine Moss", "persona": "You are Delphine Moss.", "reminder": "R-DEL2", "brief": "twin"}
+store, world, c = make([PRIYA, YAS, DEL])
+cl = c._clean
+real = ("Eight bedrooms. One of the doors doesn't open. So it's seven rooms and nine of us.\n\nYasmin Haddad: So someone's doubling up, "
+        "or someone's on a sofa for sixty days.\n\nThen it's a question of who.\n\nDelphine Okafor: Oh, I like you.\n\nPriya. Only when the arithmetic's wrong.")
+assert cl(real) == "Eight bedrooms. One of the doors doesn't open. So it's seven rooms and nine of us.", cl(real)
+assert cl("Priya Raman: Hello there.") == "Hello there.", "a leading label is still dropped"
+assert cl("Priya Raman: Hello.\nYasmin: And I say no.") == "Hello.", "a first name that only one person has, as a label"
+assert cl("Fine.\n*Yasmin Haddad: and so on*") == "Fine.", "a label inside an action"
+assert cl("Fine.\nAlex: and then you said") == "Fine.", "the player's name as a label"
+assert cl("Fine. Yasmin Haddad said it first, and Delphine Okafor: well, she agreed.") == "Fine. Yasmin Haddad said it first, and Delphine Okafor: well, she agreed.", \
+    "a name inside a line is not a label"
+assert cl("Yasmin Haddad was right.\n\nPriya Raman agreed with her.") == "Yasmin Haddad was right.\n\nPriya Raman agreed with her.", "mentioning people is fine"
+store2, world2, c2 = make([PRIYA, DEL, DEL2])
+assert c2._clean("Quiet.\nDelphine: not a label we can tell apart") == "Quiet.\nDelphine: not a label we can tell apart", "a shared first name is not guessed at"
+assert c2._clean("Quiet.\nDelphine Moss: yes") == "Quiet.", "but the full name still is"
+assert c._clean("   ") == "" and c._clean("Priya Raman:") == ""
+
+# a character who cannot answer: the turn fails, and the line can be redone without sending it twice
+DIR96 = {"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}
+store, world, c = make([WREN, MICK])
+world.scene["fiction_time"] = "Tuesday 20 October 2026, 11pm"
+boom = lambda kw: (_ for _ in ()).throw(llm.LLMError("deepseek ran out of max_tokens"))
+install(director=DIR96, character=boom, watch={"updates": []})
+assert not c.can_retry()
+try:
+    c.turn("Evening.", MODELS)
+    raise AssertionError("should fail")
+except llm.LLMError:
+    pass
+assert [m["speaker"] for m in c.history] == ["player"] and c.can_retry(), "the unanswered line is there, and can be redone"
+f = install(director=DIR96, character="Evening yourself.", watch={"updates": []})
+r = c.retry(MODELS)
+assert [m["speaker"] for m in c.history] == ["player", "wren"] and [x["content"] for x in r["replies"]] == ["Evening yourself."], "one player line, one reply"
+assert r["can_retry"] is True and c.can_retry()
+
+# redoing a finished turn puts the world and the memories back first
+WATCH_STATUS = {"updates": [{"target": "scene", "field": "extras", "value": "a gull on the rail", "why": "x"},
+                            {"target": "wren", "field": "status", "value": "pouring", "why": "x"}]}
+store, world, c = make([WREN, MICK])
+store.memories.append({"id": "mem_0001", "subject": "world", "kind": "canon", "known_by": ["wren"], "tags": [], "summary": "s", "detail": "d",
+                       "core": False, "versions": [], "places": [], "source": "player", "claimed_by": "", "lifetime": "lasting", "scene_no": 0,
+                       "conflicts_with": [], "evidence": "", "verified": True, "hits": 0, "as_of": ""})
+world.scene["extras"] = "nobody"
+install(director=DIR96, character="first answer", watch=WATCH_STATUS, retrieve={"retrieved": []})
+c.turn("Hi.", MODELS)
+assert world.scene["extras"] == "a gull on the rail" and world.character("wren")["status"] == "pouring" and len(c.history) == 2
+store.memories[0]["hits"] = 99                         # something the turn changed in memory
+store.memories.append(dict(store.memories[0], id="mem_0002"))
+seen_extras = []
+def character_redo(kw):
+    seen_extras.append(world.scene["extras"])           # what the world looked like when the redo's character spoke
+    return "second answer"
+install(director=DIR96, character=character_redo, watch={"updates": []}, retrieve={"retrieved": []})
+r = c.retry(MODELS)
+assert seen_extras == ["nobody"], "the scene was put back before the turn ran again"
+assert world.scene["extras"] == "nobody" and world.character("wren")["status"] != "pouring", "the first run's changes are gone"
+assert [m["content"] for m in c.history] == ["Hi.", "second answer"], [m["content"] for m in c.history]
+assert [m["id"] for m in store.memories] == ["mem_0001"] and store.memories[0]["hits"] == 0, "and so is what it did to the memories"
+
+# a private line keeps its single aside
+store, world, c = make([WREN, MICK])
+for cc in world.characters:
+    cc["location"] = world.scene["location"]
+install(director=DIR96, character="whispered back", watch={"updates": []})
+c.turn("Psst.", MODELS, to="wren")
+n_before = len(c.history)
+assert [m.get("kind") for m in c.history].count("aside") == 1
+r = c.retry(MODELS)
+assert len(c.history) == n_before and [m.get("kind") for m in c.history].count("aside") == 1 and c.history[-1].get("private_to") == "wren", \
+    "redone as the same private line, with no second aside"
+
+# anything else added to the conversation since means it can't be redone safely
+store, world, c = make([WREN])
+install(character="a reply", watch={"updates": []})
+c.turn("Hi.", MODELS)
+assert c.can_retry()
+c._append("narrator", "(a bell rings)", ["wren"], kind="move")
+assert not c.can_retry()
+try:
+    c.retry(MODELS)
+    raise AssertionError("should refuse")
+except ValueError as e:
+    assert "nothing to redo" in str(e)
+# no checkpoint (a restart): only a player line with nothing after it
+c.clear()
+c._append("player", "Anyone?", ["wren"])
+c2_ = ch.Chatter(c.store, c.world, path=c.path); c2_.history = list(c.history)
+assert c2_._undo is None and c2_.can_retry()
+install(character="here", watch={"updates": []})
+r = c2_.retry(MODELS)
+assert [m["speaker"] for m in c2_.history] == ["player", "wren"]
+assert not c2_.can_retry() or c2_._undo is not None
+c3_ = ch.Chatter(c.store, c.world, path=c.path); c3_.history = list(c2_.history)
+assert not c3_.can_retry(), "a reply is already there and there is no checkpoint to go back to"
+c3_.formed_upto = 5
+c3_.history = [dict(c3_.history[0])]
+assert not c3_.can_retry(), "an unanswered line that has already been formed is left alone"
+
+# a failing background step does not lose the turn
+store, world, c = make([WREN, MICK])
+for cc in world.characters:
+    cc["location"] = world.scene["location"]
+c.verbatim, c.batch = 2, 1
+store.summaries["wren"] = "wren's old summary"
+bad_sum = lambda kw: (_ for _ in ()).throw(llm.LLMError("deepseek ran out of max_tokens (reasoning can use them all)"))
+install(director={"speakers": [{"id": "wren", "cue": ""}, {"id": "mick", "cue": ""}], "reason": "x"},
+        character=lambda kw: "Wren-line" if "You are Wren" in kw["system"] else "Mick-line", watch={"updates": []}, summary=bad_sum,
+        form={"operations": [], "session_summary": "s"}, omni="OMNI")
+c.turn("one", MODELS)
+r = c.turn("two", MODELS)
+assert [x["content"] for x in r["replies"]] == ["Wren-line", "Mick-line"] and r["form_error"] == "", "the replies came back"
+assert store.summaries["wren"] == "wren's old summary", "a character whose summary failed keeps the one they had"
+assert c.formed_upto > 0, "and the rest of the batch was formed"
+install(director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, character="Wren-line", watch={"updates": []},
+        form=lambda kw: (_ for _ in ()).throw(llm.LLMError("deepseek returned nothing")))
+before = c.formed_upto
+r = c.turn("three", MODELS)
+assert [x["content"] for x in r["replies"]] == ["Wren-line"] and "LLMError" in r["form_error"], "formation failing is reported, not fatal"
+assert c.formed_upto == before and c.history[-1]["speaker"] == "wren", "what wasn't formed stays unformed"
+
+# the endpoints and the page
+import app as appmod3
+
+store, world, c = make([WREN])
+install(character="a reply", watch={"updates": []})
+appmod3.store, appmod3.world, appmod3.chat_engine = store, world, c
+cl3 = appmod3.app.test_client()
+assert cl3.get("/api/state").get_json()["can_retry"] is False
+assert cl3.post("/api/retry", json={}).status_code == 400
+r = cl3.post("/api/chat", json={"message": "Hi.", "models": MODELS})
+assert r.status_code == 200 and r.get_json()["can_retry"] is True
+assert cl3.get("/api/state").get_json()["can_retry"] is True
+r = cl3.post("/api/retry", json={"models": MODELS})
+assert r.status_code == 200 and len(r.get_json()["replies"]) == 1 and [m["speaker"] for m in c.history] == ["player", "wren"]
+tmpl = ui_text()
+assert 'id="redo"' in tmpl and "retryLast" in tmpl and "/api/retry" in tmpl and "errorWithRetry" in tmpl and "renderTranscript" in tmpl
+assert "d.form_error" in tmpl, "a failed formation is shown"
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

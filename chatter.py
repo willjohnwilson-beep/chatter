@@ -36,6 +36,7 @@ arm, LLM-judged): no reminder 10/27 replies broke character; the reminder in
 the system prompt 1/27; in the tail message 0/27 with the best voice score.
 """
 
+import copy
 import json
 import logging
 import os
@@ -132,6 +133,7 @@ class Chatter:
         self.max_speakers = MAX_SPEAKERS
         self.life_every = LIFE_EVERY
         self._life_count = 0
+        self._undo = None  # see _checkpoint
         self.load()
 
     # ---------- persistence ----------
@@ -156,6 +158,7 @@ class Chatter:
             json.dump({"history": self.history, "formed_upto": self.formed_upto}, f, indent=2)
 
     def clear(self) -> None:
+        self._undo = None
         self.history = []
         self.formed_upto = 0
         self.save()
@@ -550,17 +553,29 @@ class Chatter:
         return system, ""
 
     def _clean(self, reply: str) -> str:
-        """Drop a leading 'Name:' the model sometimes echoes from the labels."""
+        """Drop a leading 'Name:' the model sometimes echoes from the labels, and cut the reply off where it starts
+        writing other people's lines: with every line labelled in a multi-party scene, a model can carry on the transcript
+        ('Yasmin Haddad: ...') and speak for them. Whatever follows such a label is not this speaker's."""
         places = set(self.world.location_ids())  # a place name opening a reply isn't a speaker label
-        names = [re.escape(n) for k, n in self.world.names().items() if n and k not in places]
-        if not names:
+        full = [n for k, n in self.world.names().items() if n and k not in places]
+        if not full:
             return reply.strip()
+        names = [re.escape(n) for n in full]
         # A colon, or a dash with spaces round it. A bare hyphen is not a label:
         # "Wren-ish" must survive.
         pat = re.compile(
             r"^\s*[\[\(]?(?:" + "|".join(names) + r")[\]\)]?(?:\s*:|\s+[—–-]\s)\s*", re.I
         )
-        return pat.sub("", reply, count=1).strip()
+        reply = pat.sub("", reply, count=1).strip()
+        # A label at the start of a later line: the full name, or a first name that only one person has, then a colon.
+        firsts = [n.split()[0] for n in full if len(n.split()) > 1]
+        firsts = [f for f in firsts if sum(1 for n in full if n.split()[0] == f) == 1 and len(f) > 2]
+        label = re.compile(r"^[ \t]*[\[\(*]*(?:" + "|".join(names + [re.escape(f) for f in firsts]) + r")[\]\)*]*[ \t]*:",
+                           re.I | re.M)
+        m = label.search(reply, 1)
+        if m and m.start() > 0:
+            reply = reply[:m.start()].rstrip()
+        return reply
 
     def _on_demand(self, query: str, already: list[dict], retrieval_model: str,
                    viewer: str) -> tuple[str, list[dict], dict]:
@@ -867,9 +882,13 @@ class Chatter:
 
         def run(job):
             cid, seen = job
-            return cid, memory.summarize_for(
-                self.store.summaries.get(cid, ""), seen, names.get(cid, cid), names, model
-            )
+            try:
+                return cid, memory.summarize_for(
+                    self.store.summaries.get(cid, ""), seen, names.get(cid, cid), names, model
+                )
+            except Exception:  # a model that ran out of tokens on one character must not lose the turn: they keep what they had
+                log.exception("summary for %s failed", cid)
+                return cid, ("", llm.zero_usage())
 
         with ThreadPoolExecutor(max_workers=len(jobs)) as ex:
             results = list(ex.map(run, jobs))
@@ -1030,6 +1049,53 @@ class Chatter:
 
     # ---------- orchestration ----------
 
+    # ---------- redoing a turn ----------
+
+    def _checkpoint(self, message: str, to: str | None, notice: bool) -> None:
+        """What the world, the memories and this conversation were just before a player line, so the turn that answers it
+        can be thrown away and run again (a reply that failed, or one the author wants written afresh)."""
+        w, s = self.world, self.store
+        self._undo = {
+            "message": message, "to": to, "notice": notice, "n": len(self.history), "end": None,
+            "formed_upto": self.formed_upto, "life": self._life_count,
+            "world": copy.deepcopy((w.scene, w.locations, w.characters, w.schedule)),
+            "store": copy.deepcopy((s.memories, s.summaries, s.session_summary, s.summary_audience, s.next_id, s.archive, s.scene_no)),
+        }
+
+    def can_retry(self) -> bool:
+        """Is there a last turn that can be run again? Yes if its checkpoint still fits what has happened since (nothing
+        else has been added to the conversation), or, with no checkpoint (the server was restarted), if the last
+        thing in the conversation is a player line nobody answered and it has not been formed into memory."""
+        u = getattr(self, "_undo", None)
+        if u and len(self.history) > u["n"] and (u["end"] is None or len(self.history) == u["end"])                 and any(m["speaker"] == PLAYER_ID and m.get("content") == u["message"] for m in self.history[u["n"]:]):
+            return True
+        return self._unanswered() is not None
+
+    def _unanswered(self) -> int | None:
+        i = len(self.history) - 1
+        if i >= 0 and self.history[i]["speaker"] == PLAYER_ID and not self.history[i].get("kind") and self.formed_upto <= i:
+            return i
+        return None
+
+    def retry(self, models: dict) -> dict:
+        """Throw away the last turn and run it again from the same player line, with the world and memories as they were
+        before it. Raises ValueError when there is nothing safe to redo."""
+        if not self.can_retry():
+            raise ValueError("there is nothing to redo: something else has happened since the last turn, or it was saved to memory")
+        u = getattr(self, "_undo", None)
+        if u and len(self.history) > u["n"] and (u["end"] is None or len(self.history) == u["end"])                 and any(m["speaker"] == PLAYER_ID and m.get("content") == u["message"] for m in self.history[u["n"]:]):
+            w, s = self.world, self.store
+            w.scene, w.locations, w.characters, w.schedule = copy.deepcopy(u["world"])
+            s.memories, s.summaries, s.session_summary, s.summary_audience, s.next_id, s.archive, s.scene_no = copy.deepcopy(u["store"])
+            del self.history[u["n"]:]
+            self.formed_upto, self._life_count = u["formed_upto"], u["life"]
+            message, to, notice = u["message"], u["to"], u["notice"]
+        else:  # no checkpoint: just the unanswered line itself
+            i = self._unanswered()
+            m = self.history.pop(i)
+            message, to, notice = m["content"], m.get("private_to"), False
+        return self.turn(message, models, to=to, notice=notice)
+
     def turn(self, message: str, models: dict, to: str | None = None, notice: bool = True) -> dict:
         """One player line and everything that follows from it.
 
@@ -1048,6 +1114,7 @@ class Chatter:
             raise ValueError(f"{names.get(to, to)} is not in the scene")
         private = to is not None
         audience = [to] if private else public
+        self._checkpoint(message, to, notice)
         start = len(self.history)
 
         note = ""
@@ -1170,13 +1237,23 @@ class Chatter:
             except Exception:
                 log.exception("offscreen tick failed")
 
-        formed, formed_count, u_form = self.maybe_form(
-            models["formation"], summary_model=models.get("summary")
-        )
+        # The replies are the turn. Memory formation can fail (a model out of tokens, a provider error) without taking them
+        # with it: what hasn't been formed stays unformed, and is picked up again after a later turn.
+        form_error = ""
+        try:
+            formed, formed_count, u_form = self.maybe_form(
+                models["formation"], summary_model=models.get("summary")
+            )
+        except Exception as exc:
+            log.exception("memory formation failed")
+            formed, formed_count, u_form = [], 0, llm.zero_usage()
+            form_error = f"{type(exc).__name__}: {exc}"
         self.store.save()
         self.save()
 
+        self._undo["end"] = len(self.history)
         return {
+            "can_retry": True,
             "player": {"speaker": PLAYER_ID, "name": names[PLAYER_ID], "content": message, "private_to": to},
             "replies": replies,
             "director": {
@@ -1195,6 +1272,7 @@ class Chatter:
             "world": self.world.snapshot(),
             "formed": formed,
             "formed_count": formed_count,
+            "form_error": form_error,
             "session_summary": self.store.session_summary,
             "summaries": dict(self.store.summaries),
             "memories": self.store.memories,

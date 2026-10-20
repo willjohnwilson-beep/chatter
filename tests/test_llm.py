@@ -37,12 +37,15 @@ llm._catalog = {
 llm._catalog_at = time.time()
 
 
-def ok(content=None, tool_calls=None, finish="stop", cost=0.0012):
+def ok(content=None, tool_calls=None, finish="stop", cost=0.0012, provider=None):
     msg = {"role": "assistant", "content": content}
     if tool_calls:
         msg["tool_calls"] = tool_calls
-    return Resp(200, {"choices": [{"message": msg, "finish_reason": finish}],
-                      "usage": {"prompt_tokens": 11, "completion_tokens": 7, "cost": cost}})
+    payload = {"choices": [{"message": msg, "finish_reason": finish}],
+               "usage": {"prompt_tokens": 11, "completion_tokens": 7, "cost": cost}}
+    if provider:
+        payload["provider"] = provider
+    return Resp(200, payload)
 
 
 def check(cond, label):
@@ -189,6 +192,41 @@ try:
     check(False, "should raise")
 except llm.LLMError as e:
     check("max_tokens" in str(e), "gives up after one retry")
+
+print("11b. reasoning off, a host spends the budget anyway -> the same call, asking for a different host")
+go = lambda: llm.client().messages.create(**llm.params("anthropic/claude-haiku-5.5", max_tokens=200, messages=[{"role": "user", "content": "go"}]))
+REPLIES[:] = [ok("", finish="length", provider="Novita"), ok("fine", provider="GMICloud")]
+n = len(SENT)
+r = go()
+check(len(SENT) == n + 2 and llm.text(r) == "fine", "second try answered")
+check("provider" not in SENT[n]["body"] and SENT[n + 1]["body"]["provider"] == {"ignore": ["Novita"]} and SENT[n + 1]["body"]["max_tokens"] == 200,
+      "it ignores the host that failed, with the same budget")
+REPLIES[:] = [ok("", finish="length", provider="Novita"), ok("", finish="length", provider="Other"), ok("third", provider="Third")]
+n = len(SENT)
+r = go()
+check(llm.text(r) == "third" and SENT[n + 2]["body"]["provider"] == {"ignore": ["Novita", "Other"]}, "two hosts can be skipped")
+REPLIES[:] = [ok("", finish="length", provider="A"), ok("", finish="length", provider="B"), ok("", finish="length", provider="C"), ok("late")]
+n = len(SENT)
+r = go()
+check(len(SENT) == n + 4 and SENT[n + 3]["body"]["max_tokens"] == 2000 and "provider" not in SENT[n + 3]["body"] and llm.text(r) == "late",
+      "after two hosts, the old way: more tokens")
+REPLIES[:] = [ok("", finish="length", provider="Novita"), Resp(404, {"error": {"message": "No endpoints found"}}), ok("fine")]
+n = len(SENT)
+r = go()
+check(llm.text(r) == "fine" and SENT[n + 2]["body"]["max_tokens"] == 2000, "no other host serves it: the old way")
+REPLIES[:] = [ok("", finish="length", provider="Novita"), Resp(401, {"error": {"message": "bad key"}})]
+try:
+    go()
+    check(False, "should raise")
+except llm.LLMError as e:
+    check("401" in str(e), "any other error from the second try is reported, not swallowed")
+REPLIES[:] = [ok("", finish="length", provider="Novita"), ok('{"a": "x"}', provider="GMICloud")]
+n = len(SENT)
+r = llm.client().messages.create(**llm.params("vendor/structured", max_tokens=600, messages=[{"role": "user", "content": "go"}],
+                                              output_config={"format": {"type": "json_schema", "schema": schema}}))
+check(json.loads(llm.text(r)) == {"a": "x"} and SENT[n + 1]["body"]["provider"] == {"ignore": ["Novita"], "require_parameters": True},
+      "a structured call keeps require_parameters beside the host it skips")
+del REPLIES[:]
 
 del os.environ["OPENROUTER_API_KEY"]
 try:

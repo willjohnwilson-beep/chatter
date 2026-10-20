@@ -22,6 +22,7 @@
       <select id="say-to" title="Who hears this. Resets to everyone after each line."></select>
       <button id="do-toggle" onclick="toggleDo()" title="Say: what you speak. Do: what you do, sent as an *action*. Also: start a line with /me. Resets to Say after each line.">Say</button>
       <textarea id="msg" placeholder="Say or do something…  (Enter to send, Shift+Enter for newline, /me for an action)"></textarea>
+      <button id="redo" onclick="retryLast()" style="display:none" title="Throw away the last reply and have it written again, with the world and memories as they were before it">Redo</button>
       <button id="send" onclick="send()">Send</button>
     </div>
   </div>
@@ -740,6 +741,65 @@ function cfg() {
     notice: document.getElementById("cfg-notice").value === "true",
   };
 }
+// Everything on the page that a finished turn changes, apart from the transcript itself.
+function renderTurnPanels(d) {
+  W = d.world;
+  setMemories(d.memories);
+  renderSummaries(d.summaries);
+  renderDirector(d.director);
+  renderRecalled(d.replies);
+  renderChanges(d.scene_changes);
+  renderScene(d.scene_changes);
+  renderCast(d.scene_changes);
+  renderFilter();
+  renderCastStrip();
+  renderFormation(d);
+  renderUsage(d.usage);
+  const sum = document.getElementById("summary");
+  sum.textContent = d.session_summary || "nothing yet";
+  sum.className = d.session_summary ? "" : "empty";
+  if (d.form_error) addMsg("err", "memory", "Memory formation failed, so this turn's lines are still waiting to be saved and will be tried again: " + d.form_error);
+}
+function showRedo(on) { document.getElementById("redo").style.display = on ? "" : "none"; }
+function errorWithRetry(text) {
+  const el = addMsg("err", "error", text);
+  const b = document.createElement("button");
+  b.className = "small"; b.textContent = "retry"; b.style.marginLeft = "8px";
+  b.onclick = () => retryLast();
+  el.querySelector(".body").appendChild(b);
+  showRedo(true);
+}
+function renderTranscript(history) {
+  chat.innerHTML = "";
+  for (const m of history) {
+    if (m.kind === "aside" || m.kind === "depart" || m.kind === "arrive") continue;   // what the others notice; the player saw it happen
+    if (m.kind === "event" && m.seen === false) continue;                                  // it happened where the player wasn't
+    if (m.kind === "move" || m.kind === "discover" || m.kind === "event") { addMsg("sys", "", m.content); continue; }
+    addSpoken(m.speaker, m.name || nameOf(m.speaker), m.content, m.private_to);
+  }
+  if (!history.length) addMsg("sys", "", "Quiet night. Say or do something.");
+}
+async function retryLast() {
+  const sendBtn = document.getElementById("send"), redo = document.getElementById("redo");
+  sendBtn.disabled = redo.disabled = true;
+  const pending = addMsg("sys", "", "…writing it again");
+  try {
+    const res = await fetch("/api/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models() }) });
+    const d = await res.json();
+    pending.remove();
+    if (d.error) { addMsg("err", "error", d.error); return; }
+    const s = await (await fetch("/api/state")).json();
+    renderTranscript(s.history);
+    renderTurnPanels(d);
+    showRedo(true);
+  } catch (e) {
+    pending.remove();
+    errorWithRetry(String(e));
+  } finally {
+    sendBtn.disabled = redo.disabled = false;
+    document.getElementById("msg").focus();
+  }
+}
 async function send() {
   const box = document.getElementById("msg");
   const text = asAction(box.value.trim());
@@ -757,31 +817,18 @@ async function send() {
     });
     const d = await res.json();
     pending.remove();
-    if (d.error) { addMsg("err", "error", d.error); return; }
+    if (d.error) { errorWithRetry(d.error); return; }
     if (!d.replies.length) addMsg("sys", "", "(no one replies)");
     for (const r of d.replies) addSpoken(r.speaker, r.name, r.content, r.private ? to : null);
     if (d.moved) addMsg("sys", "", `(The scene moves to ${d.moved}.)`);
     for (const n of d.arrived || []) addMsg("sys", "", `(${n} comes in.)`);
     for (const t of d.discovered || []) addMsg("sys", "", t);
     for (const t of d.happened || []) addMsg("sys", "", t);
-    W = d.world;
-    setMemories(d.memories);
-    renderSummaries(d.summaries);
-    renderDirector(d.director);
-    renderRecalled(d.replies);
-    renderChanges(d.scene_changes);
-    renderScene(d.scene_changes);
-    renderCast(d.scene_changes);
-    renderFilter();
-    renderCastStrip();
-    renderFormation(d);
-    renderUsage(d.usage);
-    const sum = document.getElementById("summary");
-    sum.textContent = d.session_summary || "nothing yet";
-    sum.className = d.session_summary ? "" : "empty";
+    renderTurnPanels(d);
+    showRedo(!!d.can_retry);
   } catch (e) {
     pending.remove();
-    addMsg("err", "error", String(e));
+    errorWithRetry(String(e));
   } finally {
     document.getElementById("say-to").value = "";   // never stay private by accident
     document.getElementById("send").disabled = false;
@@ -884,13 +931,8 @@ document.getElementById("msg").addEventListener("keydown", e => {
     document.getElementById("summary").textContent = s.session_summary;
     document.getElementById("summary").className = "";
   }
-  for (const m of s.history) {
-    if (m.kind === "aside" || m.kind === "depart" || m.kind === "arrive") continue;   // what the others notice; the player saw it happen
-    if (m.kind === "event" && m.seen === false) continue;                                  // it happened where the player wasn't
-    if (m.kind === "move" || m.kind === "discover" || m.kind === "event") { addMsg("sys", "", m.content); continue; }
-    addSpoken(m.speaker, m.name || nameOf(m.speaker), m.content, m.private_to);
-  }
-  if (!s.history.length) addMsg("sys", "", "Quiet night. Say or do something.");
+  renderTranscript(s.history);
+  showRedo(!!s.can_retry);
   document.getElementById("msg").focus();
 })();
 </script>

@@ -82,6 +82,7 @@ def snapshot() -> dict:
         "max_speakers": chat_engine.max_speakers,
         "life_every": chat_engine.life_every,
         "archived": len(store.archive),
+        "can_retry": chat_engine.can_retry(),
     }
 
 
@@ -193,6 +194,21 @@ def chat():
         return jsonify(chat_engine.turn(message, models, to=to, notice=body.get("notice", True) is not False))
     except Exception as exc:  # surface the real error in the UI while testing
         app.logger.exception("turn failed")
+        return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
+
+
+@app.route("/api/retry", methods=["POST"])
+def retry_turn():
+    """Throw away the last turn's replies and write them again from the same player line, with the world and memories as they
+    were before it. For a turn that failed, or a reply the author wants redone."""
+    supplied = (request.get_json() or {}).get("models") or {}
+    models = {k: supplied.get(k, v) for k, v in DEFAULT_MODELS.items()}
+    try:
+        return jsonify(chat_engine.retry(models))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        app.logger.exception("retry failed")
         return jsonify({"error": f"{type(exc).__name__}: {exc}"}), 500
 
 

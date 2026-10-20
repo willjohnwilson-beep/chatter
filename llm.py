@@ -357,7 +357,7 @@ def _post(body: dict) -> dict:
     return data
 
 
-def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2):
+def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2, _skip: tuple = ()):
     schema = ((kw.get("output_config") or {}).get("format") or {}).get("schema")
     reasoning = kw.get("reasoning")
     effort_on = bool(reasoning) and reasoning.get("enabled") is not False
@@ -370,6 +370,8 @@ def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2):
     }
     if reasoning:
         body["reasoning"] = dict(reasoning) if not effort_on else {**reasoning, "exclude": True}
+    if _skip:
+        body["provider"] = {"ignore": list(_skip)}   # hosts that already failed this call (see below)
     if kw.get("tools"):
         body["tools"] = [
             {"type": "function", "function": {
@@ -391,7 +393,7 @@ def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2):
             if native_mode:
                 b["response_format"] = {"type": "json_schema", "json_schema": {
                     "name": "result", "strict": True, "schema": schema}}
-                b["provider"] = {"require_parameters": True}
+                b["provider"] = {**b.get("provider", {}), "require_parameters": True}
             else:
                 sys_text += ("\n\nReply with ONLY a JSON object that matches this JSON schema, "
                              "no prose and no code fence:\n" + json.dumps(schema))
@@ -436,6 +438,15 @@ def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2):
 
     finish = choice.get("finish_reason") or ""
     if not any(b.type == "text" for b in blocks) and not any(b.type == "tool_use" for b in blocks):
+        host = data.get("provider")
+        if finish == "length" and not effort_on and host and host not in _skip and len(_skip) < 2:
+            # Reasoning was off and the host spent the whole budget on it anyway (some hosts ignore the switch for some
+            # models, and then loop). More tokens don't help; another host usually does, so ask for one.
+            try:
+                return _routed_create(kw, _retried, _json_tries, _skip + (host,))
+            except LLMError as exc:
+                if exc.status not in (400, 404):   # 400/404: no other host serves it; go on to the old way
+                    raise
         if finish == "length" and not _retried:
             # Reasoning ate the whole budget. With reasoning on, run it again with
             # reasoning off (or lowest, for models that can't be switched off). If
