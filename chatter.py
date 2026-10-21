@@ -1512,9 +1512,17 @@ class Chatter:
             return i
         return None
 
-    def retry(self, models: dict) -> dict:
+    @staticmethod
+    def author_note(hint: str) -> str:
+        """How the author's note reaches a character: as the truth of the matter or a direction, never as something said in the scene."""
+        return ("(A note from the author, for this reply only. Nobody in the scene can hear it, so never mention it or that it was given; "
+                "take it as the truth of the matter, or the direction to follow, and let it shape what you say in your own voice: " + hint + ")")
+
+    def retry(self, models: dict, hint: str = "") -> dict:
         """Throw away the last turn and run it again from the same player line, with the world and memories as they were
-        before it. Raises ValueError when there is nothing safe to redo."""
+        before it. A `hint` is the author's note for the new replies (a correction, a steer) that goes to whoever answers and
+        nowhere else: it is not a line in the conversation, so nobody in the scene hears it and it is not remembered, only what
+        they say because of it. Raises ValueError when there is nothing safe to redo."""
         if not self.can_retry():
             raise ValueError("there is nothing to redo: something else has happened since the last turn, or it was saved to memory")
         u = getattr(self, "_undo", None)
@@ -1529,9 +1537,9 @@ class Chatter:
             i = self._unanswered()
             m = self.history.pop(i)
             message, to, notice = m["content"], m.get("private_to"), False
-        return self.turn(message, models, to=to, notice=notice)
+        return self.turn(message, models, to=to, notice=notice, hint=hint)
 
-    def turn(self, message: str, models: dict, to: str | None = None, notice: bool = True) -> dict:
+    def turn(self, message: str, models: dict, to: str | None = None, notice: bool = True, hint: str = "") -> dict:
         """One player line and everything that follows from it.
 
         `to` makes it a PRIVATE line: only that character hears it or their
@@ -1539,7 +1547,10 @@ class Chatter:
         exchange is stamped with that one-character audience, so memory, open
         threads and every other character's view treat it as unheard. With
         `notice`, the others get a content-free aside ("leans in and says
-        something quietly to Wren"), as they would at a table."""
+        something quietly to Wren"), as they would at a table.
+
+        `hint` is the author's out-of-character note for these replies only (see `retry`)."""
+        hint = " ".join((hint or "").split())[:600]
         names = self.world.names()
         public = self.world.present_ids()
         old_loc = self.world.scene.get("location")
@@ -1609,6 +1620,8 @@ class Chatter:
                     + sec["hint"] + ")")
                 self.world.mark_hint(old_loc, sid, len(self.history))
                 foreshadowed.append({"to": names.get(viewer, viewer), "hint": sec["hint"]})
+            if hint:
+                viewer_note = (viewer_note + " " if viewer_note else "") + self.author_note(hint)
             reply, uc, ucr, on_demand = self.respond(viewer, retrieved, sp["cue"], models, viewer_note)
             u_char = {k: u_char[k] + uc[k] for k in u_char}
             u_recall = {k: u_recall[k] + ucr[k] for k in u_recall}

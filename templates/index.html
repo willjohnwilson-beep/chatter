@@ -18,6 +18,7 @@
   <div id="chat"></div>
   <div id="inputbar">
     <div id="cast-strip"></div>
+    <input id="redo-note" type="text" maxlength="600" style="display:none;width:100%;box-sizing:border-box;margin-bottom:8px" placeholder="Note for the redo (optional)" title="Tell the characters something for the rewritten reply only: a correction or a steer. They treat it as true; nobody in the scene hears it and it is not part of the conversation." onkeydown="if(event.key==='Enter'){event.preventDefault();retryLast();}">
     <div id="inputrow">
       <select id="say-to" title="Who hears this. Resets to everyone after each line."></select>
       <button id="do-toggle" onclick="toggleDo()" title="Say: what you speak. Do: what you do, sent as an *action*. Also: start a line with /me. Resets to Say after each line.">Say</button>
@@ -776,7 +777,7 @@ function renderTurnPanels(d) {
   sum.className = d.session_summary ? "" : "empty";
   if (d.form_error) addMsg("err", "memory", "Memory formation failed, so this turn's lines are still waiting to be saved and will be tried again: " + d.form_error);
 }
-function showRedo(on) { document.getElementById("redo").style.display = on ? "" : "none"; }
+function showRedo(on) { for (const id of ["redo", "redo-note"]) document.getElementById(id).style.display = on ? "" : "none"; }
 function errorWithRetry(text) {
   const el = addMsg("err", "error", text);
   const b = document.createElement("button");
@@ -796,14 +797,16 @@ function renderTranscript(history) {
   if (!history.length) addMsg("sys", "", "Quiet night. Say or do something.");
 }
 async function retryLast() {
-  const sendBtn = document.getElementById("send"), redo = document.getElementById("redo");
+  const sendBtn = document.getElementById("send"), redo = document.getElementById("redo"), noteBox = document.getElementById("redo-note");
+  const hint = noteBox.value.trim();
   sendBtn.disabled = redo.disabled = true;
-  const pending = addMsg("sys", "", "…writing it again");
+  const pending = addMsg("sys", "", hint ? "…writing it again, with your note" : "…writing it again");
   try {
-    const res = await fetch("/api/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models() }) });
+    const res = await fetch("/api/retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ models: models(), hint }) });
     const d = await res.json();
     pending.remove();
     if (d.error) { addMsg("err", "error", d.error); return; }
+    noteBox.value = "";
     const s = await (await fetch("/api/state")).json();
     renderTranscript(s.history);
     renderTurnPanels(d);

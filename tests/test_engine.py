@@ -4742,4 +4742,52 @@ c.tick_offscreen("m")
 assert world.character("sam")["offscreen"] == "Earlier note.", "nothing is written when the note is dropped"
 print("   PASS")
 
+print("== 104. redo with a note: the author's correction reaches the replies and nothing else ==")
+HINT = "Eight women and one man is nine people, the same as the nine jars."
+store, world, c = make([WREN, MICK])
+install(director=DIR96, character="One spare, I'd say.", watch={"updates": []}, retrieve={"retrieved": []})
+c.turn("Nine jars. One each?", MODELS)
+f = install(director=DIR96, character="Nine and nine. One each.", watch={"updates": []}, retrieve={"retrieved": []})
+r = c.retry(MODELS, hint="  " + HINT + "\n ")
+ctx = str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+assert HINT in ctx and "A note from the author, for this reply only" in ctx and "never mention it" in ctx, "the replier is given the note"
+assert all(HINT not in m["content"] for m in c.history) and [m["content"] for m in c.history] == ["Nine jars. One each?", "Nine and nine. One each."], "it is not a line in the conversation"
+assert HINT not in json.dumps(store.memories) and HINT not in json.dumps(r.get("replies")), "nor a memory, nor handed back"
+# a plain redo carries no note, and the note is for one redo only
+f = install(director=DIR96, character="Again.", watch={"updates": []}, retrieve={"retrieved": []})
+c.retry(MODELS)
+assert "note from the author" not in str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+f = install(director=DIR96, character="Again.", watch={"updates": []}, retrieve={"retrieved": []})
+c.retry(MODELS, hint="   ")
+assert "note from the author" not in str([kw for k, kw in f.calls if k == "character"][0]["messages"]), "blank is no note"
+# every speaker is given it; a very long note is cut
+DIR2 = {"speakers": [{"id": "wren", "cue": ""}, {"id": "mick", "cue": ""}], "reason": "x"}
+store, world, c = make([WREN, MICK])
+install(director=DIR2, character="x", watch={"updates": []}, retrieve={"retrieved": []})
+c.turn("Hello both.", MODELS)
+f = install(director=DIR2, character="y", watch={"updates": []}, retrieve={"retrieved": []})
+c.retry(MODELS, hint="z" * 900)
+chars = [kw for k, kw in f.calls if k == "character"]
+assert len(chars) == 2 and all("z" * 600 in str(kw["messages"]) and "z" * 601 not in str(kw["messages"]) for kw in chars), "both are told, within the cut"
+# a private redo keeps its own note and adds the author's
+store, world, c = make([WREN, MICK])
+install(character="x", watch={"updates": []}, retrieve={"retrieved": []})
+c.turn("Psst.", MODELS, to="wren")
+f = install(character="y", watch={"updates": []}, retrieve={"retrieved": []})
+c.retry(MODELS, hint="Wren trusts him.")
+ctx = str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+assert "spoken to you privately" in ctx and "Wren trusts him." in ctx
+# through the page's route
+store, world, c = make([WREN])
+install(character="a reply", watch={"updates": []}, retrieve={"retrieved": []})
+appmod3.store, appmod3.world, appmod3.chat_engine = store, world, c
+cl4 = appmod3.app.test_client()
+cl4.post("/api/chat", json={"message": "Hi.", "models": MODELS})
+f = install(character="better reply", watch={"updates": []}, retrieve={"retrieved": []})
+r = cl4.post("/api/retry", json={"models": MODELS, "hint": "Wren is cheerful."})
+assert r.status_code == 200 and "Wren is cheerful." in str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+tmpl = ui_text()
+assert 'id="redo-note"' in tmpl and "hint" in tmpl and "Note for the redo" in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

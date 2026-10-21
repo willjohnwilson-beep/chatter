@@ -204,11 +204,13 @@ def chat():
 @app.route("/api/retry", methods=["POST"])
 def retry_turn():
     """Throw away the last turn's replies and write them again from the same player line, with the world and memories as they
-    were before it. For a turn that failed, or a reply the author wants redone."""
-    supplied = (request.get_json() or {}).get("models") or {}
+    were before it. For a turn that failed, or a reply the author wants redone, optionally with a `hint`: a note to the
+    characters for these replies only, kept out of the conversation."""
+    body = request.get_json() or {}
+    supplied = body.get("models") or {}
     models = {k: supplied.get(k, v) for k, v in DEFAULT_MODELS.items()}
     try:
-        return jsonify(chat_engine.retry(models))
+        return jsonify(chat_engine.retry(models, hint=str(body.get("hint") or "")))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except Exception as exc:
