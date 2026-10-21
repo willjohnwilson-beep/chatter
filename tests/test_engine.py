@@ -4835,4 +4835,48 @@ assert "STANCE: for an entry about a character, set `stance` true" in pf and "no
 assert 'm.source === "stance"' in ui_text()
 print("   PASS")
 
+print("== 106. how much a character says follows the moment: the director (or their own bid) gives a weight, and the speaker is told it ==")
+sch = director._schema(["wren", "mick"], [], [])["properties"]["speakers"]["items"]
+assert sch["properties"]["weight"]["enum"] == ["word", "line", "long"] and "weight" in sch["required"]
+assert list(director.WEIGHTS) == ["word", "line", "long"] and set(ch.WEIGHT_CUES) == set(director.WEIGHTS)
+# the director's weight is kept, an unknown one is not
+store, world, c = make([WREN, MICK])
+f = install(director={"speakers": [{"id": "wren", "cue": "answers plainly", "weight": "word"}, {"id": "mick", "cue": "x", "weight": "paragraphs"}], "reason": "x"})
+d = c._direct(MODELS, "Is the ham on?", message="Is the ham on?")
+assert [(s["id"], s["weight"]) for s in d["speakers"]] == [("wren", "word"), ("mick", "")], "a weight outside the three is dropped"
+dp = next(kw for k, kw in f.calls if k == "director")["messages"][0]["content"]
+assert "give a `weight`, how much they say" in dp and "a long reply is the exception" in dp
+# the speaker is told it, with the cue
+assert c._weighted_cue({"cue": "answers plainly", "weight": "word"}) == "answers plainly; answer in a word or one short line"
+assert c._weighted_cue({"cue": "", "weight": "long"}) == "take the room this needs" and c._weighted_cue({"cue": "x"}) == "x" and c._weighted_cue({}) == ""
+store, world, c = make([WREN, MICK])
+f = install(director={"speakers": [{"id": "wren", "cue": "answers plainly", "weight": "word"}], "reason": "x"}, character="Yes.", watch={"updates": []}, retrieve={"retrieved": []})
+r = c.turn("Is the ham on?", MODELS)
+ctx = str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+assert "What the moment calls for from you: answers plainly; answer in a word or one short line" in ctx
+assert r["replies"][0]["weight"] == "word" and r["director"]["speakers"][0]["weight"] == "word", "reported with the reply, and in the director panel"
+# no weight (an older director answer, the fallback, a private line): the cue is as it was
+store, world, c = make([WREN, MICK])
+f = install(director={"speakers": [{"id": "wren", "cue": "answers plainly"}], "reason": "x"}, character="Yes.", watch={"updates": []}, retrieve={"retrieved": []})
+c.turn("Is the ham on?", MODELS)
+ctx = str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+assert "What the moment calls for from you: answers plainly" in ctx and "one short line" not in ctx
+# someone addressed by name who the director did not choose has no weight; one it did choose keeps theirs
+store, world, c = make([WREN, MICK])
+install(director={"speakers": [{"id": "mick", "cue": "c", "weight": "line"}, {"id": "wren", "cue": "w", "weight": "word"}], "reason": "x"})
+d = c._direct(MODELS, "Wren, is the ham on?", message="Wren, is the ham on?")
+assert [(s["id"], s["weight"]) for s in d["speakers"]] == [("wren", "word"), ("mick", "line")]
+# bids: each character says how much they would say
+store, world, c = bid_world()
+c.speaker_mode = "bids"
+c._append("player", "Does anyone know where the key is?", ["wren", "mick", "sam"])
+BW = lambda kw: {"urge": 3 if "You are Wren" in kw["system"] else 0, "cue": "answers", "weight": "long" if "You are Wren" in kw["system"] else "word", "why": "x"}
+f = install(bid=BW)
+d = c._direct(MODELS, c.latest_for(None), message="Does anyone know where the key is?")
+assert [(s["id"], s["weight"]) for s in d["speakers"]] == [("wren", "long")]
+bp = next(kw for k, kw in f.calls if k == "bid")["messages"][-1]["content"]
+assert "`weight`: how much you would say" in bp and "nobody holds forth by default" in bp
+assert "weight" in ch.BID_SCHEMA["required"] and ch.BID_SCHEMA["properties"]["weight"]["enum"] == ["word", "line", "long"]
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

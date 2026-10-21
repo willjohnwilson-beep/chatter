@@ -82,8 +82,13 @@ BID_INSTRUCTION = (
     "Most people in a crowded room stay quiet most of the time. Don't bid high just to be heard; someone else answering a "
     "question does not make it yours; if what you would say has already been said, bid low; a line that is only an action or "
     "a glance usually draws little.{extra} `cue`: under 15 words on what you would do or say (your angle, not your "
-    "words), empty if your urge is 0. Answer in JSON."
+    "words), empty if your urge is 0. `weight`: how much you would say: word (a yes or no, a reaction, a quick answer or a passing "
+    "remark), line (a line or two), or long (only when the moment calls for room: an explanation you were asked for, a story, a speech). "
+    "Real replies are mostly word or line; nobody holds forth by default. Answer in JSON."
 )
+# What a speaker is told about how much to say, from the weight the director (or their own bid) gave. Followed well when given per reply
+# (a standing rule in the character instructions is not: see tests/experiments/exp_length.py).
+WEIGHT_CUES = {"word": "answer in a word or one short line", "line": "a line or two", "long": "take the room this needs"}
 MOVE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -124,9 +129,10 @@ BID_SCHEMA = {
     "properties": {
         "urge": {"type": "integer", "enum": [0, 1, 2, 3]},
         "cue": {"type": "string", "description": "Under 15 words: what you would do or say (your angle, not your words). Empty if urge is 0."},
+        "weight": {"type": "string", "enum": ["word", "line", "long"], "description": "How much you would say: a word or one short line, a line or two, or room to explain."},
         "why": {"type": "string", "description": "One short clause."},
     },
-    "required": ["urge", "cue", "why"],
+    "required": ["urge", "cue", "weight", "why"],
     "additionalProperties": False,
 }
 # Keep a memory of each place, and of each seeded fact, for whoever knows it (see Chatter.sync_places and sync_seeds).
@@ -922,7 +928,8 @@ class Chatter:
             if named:
                 have = {s["id"] for s in speakers}
                 added = [n for n in named if n not in have]
-                speakers = [{"id": n, "cue": next((s["cue"] for s in speakers if s["id"] == n), "") or "addressed by name"} for n in named] \
+                speakers = [{"id": n, "cue": next((s["cue"] for s in speakers if s["id"] == n), "") or "addressed by name",
+                             "weight": next((s.get("weight", "") for s in speakers if s["id"] == n), "")} for n in named] \
                     + [s for s in speakers if s["id"] not in named]
                 speakers = speakers[:max(self.max_speakers, len(named))]
                 if added:
@@ -953,7 +960,7 @@ class Chatter:
             got = json.loads(llm.text(response))
             urge = got["urge"] if got.get("urge") in (0, 1, 2, 3) else 0
             return {"id": cid, "urge": urge, "cue": (got.get("cue") or "").strip() if urge else "", "why": (got.get("why") or "").strip(),
-                    "usage": llm.usage(response)}
+                    "weight": got.get("weight") if got.get("weight") in director.WEIGHTS else "", "usage": llm.usage(response)}
         except Exception:  # a character whose bid fails simply doesn't bid: the others still do
             log.exception("bid for %s failed", cid)
             return {"id": cid, "urge": 0, "cue": "", "why": "(no bid)", "usage": llm.zero_usage()}
@@ -985,7 +992,14 @@ class Chatter:
             if pool:
                 chosen, note = [pool[0]], " (nobody has to: the most willing answers)"
         shown = ", ".join(f"{self._name(b['id'])} {b['urge']}" for b in sorted(bids, key=lambda b: -b["urge"]) if b["urge"])
-        return [{"id": b["id"], "cue": b["cue"]} for b in chosen], "bids: " + (shown or "nobody wants to speak") + note, usage
+        return [{"id": b["id"], "cue": b["cue"], "weight": b.get("weight", "")} for b in chosen], "bids: " + (shown or "nobody wants to speak") + note, usage
+
+    @staticmethod
+    def _weighted_cue(sp: dict) -> str:
+        """What the speaker is told the moment calls for: the director's (or their own) cue, and how much to say."""
+        how = WEIGHT_CUES.get(sp.get("weight") or "", "")
+        cue = sp.get("cue") or ""
+        return "; ".join(x for x in (cue, how) if x)
 
     def _addressed(self, message: str, cands: list[str]) -> list[str]:
         """The characters a line speaks TO, by name: a name opening the line or a sentence and followed by a comma, colon, question or
@@ -1630,13 +1644,13 @@ class Chatter:
                 foreshadowed.append({"to": names.get(viewer, viewer), "hint": sec["hint"]})
             if hint:
                 viewer_note = (viewer_note + " " if viewer_note else "") + self.author_note(hint)
-            reply, uc, ucr, on_demand = self.respond(viewer, retrieved, sp["cue"], models, viewer_note)
+            reply, uc, ucr, on_demand = self.respond(viewer, retrieved, self._weighted_cue(sp), models, viewer_note)
             u_char = {k: u_char[k] + uc[k] for k in u_char}
             u_recall = {k: u_recall[k] + ucr[k] for k in u_recall}
             self._append(viewer, reply, audience, **extra)
             replies.append({
                 "speaker": viewer, "name": names.get(viewer, viewer), "content": reply,
-                "cue": sp["cue"], "retrieved": retrieved, "recalled_on_demand": on_demand,
+                "cue": sp["cue"], "weight": sp.get("weight", ""), "retrieved": retrieved, "recalled_on_demand": on_demand,
                 "private": private,
             })
 
@@ -1734,7 +1748,7 @@ class Chatter:
             "player": {"speaker": PLAYER_ID, "name": names[PLAYER_ID], "content": message, "private_to": to},
             "replies": replies,
             "director": {
-                "speakers": [{"id": s["id"], "name": names.get(s["id"], s["id"]), "cue": s["cue"]}
+                "speakers": [{"id": s["id"], "name": names.get(s["id"], s["id"]), "cue": s["cue"], "weight": s.get("weight", "")}
                              for s in decision["speakers"]],
                 "reason": decision["reason"],
                 "bypassed": decision["bypassed"],

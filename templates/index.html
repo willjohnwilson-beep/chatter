@@ -686,7 +686,7 @@ function renderDirector(d) {
   if (!d) { el.innerHTML = `<div class="empty">nothing yet</div>`; return; }
   const lines = d.speakers.length
     ? d.speakers.map((s, i) => `<div class="dir-line"><b style="color:${colorOf(s.id)}">${i + 1}. ${esc(s.name)}</b>
-        ${s.cue ? `<span class="cue"> — ${esc(s.cue)}</span>` : ""}</div>`).join("")
+        ${s.weight ? `<span class="badge" title="How much they were asked to say">${esc(s.weight)}</span>` : ""}${s.cue ? `<span class="cue"> — ${esc(s.cue)}</span>` : ""}</div>`).join("")
     : `<div class="empty">no one replied</div>`;
   el.innerHTML = lines + `<div class="note">${d.bypassed ? "bypassed: " : ""}${esc(d.reason)}</div>`;
 }

@@ -51,8 +51,13 @@ def _schema(candidate_ids: list[str], arriving_ids: list[str] | None = None,
                             "type": "string",
                             "description": "Under 15 words: what the moment calls for from them. Not dialogue.",
                         },
+                        "weight": {
+                            "type": "string",
+                            "enum": list(WEIGHTS),
+                            "description": "How much they say: word (a yes/no, a reaction, a quick answer), line (a line or two), long (room to explain, tell a story, make a speech).",
+                        },
                     },
-                    "required": ["id", "cue"],
+                    "required": ["id", "cue", "weight"],
                     "additionalProperties": False,
                 },
             },
@@ -61,6 +66,9 @@ def _schema(candidate_ids: list[str], arriving_ids: list[str] | None = None,
         "required": (["arrivals"] if arriving_ids else []) + (["foreshadow"] if hint_ids else []) + ["speakers", "reason"],
         "additionalProperties": False,
     }
+
+
+WEIGHTS = ("word", "line", "long")   # how much a speaker says (see chatter.WEIGHT_CUES)
 
 
 def decide(
@@ -86,7 +94,7 @@ def decide(
     to one chosen speaker.
     `cap` is a ceiling, not a target: how many speak is the director's call.
     Returns (speakers, reason, usage, arrivals, foreshadow); each speaker is
-    {"id", "cue"} and each foreshadow entry {"id", "to"}."""
+    {"id", "cue", "weight"} and each foreshadow entry {"id", "to"}."""
     ids = [r["id"] for r in roster]
     lines = []
     for r in roster:
@@ -162,6 +170,10 @@ def decide(
            if hints else "") +
         "- For each speaker give a `cue`: under 15 words on what the moment "
         "calls for from them. Their angle, never their words.\n"
+        "- For each speaker give a `weight`, how much they say: `word` for a yes or no, a reaction, a quick answer or a passing "
+        "remark (a word or one short line); `line` for a line or two; `long` only when the moment really calls for room: an "
+        "explanation they were asked for, a story, a speech, an argument that has to be made. In real conversation most replies "
+        "are `word` or `line`; nobody holds forth by default, and a long reply is the exception.\n"
         "- Each cue is read by that character and by nobody else. A character "
         "knows only what it witnessed or was told, so a cue must never state, "
         "hint at or lean on anything that character does not know — even if "
@@ -185,7 +197,7 @@ def decide(
     for s in result["speakers"]:
         if s["id"] not in ids or s["id"] == last:
             continue
-        speakers.append({"id": s["id"], "cue": s["cue"].strip()})
+        speakers.append({"id": s["id"], "cue": s["cue"].strip(), "weight": s.get("weight") if s.get("weight") in WEIGHTS else ""})
         last = s["id"]
         if len(speakers) >= cap:
             break
