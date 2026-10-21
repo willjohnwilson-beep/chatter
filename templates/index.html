@@ -388,6 +388,8 @@ function memCard(m, opts = {}) {
   const subjBadge = `<span class="badge subject">${esc(subjLabel)}</span>`;
   const claimBadge = m.source === "claim"
     ? `<span class="badge warn" title="A character said this about the world or someone else. Nobody has confirmed it.">claimed by ${esc(nameOf(m.claimed_by))}</span>` : "";
+  const stanceBadge = m.source === "stance"
+    ? `<span class="badge" title="A plan, opinion or position they took, kept as what they said. It fades and they may change their mind.">stance</span>` : "";
   const observedBadge = m.source === "observed"
     ? `<span class="badge create" title="Judged a reliable first-hand observation of the place, so recorded as fact. Anyone there is told it. Observed by ${esc(nameOf(m.claimed_by))}.">observed by ${esc(nameOf(m.claimed_by))}</span>` : "";
   const refutedBadge = (m.refuted_by || []).length
@@ -434,7 +436,7 @@ function memCard(m, opts = {}) {
          <button class="small" style="margin-left:6px" onclick="undoMerge('${m.id}')">undo</button></div>` : "";
   const canon = subj !== "player";
   return `<div class="card${m.core ? " is-core" : ""}${canon ? " is-canon" : ""}">
-    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${refutedBadge}${observedBadge}${confirmedBadge}${originBadge}${lifeBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
+    <div class="id">${m.id}${hits}${subjBadge}${claimBadge}${refutedBadge}${observedBadge}${stanceBadge}${confirmedBadge}${originBadge}${lifeBadge}${placeBadge}${knowsBadge}${coreBadge}${warn}${badge}</div>
     <div class="summary">${esc(m.summary)}</div>
     <div class="detail">${esc(m.detail)}</div>
     <div class="tags">${(m.tags || []).map(t => `<span class="tag">${esc(t)}</span>`).join("")}</div>

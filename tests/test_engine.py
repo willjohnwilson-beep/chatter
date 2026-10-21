@@ -4790,4 +4790,49 @@ tmpl = ui_text()
 assert 'id="redo-note"' in tmpl and "hint" in tmpl and "Note for the redo" in tmpl
 print("   PASS")
 
+print("== 105. a position someone took is kept as what they said, not as a fact about them ==")
+sch = memory.formation_schema(["player", "world", "wren"])["properties"]["operations"]["items"]
+assert sch["properties"]["stance"]["type"] == "boolean" and "stance" in sch["required"]
+store, world, c = make([WREN, MICK, SAM])
+lines105 = [{"speaker": "wren", "content": "I'll keep the ham back until seven, and nobody touches the rota.", "t": "Monday 5 October 2026, 7:28pm", "present": ["wren", "mick", "sam"], "loc": None},
+            {"speaker": "wren", "content": "I was a headmistress for twenty-two years in Harrogate.", "t": "Monday 5 October 2026, 7:29pm", "present": ["wren", "mick", "sam"], "loc": None},
+            {"speaker": "player", "content": "I'll skip the potatoes myself.", "t": "Monday 5 October 2026, 7:30pm", "present": ["wren", "mick", "sam"], "loc": None}]
+OP = lambda subject, detail, evidence, **kw: {"action": "create", "memory_id": "", "subject": subject, "tags": [], "summary": detail[:30], "detail": detail, "core": False,
+                                               "lifetime": "lasting", "observed": False, "stance": False, "contradicts": [], "evidence": evidence, **kw}
+ops = [OP("wren", "Wren said she will keep the ham back until seven.", "keep the ham back until seven", stance=True, core=True),
+       OP("wren", "Wren was a headmistress for twenty-two years in Harrogate.", "headmistress for twenty-two years", stance=False, core=True),
+       OP("player", "The player will skip the potatoes.", "skip the potatoes myself", stance=True),
+       OP("mick", "Wren says Mick is lazy.", "keep the ham back until seven", stance=True)]
+done = store.apply_operations(ops, batch=lines105, all_ids=["wren", "mick", "sam"], subject_ids=["player", "world", "wren", "mick", "sam"], names=NM)
+st105 = {d["subject"] + ":" + d["source"]: d for d in done}
+assert "wren:stance" in st105 and "wren:self" in st105 and "player:player" in st105, list(st105)
+stance = st105["wren:stance"]
+assert stance["core"] is False and stance["lifetime"] == "days", "never always-true, and it fades, even if the model said durable"
+assert st105["wren:self"]["core"] is True and st105["wren:self"]["lifetime"] == "lasting", "a lasting fact about her is unchanged"
+assert st105["player:player"]["source"] == "player", "the stance flag does nothing for the player's own lines"
+assert any(d["source"] == "claim" for d in done if d["subject"] == "wren" and "Mick" in d["detail"]), "a claim about someone else is still a claim"
+# a missing flag is a fact, as before
+store2 = type(store)(os.path.join(tempfile.mkdtemp(), "m.json"))
+old_op = {k: v for k, v in OP("wren", "Wren likes tea.", "keep the ham back until seven").items() if k != "stance"}
+assert store2.apply_operations([old_op], batch=lines105, all_ids=["wren", "mick", "sam"], subject_ids=["player", "world", "wren"], names=NM)[0]["source"] == "self"
+# how it is worded to her and to others
+assert memory.claim_text(stance, NM, "wren") == "you said so, but it is not fixed and you may change your mind"
+assert memory.claim_text(stance, NM, "mick") == "said by Wren, a position they may change"
+assert memory.claim_text(st105["wren:self"], NM, "mick") == ""
+# she sees it apart from what is established about her; others see it attributed
+store.memories = [m for m in store.memories]
+blocks = c._memory_blocks([stance, st105["wren:self"]], "wren", retrieved=True)
+joined = "\n---\n".join(blocks)
+assert "Positions you took earlier, which you may keep or change:\n- Wren said she will keep the ham back until seven. (noted" in joined and "you said so, but it is not fixed and you may change your mind)" in joined
+assert "Already established about you — stay consistent with it:\n- Wren was a headmistress" in joined and "stay consistent with it:\n- Wren said" not in joined
+others = "\n".join(c._memory_blocks([stance], "mick", retrieved=True))
+assert "said by Wren, a position they may change" in others and "Positions you took" not in others
+# the pass is told what a stance is, and the page marks one
+f = install(form={"operations": [], "session_summary": "s"})
+memory.form(store, lines105, "m", names=NM, subject_ids=["player", "world", "wren", "mick", "sam"], all_ids=["wren", "mick", "sam"])
+pf = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert "STANCE: for an entry about a character, set `stance` true" in pf and "not who someone is" in pf and "When in doubt, false" in pf
+assert 'm.source === "stance"' in ui_text()
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

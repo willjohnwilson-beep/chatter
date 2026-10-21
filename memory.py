@@ -103,6 +103,14 @@ def formation_schema(subject_ids: list[str]) -> dict:
                                 "everything else."
                             ),
                         },
+                        "stance": {
+                            "type": "boolean",
+                            "description": (
+                                "For an entry about a character: true if it records a plan, opinion, rule, preference or position they "
+                                "took (what they said they will do, think, want or insist on), not a lasting fact about who they are or "
+                                "what has happened. False for everything else; when in doubt, false."
+                            ),
+                        },
                         "contradicts": {
                             "type": "array",
                             "items": {"type": "string"},
@@ -120,7 +128,7 @@ def formation_schema(subject_ids: list[str]) -> dict:
                         },
                     },
                     "required": ["action", "memory_id", "subject", "tags", "summary", "detail",
-                                 "core", "lifetime", "observed", "contradicts", "evidence"],
+                                 "core", "lifetime", "observed", "stance", "contradicts", "evidence"],
                     "additionalProperties": False,
                 },
             },
@@ -138,7 +146,7 @@ MAX_PLACES = 3
 # CLAIM (hearsay), whereas a stage direction, the narrator, the player (about their own
 # character) or a character about themselves establish it. The author can CONFIRM a claim.
 AUTHORED = ("place", "seed")   # memories the author wrote (a place, a seeded fact): play never edits, merges or deletes them
-PRIORITY = {"confirmed": 5, "scene": 4, "observed": 3, "player": 3, "self": 2, "claim": 1, "": 0}
+PRIORITY = {"confirmed": 5, "scene": 4, "observed": 3, "player": 3, "self": 2, "stance": 2, "claim": 1, "": 0}
 _NOTICE = ("move", "depart", "arrive", "discover", "aside")
 
 
@@ -155,7 +163,11 @@ def _provenance(line: dict | None, subject: str) -> tuple[str, str]:
 
 
 def claim_text(m: dict, names: dict | None, viewer: str | None = None) -> str:
-    """'' unless the memory is an unconfirmed claim; else who made it."""
+    """'' unless the memory is an unconfirmed claim, or a stance (a position someone took, which they may change); else who said it."""
+    if m.get("source") == "stance":
+        if viewer and m.get("subject") == viewer:
+            return "you said so, but it is not fixed and you may change your mind"
+        return f"said by {(names or {}).get(m.get('subject'), m.get('subject')) or 'someone'}, a position they may change"
     if m.get("source") != "claim":
         return ""
     who = m.get("claimed_by") or ""
@@ -656,6 +668,10 @@ class MemoryStore:
                 subject = PLAYER if op.get("kind", "person") == "person" else WORLD
 
             source, claimant = _provenance(batch[idx] if verified else None, subject)
+            if op.get("stance") and source == "self":
+                # A position someone took is not a fact about them: it is kept as what they said, never always-true, and it fades.
+                source = "stance"
+                op = {**op, "core": False, "lifetime": "moment" if op.get("lifetime") == "moment" else "days"}
             if source == "claim" and subject not in (WORLD, claimant):
                 # What someone says about ANOTHER party is the speaker's claim, not a fact
                 # about that party: file it under the speaker, worded as what they said.
@@ -1038,6 +1054,11 @@ def form(
         "('Wren said Mick was away in Tenerife'), never as established fact. Only what "
         "the narrator, a stage direction, the player (about their own character) or a "
         "character about themselves establishes is plain fact.\n"
+        "STANCE: for an entry about a character, set `stance` true when it records something they themselves said they will do, think, "
+        "want or insist on: a plan, an opinion, a rule they set, a preference, a position in an argument. Word `detail` as what they said "
+        "('Winifred said she would ration her orders'), not as a fact about who they are: people change their minds, and a stance is "
+        "not who someone is. Set it false for lasting facts about them (their history, work, relationships, habits, what has "
+        "happened to them). When in doubt, false.\n"
         "OBSERVED: the one exception is what a place is like. For an entry about the `world`, set `observed` true ONLY "
         "when a character states what a place is like or contains RIGHT NOW from their own looking at it ('update from "
         "inside the pantry: nine jars and a ham', 'the hatch is bolted from behind', 'I checked, there's no ham'), with "

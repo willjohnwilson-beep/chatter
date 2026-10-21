@@ -565,6 +565,14 @@ class Chatter:
             group = [m for m in mems if m.get("subject", PLAYER_ID) == subj]
             if not group:
                 continue
+            if subj == viewer and any(m.get("source") == "stance" for m in group):
+                # What you said you would do or think is not who you are: shown apart, and open to a change of mind.
+                said = [m for m in group if m.get("source") == "stance"]
+                group = [m for m in group if m.get("source") != "stance"]
+                blocks.append("Positions you took earlier, which you may keep or change:\n" + "\n".join(
+                    _dated(m, dated=retrieved, here=self.world.scene.get("location"), names=names, viewer=viewer) for m in said))
+                if not group:
+                    continue
             if subj == PLAYER_ID:
                 if retrieved:
                     title = f"Coming back to you now, about {player}:" if multi else "Coming back to you now:"
