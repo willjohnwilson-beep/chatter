@@ -4879,4 +4879,24 @@ assert "`weight`: how much you would say" in bp and "nobody holds forth by defau
 assert "weight" in ch.BID_SCHEMA["required"] and ch.BID_SCHEMA["properties"]["weight"]["enum"] == ["word", "line", "long"]
 print("   PASS")
 
+print("== 107. an exchange is recorded move by move, never settled into a result nobody voiced ==")
+LINES107 = [{"speaker": "wren", "content": "Yasmin wants a hand in the pantry, Alex.", "t": "Monday 5 October 2026, 7:09pm", "present": ["wren", "mick", "sam"], "loc": None},
+            {"speaker": "player", "content": "I can be useful.", "t": "Monday 5 October 2026, 7:09pm", "present": ["wren", "mick", "sam"], "loc": None},
+            {"speaker": "mick", "content": "Leave the man alone a minute.", "t": "Monday 5 October 2026, 7:10pm", "present": ["wren", "mick", "sam"], "loc": None}]
+store, world, c = make([WREN, MICK, SAM])
+f = install(form={"operations": [], "session_summary": "s"})
+memory.form(store, LINES107, "m", names=NM, subject_ids=["player", "world", "wren", "mick", "sam"], all_ids=["wren", "mick", "sam"])
+pf = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert "That is for facts. It is not for an exchange in which people ask, offer, object or decide" in pf
+assert "'Yasmin asked Alex to...'" in pf and "state an outcome only if someone states it" in pf and "Never settle an exchange into a result that nobody voiced" in pf
+assert "one settled memory beats three revisions of the same fact. That is for facts." in pf, "it follows the sentence about settled memories"
+memory.EXCHANGES = False
+f = install(form={"operations": [], "session_summary": "s"})
+memory.form(store, LINES107, "m", names=NM, subject_ids=["player", "world", "wren", "mick", "sam"], all_ids=["wren", "mick", "sam"])
+memory.EXCHANGES = True
+pf = next(kw for k, kw in f.calls if k == "form")["messages"][0]["content"]
+assert "Never settle an exchange" not in pf and "one settled memory beats three revisions of the same fact. Every line is stamped" in pf, "off: the prompt as it was"
+assert "support" not in f.kinds(), "no second call: the pass is one call"
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

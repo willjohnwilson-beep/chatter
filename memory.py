@@ -29,6 +29,11 @@ from datetime import datetime, timezone
 
 import llm
 
+# The formation pass records an exchange (an ask, an offer, an objection) move by move, and never settles it into a result nobody voiced. Measured on the
+# pantry exchange in tests/experiments/exp_cases.py: a note saying Alex accepted a job he never accepted in 16 of 30 runs without this, 3 of 30 with it.
+# CHATTER_EXCHANGES=0 turns it off (the older wording).
+EXCHANGES = os.environ.get("CHATTER_EXCHANGES", "1") != "0"
+
 STORE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memories.json")
 
 PLAYER = "player"
@@ -1023,8 +1028,11 @@ def form(
         "memory. Anything worth keeping has to be written down now or it is "
         "lost. Because you can see the whole stretch at once, record how "
         "things actually turned out rather than each step along the way — one "
-        "settled memory beats three revisions of the same fact. Every line is "
-        "stamped, in brackets, with the in-fiction time it happened.\n\n"
+        "settled memory beats three revisions of the same fact. "
+        + ("That is for facts. It is not for an exchange in which people ask, offer, object or decide: record each such move as its own note, "
+           "worded as what was said ('Yasmin asked Alex to...', 'Saoirse objected that...', 'Winifred said she would...'), and state an "
+           "outcome only if someone states it. Never settle an exchange into a result that nobody voiced. " if EXCHANGES else "")
+        + "Every line is stamped, in brackets, with the in-fiction time it happened.\n\n"
         "SUBJECT — set `subject` on every entry: who or what it is about.\n"
         f"  Available subjects: {subjects_text}.\n"
         "  player — a fact about the player's character: their life, "
