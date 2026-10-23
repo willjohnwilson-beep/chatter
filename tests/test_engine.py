@@ -4899,4 +4899,72 @@ assert "Never settle an exchange" not in pf and "one settled memory beats three 
 assert "support" not in f.kinds(), "no second call: the pass is one call"
 print("   PASS")
 
+print("== 108. retrieval rates what it picks, and weak picks are not used ==")
+sc = memory.retrieval_schema(True)["properties"]["retrieved"]["items"]
+assert sc["properties"]["relevance"]["enum"] == [1, 2, 3] and "relevance" in sc["required"]
+assert "relevance" not in memory.retrieval_schema(False)["properties"]["retrieved"]["items"]["properties"] and memory.RETRIEVAL_SCHEMA == memory.retrieval_schema(False)
+store = memory.MemoryStore(os.path.join(tmp, "ret2.json"))
+A, B, C = [store.apply_operations([lop(summary=n)], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])[0] for n in "ABC"]
+rated = {"retrieved": [{"memory_id": A["id"], "reason": "a", "relevance": 1}, {"memory_id": B["id"], "reason": "b", "relevance": 2}, {"memory_id": C["id"], "reason": "c", "relevance": 3}]}
+memory.RECALL_LEXICAL = 0   # (the lexical picks have their own section below)
+memory.RECALL_MIN = 2
+f = install(retrieve=rated)
+got, _ = memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=5, viewer=None)
+assert [(g["id"], g["relevance"]) for g in got] == [(C["id"], 3), (B["id"], 2)], "the loosely related one is dropped; the strongest come first"
+assert store.by_id(A["id"]).get("hits", 0) == 0 and store.by_id(C["id"])["hits"] == 1, "only what is used counts as recalled"
+pf = next(kw for k, kw in f.calls if k == "retrieve")["messages"][0]["content"]
+assert "RELEVANCE: give each memory you return a `relevance`" in pf and "Only memories rated 2 or 3 are used." in pf
+assert "relevance" in str(next(kw for k, kw in f.calls if k == "retrieve")["output_config"])
+# nothing rated high enough: nothing comes back, and the cap still holds
+install(retrieve={"retrieved": [{"memory_id": A["id"], "reason": "a", "relevance": 1}]})
+assert memory.retrieve(store, "Hm.", "r", "claude-haiku-5-5", limit=5, viewer=None)[0] == []
+install(retrieve={"retrieved": [{"memory_id": x["id"], "reason": "x", "relevance": 3} for x in (A, B, C)]})
+assert len(memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=2, viewer=None)[0]) == 2
+# an answer with no rating (an older one) counts as a full pick; the minimum can be raised; and it can be switched off
+install(retrieve={"retrieved": [{"memory_id": A["id"], "reason": "a"}]})
+assert len(memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=5, viewer=None)[0]) == 1
+memory.RECALL_MIN = 3
+install(retrieve=rated)
+assert [g["id"] for g in memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=5, viewer=None)[0]] == [C["id"]]
+assert memory.RECALL_MIN == int(os.environ.get("CHATTER_RECALL_MIN", "3")), "the default is to use only what is rated 3"
+memory.RECALL_MIN = 2
+memory.RECALL_SCORED = False
+f = install(retrieve=rated)
+got, _ = memory.retrieve(store, "m", "r", "claude-haiku-5-5", limit=5, viewer=None)
+memory.RECALL_SCORED = True
+memory.RECALL_MIN = 3
+memory.RECALL_LEXICAL = 2
+assert [g["id"] for g in got] == [A["id"], B["id"], C["id"]] and "relevance" not in got[0], "off: every pick is used, in the model's order, as before"
+assert "RELEVANCE:" not in next(kw for k, kw in f.calls if k == "retrieve")["messages"][0]["content"]
+print("   PASS")
+
+print("== 109. a memory the line plainly names comes back even if the model left it out ==")
+pool = [{"id": "m1", "detail": "Saoirse found a ham in the pantry at half four.", "tags": ["ham", "pantry"]},
+        {"id": "m2", "detail": "Yasmin plans to put a rota on the pantry door tomorrow.", "tags": ["rota"]},
+        {"id": "m3", "detail": "Alex said he is a tax agent.", "tags": ["alex", "job"]},
+        {"id": "m4", "detail": "Winifred offered Alex a tour after dinner.", "tags": ["alex", "tour"]},
+        {"id": "m5", "detail": "Priya said Alex seems careful.", "tags": ["alex"]},
+        {"id": "m6", "detail": "Alex arrived late in a van.", "tags": ["alex"]}]
+assert memory.lexical_picks(pool, "Is there any ham in the pantry?", set(), 2) == ["m1", "m2"], "the rarer shared word counts for more, and a second match follows"
+assert memory.lexical_picks(pool, "When is the rota going up?", set(), 2) == ["m2"]
+assert memory.lexical_picks(pool, "Is there any ham in the pantry?", {"m1"}, 2) == ["m2"], "what the model already picked is not added again"
+assert memory.lexical_picks(pool, "Alex, what do you think?", set(), 2) == [], "a word the pool uses everywhere names nothing in particular"
+assert memory.lexical_picks(pool, "Hm.", set(), 2) == [] and memory.lexical_picks(pool, "ham", set(), 0) == [] and memory.lexical_picks([], "ham", set(), 2) == []
+store = memory.MemoryStore(os.path.join(tmp, "lex.json"))
+ham, rota = [store.apply_operations([lop(summary=n, detail=d, tags=t)], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])[0]
+             for n, d, t in (("h", "Saoirse found a ham in the pantry.", ["ham"]), ("r", "Yasmin plans a rota on the door.", ["rota"]))]
+store.apply_operations([lop(summary="x", detail="Wren likes tea.", tags=["tea"])], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])
+store.apply_operations([lop(summary="y", detail="Mick likes rum.", tags=["rum"])], LB, all_ids=["wren"], subject_ids=["world"], known_by=["*"])
+install(retrieve={"retrieved": []})
+memory.RECALL_LEXICAL = 0
+assert memory.retrieve(store, "Any ham left?", "r", "claude-haiku-5-5", limit=5, viewer=None)[0] == [], "off: only the model's picks"
+memory.RECALL_LEXICAL = 2
+got, _ = memory.retrieve(store, "Any ham left?", "r", "claude-haiku-5-5", limit=5, viewer=None)
+assert [g["id"] for g in got] == [ham["id"]] and got[0]["reason"] == "mentions what was just said" and store.by_id(ham["id"])["hits"] == 1
+install(retrieve={"retrieved": [{"memory_id": rota["id"], "reason": "model", "relevance": 3}]})
+got, _ = memory.retrieve(store, "Any ham left?", "r", "claude-haiku-5-5", limit=1, viewer=None)
+assert [g["id"] for g in got] == [rota["id"]], "the model's pick comes first, so the cap cuts the added one"
+memory.RECALL_LEXICAL = int(os.environ.get("CHATTER_RECALL_LEXICAL", "2"))
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

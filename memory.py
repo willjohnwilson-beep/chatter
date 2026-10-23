@@ -23,8 +23,10 @@ carries the in-fiction time it happened, so relative references ('tomorrow',
 """
 
 import json
+import math
 import os
 import re
+from collections import Counter
 from datetime import datetime, timezone
 
 import llm
@@ -34,6 +36,16 @@ import llm
 # CHATTER_EXCHANGES=0 turns it off (the older wording).
 EXCHANGES = os.environ.get("CHATTER_EXCHANGES", "1") != "0"
 
+# Recall (the prefetch). The model rates each memory it picks (3 the reply would be wrong without it, 2 it would be better informed, 1 loosely related) and only
+# those rated at least RECALL_MIN are used, so small talk brings back less instead of filling the cap; and RECALL_LEXICAL memories that share a distinctive word with the
+# line are added, because the model sometimes leaves out a memory the line plainly names. Measured on the Sixty session's memories (tests/experiments/exp_recall.py, 11
+# probes in two phrasings, 3 runs each): the right memory came back 78% of the time before, 89% with the lexical picks alone, and 89% with both while bringing back
+# 2.8 memories per probe instead of 4.1 and 2.5 per line of small talk instead of 4.8. The scores alone (no lexical picks) cost recall: 65%.
+# CHATTER_RECALL_SCORED=0 and CHATTER_RECALL_LEXICAL=0 turn them off (the older behaviour).
+RECALL_SCORED = os.environ.get("CHATTER_RECALL_SCORED", "1") != "0"
+RECALL_MIN = int(os.environ.get("CHATTER_RECALL_MIN", "3"))
+RECALL_LEXICAL = int(os.environ.get("CHATTER_RECALL_LEXICAL", "2"))
+
 STORE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memories.json")
 
 PLAYER = "player"
@@ -41,25 +53,30 @@ WORLD = "world"
 ANYONE = "*"
 MAX_VERSIONS = 8  # earlier versions kept per memory, so an update can't destroy history
 
-RETRIEVAL_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "retrieved": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "memory_id": {"type": "string"},
-                    "reason": {"type": "string"},
+def retrieval_schema(scored: bool | None = None) -> dict:
+    scored = RECALL_SCORED if scored is None else scored
+    props = {"memory_id": {"type": "string"}, "reason": {"type": "string"}}
+    if scored:
+        props["relevance"] = {"type": "integer", "enum": [1, 2, 3], "description": "3: the reply would be wrong or oddly ignorant without it. 2: it would be noticeably better informed. 1: loosely related."}
+    return {
+        "type": "object",
+        "properties": {
+            "retrieved": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": props,
+                    "required": list(props),
+                    "additionalProperties": False,
                 },
-                "required": ["memory_id", "reason"],
-                "additionalProperties": False,
-            },
-        }
-    },
-    "required": ["retrieved"],
-    "additionalProperties": False,
-}
+            }
+        },
+        "required": ["retrieved"],
+        "additionalProperties": False,
+    }
+
+
+RETRIEVAL_SCHEMA = retrieval_schema(False)   # the unscored shape
 
 
 def formation_schema(subject_ids: list[str]) -> dict:
@@ -898,6 +915,11 @@ def retrieve(
         f"{who}'s head, so don't pick memories that only repeat it — you're "
         "reaching further back than that. Return an empty list if nothing "
         "applies; that is normal for small talk.\n\n"
+        + (
+            "RELEVANCE: give each memory you return a `relevance`. 3 = the reply would be wrong, inconsistent or oddly ignorant without it "
+            "(it answers what is being asked, or the reply would contradict it). 2 = it would make the reply noticeably better informed. "
+            "1 = loosely related; nothing would change. Only memories rated 2 or 3 are used.\n\n" if RECALL_SCORED else ""
+        ) +
         f"{cap_text}"
         f"Facts {who} always has in mind are listed separately for context. Do "
         "not return those; choose only from CANDIDATES.\n\n"
@@ -912,12 +934,18 @@ def retrieve(
             model,
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}],
-            output_config={"format": {"type": "json_schema", "schema": RETRIEVAL_SCHEMA}},
+            output_config={"format": {"type": "json_schema", "schema": retrieval_schema()}},
         )
     )
     picked = json.loads(llm.text(response))["retrieved"]
     allowed = {m["id"] for m in candidates}
     picked = [p for p in picked if p["memory_id"] in allowed]  # never surface what they don't know
+    if RECALL_SCORED:   # weak picks are dropped, and the strongest come first (stable, so the model's order stands among equals)
+        picked = [p for p in picked if p.get("relevance", 3) >= RECALL_MIN]
+        picked = sorted(picked, key=lambda p: -p.get("relevance", 3))
+    if RECALL_LEXICAL:   # a memory the line plainly names, which the model left out, is added after its own picks
+        have = {p["memory_id"] for p in picked}
+        picked += [{"memory_id": mid, "reason": "mentions what was just said"} for mid in lexical_picks(candidates, message, have, RECALL_LEXICAL)]
     def aged(p):
         m = store.by_id(p["memory_id"])
         return bool(m) and store.stale(m, now)
@@ -930,8 +958,38 @@ def retrieve(
         mem = store.by_id(item["memory_id"])
         if mem:
             mem["hits"] = mem.get("hits", 0) + 1
-            hydrated.append({**mem, "reason": item["reason"], "stale": store.stale(mem, now)})
+            hydrated.append({**mem, "reason": item["reason"], **({"relevance": item["relevance"]} if RECALL_SCORED and "relevance" in item else {}), "stale": store.stale(mem, now)})
     return hydrated, llm.usage(response)
+
+
+_LEX_STOP = set("""about after again also another because been before being could does doing from have here into just like make more much only other over really
+should some still such than that their them then there these they this those very want what when where which while will with would your you yours were was and the are for
+not but all any can has had her him his how its our out she who why yes""".split())
+
+
+def _lex_tokens(text: str) -> set:
+    return {w[:5] for w in re.findall(r"[a-z']{3,}", (text or "").lower()) if w not in _LEX_STOP}
+
+
+def lexical_picks(candidates: list[dict], message: str, exclude: set, k: int) -> list[str]:
+    """Up to k memories that share a distinctive word with what was just said ('ham', 'rota'), the best first, for the prefetch to add to the model's own picks:
+    the model sometimes misses a memory that the line plainly names. A word counts only if the pool of memories does not use it everywhere, and the more rarely
+    it is used the more it counts."""
+    query = _lex_tokens(message)
+    if k <= 0 or not query or not candidates:
+        return []
+    docs = {m["id"]: _lex_tokens(m.get("detail", "") + " " + " ".join(m.get("tags", []))) for m in candidates}
+    n = len(docs)
+    df = Counter(t for d in docs.values() for t in d)
+    scored = []
+    for m in candidates:
+        if m["id"] in exclude:
+            continue
+        shared = [t for t in query & docs[m["id"]] if df[t] <= max(3, 0.1 * n)]
+        if shared:
+            scored.append((sum(math.log(n / df[t]) for t in shared), m["id"]))
+    scored.sort(key=lambda x: -x[0])
+    return [mid for _, mid in scored[:k]]
 
 
 def _transcript(batch: list[dict], names: dict, mark=None) -> str:
