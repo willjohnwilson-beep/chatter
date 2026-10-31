@@ -30,6 +30,7 @@ from collections import Counter
 from datetime import datetime, timezone
 
 import llm
+import vectors
 
 # The formation pass records an exchange (an ask, an offer, an objection) move by move, and never settles it into a result nobody voiced. Measured on the
 # pantry exchange in tests/experiments/exp_cases.py: a note saying Alex accepted a job he never accepted in 16 of 30 runs without this, 3 of 30 with it.
@@ -399,7 +400,14 @@ class MemoryStore:
         # Who has heard EVERYTHING in the shared session summary (None while it is empty). The summary is written
         # omniscient, so it must not be shown to a pass writing memories for anyone outside this set.
         self.summary_audience: list[str] | None = None
+        self._vectors = None   # the embedding index (vectors.py), made when first wanted
         self.load()
+
+    def vector_index(self):
+        """The embedding vectors for these memories, kept in a sidecar file next to the store (memories.json -> memories.vectors.npz)."""
+        if self._vectors is None:
+            self._vectors = vectors.Index(os.path.splitext(self.path)[0] + ".vectors.npz")
+        return self._vectors
 
     # ---------- persistence ----------
 
@@ -459,6 +467,11 @@ class MemoryStore:
         self.scene_no = 0
         self.summary_audience = None
         self.save()
+        sidecar = os.path.splitext(self.path)[0] + ".vectors.npz"
+        if self._vectors is not None:
+            self._vectors.clear()
+        elif os.path.exists(sidecar):
+            os.remove(sidecar)
 
     def clear_session_summary(self) -> None:
         """A scene ended: the shared summary starts again, with no one having heard it yet."""
@@ -886,6 +899,13 @@ def retrieve(
     if not candidates:
         return [], llm.zero_usage()
     in_prompt = {m["id"] for m in store.pool(viewer, exclude_core=True)} - {m["id"] for m in candidates}
+    # A character who knows a great deal: the model reads only the memories nearest the line (vectors.py), not all of them. It is the same pick, from a shorter list.
+    pick_from, short_usage = candidates, None
+    if vectors.ENABLED and len(candidates) > vectors.MIN_POOL:
+        short = vectors.shortlist(store, candidates, message, recent, model)
+        if short is not None:
+            pick_from, short_usage = short
+            in_prompt |= {m["id"] for m in candidates} - {m["id"] for m in pick_from}
 
     names = names or {}
     who = "the narrator" if viewer in (None, NARRATOR) else names.get(viewer, "the character")
@@ -938,7 +958,7 @@ def retrieve(
         )
     )
     picked = json.loads(llm.text(response))["retrieved"]
-    allowed = {m["id"] for m in candidates}
+    allowed = {m["id"] for m in pick_from}
     picked = [p for p in picked if p["memory_id"] in allowed]  # never surface what they don't know
     if RECALL_SCORED:   # weak picks are dropped, and the strongest come first (stable, so the model's order stands among equals)
         picked = [p for p in picked if p.get("relevance", 3) >= RECALL_MIN]
@@ -959,7 +979,8 @@ def retrieve(
         if mem:
             mem["hits"] = mem.get("hits", 0) + 1
             hydrated.append({**mem, "reason": item["reason"], **({"relevance": item["relevance"]} if RECALL_SCORED and "relevance" in item else {}), "stale": store.stale(mem, now)})
-    return hydrated, llm.usage(response)
+    used = llm.usage(response)
+    return hydrated, ({k: used[k] + short_usage[k] for k in used} if short_usage else used)
 
 
 _LEX_STOP = set("""about after again also another because been before being could does doing from have here into just like make more much only other over really

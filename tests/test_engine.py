@@ -87,6 +87,8 @@ class Fake:
             kind = "draft_section"
         elif "fact that was hidden at this place" in first:
             kind = "discover"
+        elif "Rewrite THE NEXT LINE as one standalone" in first:
+            kind = "rewrite"
         else:
             kind = "character"
         self.calls.append((kind, kw))
@@ -100,6 +102,7 @@ class Fake:
                              else json.dumps({"urge": 0, "cue": "", "why": ""}) if kind == "bid"
                              else json.dumps({"moves": False, "to": "", "companions": [], "why": ""}) if kind == "premove"
                              else json.dumps({"moves": []}) if kind == "moves"
+                             else first.split("THE NEXT LINE:\n")[1].split("\n\nRewrite")[0] if kind == "rewrite"   # unchanged
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
@@ -4965,6 +4968,127 @@ install(retrieve={"retrieved": [{"memory_id": rota["id"], "reason": "model", "re
 got, _ = memory.retrieve(store, "Any ham left?", "r", "claude-haiku-5-5", limit=1, viewer=None)
 assert [g["id"] for g in got] == [rota["id"]], "the model's pick comes first, so the cap cuts the added one"
 memory.RECALL_LEXICAL = int(os.environ.get("CHATTER_RECALL_LEXICAL", "2"))
+print("   PASS")
+
+print("== 110. a character who knows a great deal: embeddings shortlist what the model reads ==")
+import logging
+import zlib
+import vectors
+
+_had_key = "OPENROUTER_API_KEY" in os.environ
+os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
+EMBED_CALLS = []
+
+
+def fake_embed(model, texts, dims=0):
+    """Bag of words in 256 bins: a line is near a memory that shares its words."""
+    EMBED_CALLS.append(list(texts))
+    out = []
+    for t in texts:
+        v = [0.0] * 256
+        for w in re.findall(r"[a-z0-9]+", t.lower()):
+            v[zlib.crc32(w.encode()) % 256] += 1.0
+        out.append(v)
+    return out
+
+
+def big_store(name, n=100, known_by=("*",)):
+    s = memory.MemoryStore(os.path.join(tmp, name))
+    for i in range(n):
+        s.memories.append({"id": f"mem_{i:04d}", "subject": "world", "kind": "canon", "known_by": list(known_by), "tags": ["t"], "summary": f"entry {i}", "detail": f"Mick mentioned tok{i} once",
+                           "core": False, "lifetime": "lasting", "lifetime_by": "", "conflicts_with": [], "scene_no": 0, "as_of": "", "places": [], "source": "self", "claimed_by": "",
+                           "evidence": "", "verified": True, "public": True, "versions": [], "created_at": "2026-10-21T22:07:02+00:00", "updated_at": "2026-10-21T22:07:02+00:00",
+                           "hits": 0, "origin": "", "contradicted_in_play": []})
+    s.next_id = n + 1
+    s.save()
+    return s
+
+
+def index_ids(f):
+    kw = next(kw for k, kw in f.calls if k == "retrieve")
+    return re.findall(r"^- (mem_\d+) ", kw["messages"][0]["content"], re.M)
+
+
+real_embed, real_model, real_k, real_lex, real_min = llm.embed, vectors.MODEL, vectors.SHORTLIST, memory.RECALL_LEXICAL, vectors.MIN_POOL
+assert real_min == int(os.environ.get("CHATTER_RECALL_EMBED_MIN", "1000")), "by default it only comes in for a character who knows a thousand memories or more"
+llm.embed, vectors.MODEL, vectors.SHORTLIST, vectors.MIN_POOL = fake_embed, "test/embed", 5, 80
+memory.RECALL_LEXICAL = 0
+RECENT = "Wren: the cellar again\nMick: what about it"
+store = big_store("emb1.json")
+f = install(retrieve={"retrieved": [{"memory_id": "mem_0037", "reason": "r", "relevance": 3}, {"memory_id": "mem_0090", "reason": "far", "relevance": 3}]})
+got, usage = memory.retrieve(store, "What about tok37?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+shown = index_ids(f)
+assert "mem_0037" in shown and 1 <= len(shown) <= 10 and "mem_0090" not in shown, "the model is shown the nearest few, not all hundred"
+assert [g["id"] for g in got] == ["mem_0037"], "…and a memory it names that was not shown is not used"
+assert f.kinds().count("rewrite") == 1 and usage["input_tokens"] == 6, "the rewrite is one more call, counted in the usage"
+assert "RECENT CONVERSATION:\n" + RECENT.replace("\n", " / ") in next(kw for k, kw in f.calls if k == "rewrite")["messages"][0]["content"]
+assert sorted(t for c in EMBED_CALLS for t in c if t.startswith("Mick mentioned")) == sorted(f"Mick mentioned tok{i} once" for i in range(100)), "first time: every memory is embedded, by its text, once"
+assert max(len(c) for c in EMBED_CALLS) <= llm.EMBED_BATCH, "in batches"
+assert os.path.exists(os.path.join(tmp, "emb1.vectors.npz")), "the vectors are kept beside the store"
+
+# a line that leans on the conversation: the rewrite finds what it means
+del EMBED_CALLS[:]
+f = install(retrieve={"retrieved": []}, rewrite="Tell me about tok55")
+memory.retrieve(store, "and that?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert "mem_0055" in index_ids(f) and all(len(c) <= 2 for c in EMBED_CALLS), "the rewritten question reaches the memory; nothing is embedded twice"
+
+# the vectors are kept: a new store on the same file embeds only what changed
+store2 = memory.MemoryStore(os.path.join(tmp, "emb1.json"))
+del EMBED_CALLS[:]
+install(retrieve={"retrieved": []})
+memory.retrieve(store2, "What about tok37?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert all(len(c) <= 2 for c in EMBED_CALLS), "kept vectors are used"
+store2.by_id("mem_0003")["detail"] = "Mick mentioned something else entirely"
+del EMBED_CALLS[:]
+memory.retrieve(store2, "What about tok37?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert ["Mick mentioned something else entirely"] in EMBED_CALLS and sum(len(c) for c in EMBED_CALLS) == 1 + 1, "an edited memory is embedded again, and only that one"
+vectors.MODEL = "test/other"
+assert vectors.Index(os.path.join(tmp, "emb1.vectors.npz")).vecs == {}, "another embedding model's vectors are not used"
+vectors.MODEL = "test/embed"
+store2.memories = [m for m in store2.memories if m["id"] != "mem_0099"]
+memory.retrieve(store2, "What about tok37?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert "mem_0099" not in vectors.Index(os.path.join(tmp, "emb1.vectors.npz")).vecs, "the vector of a memory that is gone is forgotten"
+
+# privacy: what the character doesn't know is never embedded for them, nor shown
+store3 = big_store("emb2.json", 90, known_by=("wren",))
+store3.memories += [{**m, "id": f"mem_x{i}", "detail": f"Secret held by Mick alone number {i}", "known_by": ["mick"]} for i, m in enumerate(big_store("emb2b.json", 5).memories)]
+del EMBED_CALLS[:]
+f = install(retrieve={"retrieved": []})
+memory.retrieve(store3, "What about tok4?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert not any("Secret held" in t for c in EMBED_CALLS for t in c) and not any(i.startswith("mem_x") for i in index_ids(f)), "what Wren doesn't know is not embedded or shown"
+
+# a small pool is read whole, with no embedding at all
+store4 = big_store("emb3.json", 40)
+del EMBED_CALLS[:]
+f = install(retrieve={"retrieved": []})
+memory.retrieve(store4, "What about tok4?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert len(index_ids(f)) == 40 and not EMBED_CALLS and "rewrite" not in f.kinds(), "below the threshold: every memory, as before"
+
+# switched off, or the service failing: every memory is read, the reply still comes
+vectors.ENABLED = False
+f = install(retrieve={"retrieved": []})
+memory.retrieve(big_store("emb4.json"), "What about tok4?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert len(index_ids(f)) == 100 and "rewrite" not in f.kinds(), "switched off"
+vectors.ENABLED = True
+
+
+def broken(model, texts, dims=0):
+    raise llm.LLMError("embedding service down")
+
+
+llm.embed = broken
+f = install(retrieve={"retrieved": [{"memory_id": "mem_0004", "reason": "r", "relevance": 3}]})
+got, _ = memory.retrieve(big_store("emb5.json"), "What about tok4?", RECENT, "claude-haiku-5-5", limit=5, viewer="wren")
+assert len(index_ids(f)) == 100 and [g["id"] for g in got] == ["mem_0004"], "the embedding service failing: the model reads every memory"
+llm.embed = fake_embed
+
+# a reset forgets the vectors too
+store.reset()
+assert not os.path.exists(os.path.join(tmp, "emb1.vectors.npz")) and store.vector_index().vecs == {}
+llm.embed, vectors.MODEL, vectors.SHORTLIST, vectors.MIN_POOL = real_embed, real_model, real_k, real_min
+memory.RECALL_LEXICAL = real_lex
+if not _had_key:
+    del os.environ["OPENROUTER_API_KEY"]
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

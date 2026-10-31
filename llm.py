@@ -357,6 +357,42 @@ def _post(body: dict) -> dict:
     return data
 
 
+EMBED_BATCH = 48
+
+
+def embed(model: str, texts: list[str], dims: int = 0) -> list[list[float]]:
+    """Embedding vectors for the texts, one per text, in order. OpenRouter only (an embedding model is named like "qwen/qwen3-embedding-8b").
+    `dims` shortens the vectors for models that allow it; 0 is the model's own size."""
+    key = os.environ.get("OPENROUTER_API_KEY")
+    if not key:
+        raise LLMError("OPENROUTER_API_KEY is not set (needed for embeddings)")
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json", "HTTP-Referer": "http://localhost:5005", "X-Title": "Chatter"}
+    out: list[list[float]] = []
+    for i in range(0, len(texts), EMBED_BATCH):
+        body = {"model": model, "input": texts[i:i + EMBED_BATCH], **({"dimensions": dims} if dims else {})}
+        for attempt in range(3):
+            try:
+                r = _http.post(OPENROUTER_URL + "/embeddings", json=body, headers=headers)
+            except httpx.TransportError as exc:
+                if attempt == 2:
+                    raise LLMError(f"OpenRouter unreachable: {exc}") from exc
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            if r.status_code in (429, 500, 502, 503, 504) and attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+                continue
+            break
+        if r.status_code >= 400:
+            raise LLMError(f"OpenRouter {r.status_code}: {_error_text(r)}", r.status_code)
+        data = r.json()
+        rows = data.get("data")
+        if not rows or len(rows) != len(body["input"]):
+            err = data.get("error") or {}
+            raise LLMError(f"OpenRouter: {err.get('message') or 'embedding response had the wrong shape'}", err.get("code"))
+        out += [row["embedding"] for row in sorted(rows, key=lambda row: row["index"])]
+    return out
+
+
 def _routed_create(kw: dict, _retried: bool = False, _json_tries: int = 2, _skip: tuple = ()):
     schema = ((kw.get("output_config") or {}).get("format") or {}).get("schema")
     reasoning = kw.get("reasoning")

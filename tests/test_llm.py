@@ -256,4 +256,45 @@ check(llm._default("claude-sonnet-5-5") == "claude-sonnet-5-5", "without an Open
 del os.environ["ANTHROPIC_API_KEY"]
 check(llm._default("claude-haiku-5-5") == "claude-haiku-5-5", "with neither, the Claude model")
 
+print("embeddings")
+os.environ["OPENROUTER_API_KEY"] = "test-key"
+del SENT[:], REPLIES[:]
+emb = lambda rows: Resp(200, {"data": [{"index": i, "embedding": v} for i, v in rows]})
+REPLIES.append(emb([(1, [0.0, 2.0]), (0, [1.0, 0.0])]))
+got = llm.embed("qwen/qwen3-embedding-8b", ["a", "b"])
+check(got == [[1.0, 0.0], [0.0, 2.0]], "vectors come back in the order of the texts, whatever order the host sent them")
+check(SENT[0]["url"].endswith("/embeddings") and SENT[0]["body"] == {"model": "qwen/qwen3-embedding-8b", "input": ["a", "b"]}, "one request, no dimensions unless asked")
+del SENT[:]
+REPLIES.append(emb([(0, [1.0])]))
+llm.embed("m/x", ["a"], dims=512)
+check(SENT[0]["body"]["dimensions"] == 512, "shorter vectors are asked for")
+del SENT[:]
+n = llm.EMBED_BATCH * 2 + 1
+REPLIES.extend([emb([(i, [float(i)]) for i in range(llm.EMBED_BATCH)]), emb([(i, [float(i)]) for i in range(llm.EMBED_BATCH)]), emb([(0, [9.0])])])
+got = llm.embed("m/x", [str(i) for i in range(n)])
+check(len(SENT) == 3 and len(got) == n and got[-1] == [9.0] and [len(s["body"]["input"]) for s in SENT] == [llm.EMBED_BATCH, llm.EMBED_BATCH, 1], "a long list goes in batches")
+del SENT[:]
+REPLIES.extend([Resp(503, {"error": {"message": "busy"}}), emb([(0, [1.0])])])
+check(llm.embed("m/x", ["a"]) == [[1.0]] and len(SENT) == 2, "a busy host is tried again")
+del SENT[:]
+REPLIES.append(Resp(402, {"error": {"message": "no credits"}}))
+try:
+    llm.embed("m/x", ["a"])
+    check(False, "should raise")
+except llm.LLMError as e:
+    check(e.status == 402, "a refusal is an LLMError carrying its status")
+REPLIES.append(Resp(200, {"error": {"message": "upstream failed", "code": 502}}))
+try:
+    llm.embed("m/x", ["a"])
+    check(False, "should raise")
+except llm.LLMError as e:
+    check("upstream failed" in str(e), "a 200 with an error body is an error")
+del os.environ["OPENROUTER_API_KEY"]
+try:
+    llm.embed("m/x", ["a"])
+    check(False, "should raise")
+except llm.LLMError as e:
+    check("OPENROUTER_API_KEY" in str(e), "no key: named")
+del SENT[:], REPLIES[:]
+
 print("\nALL OPENROUTER TESTS PASSED")
