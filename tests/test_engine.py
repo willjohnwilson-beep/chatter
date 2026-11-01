@@ -1271,6 +1271,7 @@ def trio():
 
 
 store, world, c = trio()
+c.offstage_rules = False                      # the lines themselves; with the rules on, a watcher departure takes two beats (section 112)
 install(character="ok", director={"speakers": [{"id": "wren", "cue": ""}], "reason": "r"},
         watch={"updates": [{"target": "mick", "field": "location", "value": "cellar", "why": "keg"}]})
 c.turn("Mick, the keg?", MODELS)
@@ -1281,6 +1282,7 @@ assert not any(m.get("kind") == "move" for m in c.history), "the scene did not m
 assert any(m["content"] == dep["content"] for m in c.viewer_messages("mick")), "he saw himself go"
 
 store, world, c = trio()                      # two to the same place: one line; to different places: two; to nowhere: no 'for'
+c.offstage_rules = False
 install(character="ok", director={"speakers": [{"id": "wren", "cue": ""}], "reason": "r"},
         watch={"updates": [{"target": "mick", "field": "location", "value": "cellar", "why": "x"},
                            {"target": "sam", "field": "location", "value": "cellar", "why": "x"}]})
@@ -1288,6 +1290,7 @@ c.turn("go on then", MODELS)
 assert [m["content"] for m in c.history if m.get("kind") == "depart"] == ["(Mick and Sam leave for The Cellar.)"]
 
 store, world, c = trio()
+c.offstage_rules = False
 install(character="ok", director={"speakers": [{"id": "wren", "cue": ""}], "reason": "r"},
         watch={"updates": [{"target": "mick", "field": "location", "value": "cellar", "why": "x"},
                            {"target": "sam", "field": "location", "value": "none", "why": "home"}]})
@@ -1909,6 +1912,7 @@ assert lines_ == [("move", "(Mick comes in from The Cellar.)")] and r["arrived"]
 
 store, world, c = trio()                       # one leaves, one arrives, in the same turn
 world.character("sam")["location"] = "pier"
+c.offstage_rules = False
 install(character="ok", director={"speakers": [{"id": "wren", "cue": ""}], "reason": "r"},
         watch={"updates": [{"target": "mick", "field": "location", "value": "cellar", "why": "keg"},
                            {"target": "sam", "field": "location", "value": "salt-line", "why": "in"}]})
@@ -4686,10 +4690,16 @@ assert "something described inside the kitchen (a pantry) means the kitchen" in 
 store, world, c = off_world()
 install(director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, character="I'll go and check the cellar, back in five.", watch={"updates": []}, moves=MV(("wren", "cellar")), retrieve={"retrieved": []})
 r = c.turn("Anyone want to look in the cellar?", MODELS)
-assert world.character("wren")["location"] == "cellar" and world.present_ids() == ["mick"], "Wren is in the cellar now, out of the scene"
+assert world.character("wren")["location"] == "kitchen" and world.character("wren")["leaving"] == "cellar" and sorted(world.present_ids()) == ["mick", "wren"], \
+    "saying it only starts it: she is still here"
 assert [x["speaker"] for x in r["replies"]] == ["wren"] and c.history[1]["content"].startswith("I'll go and check"), "she spoke first"
+assert not any(m.get("kind") == "depart" for m in c.history)
+install(director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, character="Right, off I go.", watch={"updates": []}, moves=MV(), retrieve={"retrieved": []})
+r = c.turn("Fine, don't be long.", MODELS)
+assert world.character("wren")["location"] == "cellar" and world.present_ids() == ["mick"], "and she is in the cellar at the end of the next exchange, out of the scene"
+assert [x["speaker"] for x in r["replies"]] == ["wren"], "she was there to answer"
 assert any(m.get("kind") == "depart" and m["content"] == "(Wren leaves for The Cellar.)" and m["present"] == ["mick", "wren"] for m in c.history), [m["content"] for m in c.history]
-assert world.character("wren")["arriving"] is False
+assert world.character("wren")["arriving"] is False and world.character("wren")["leaving"] == ""
 # bad answers change nothing
 for bad in (MV(("wren", "kitchen")), MV(("wren", "vault")), MV(("wren", "nowhere")), MV(("sam", "cellar")), MV(("mick", "cellar"))):
     store, world, c = off_world()
@@ -4699,7 +4709,7 @@ for bad in (MV(("wren", "kitchen")), MV(("wren", "vault")), MV(("wren", "nowhere
 store, world, c = off_world()
 install(moves=MV(("wren", "cellar"), ("wren", "salt-line")))
 made, _ = c._announced_moves(MODELS, said(("wren", "I'll go and check the cellar.")))
-assert made == [{"id": "wren", "to": "cellar"}], "each person at most once"
+assert made == [] and world.character("wren")["leaving"] == "cellar", "each person at most once: the first one stands"
 # off, a private line and a failed call
 store, world, c = off_world()
 c.offstage_rules = False
@@ -5159,6 +5169,86 @@ c._append("narrator", "(The scene moves to The Kitchen.)", world.present_ids(), 
 f = install(premove=MOVE("kitchen"), character="ok", watch={"updates": []}, director=DIR96)
 c.turn("Fine, lead on.", MODELS)
 assert "premove" not in f.kinds()
+print("   PASS")
+
+print("== 112. a spoken departure takes two beats: saying it starts it, and they leave at the end of the next exchange unless they change their mind ==")
+STAY = lambda *ids: {"moves": [], "stays": list(ids)}
+GO = {"director": {"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}, "watch": {"updates": []}, "retrieve": {"retrieved": []}}
+# the question she asked can be answered, and she answers it, before she goes
+store, world, c = off_world()
+install(character="I'll go and check the cellar. Anyone want to come and watch me do it?", moves=MV(("wren", "cellar")), **GO)
+c.turn("Hm.", MODELS)
+assert world.character("wren")["leaving"] == "cellar" and "wren" in world.present_ids()
+f = install(character="Right, I'm off to the cellar then.", moves=MV(), **GO)
+r = c.turn("Not me. Go on.", MODELS)
+note = str([kw for k, kw in f.calls if k == "character"][0]["messages"])
+assert "You have said you are heading to The Cellar. You leave when this exchange is over" in note, "she is told she is on her way"
+assert [x["speaker"] for x in r["replies"]] == ["wren"] and "wren" not in world.present_ids() and world.character("wren")["location"] == "cellar"
+mp = next(kw for k, kw in f.calls if k == "moves")["messages"][0]["content"]
+assert "ALREADY HEADING OFF" in mp and "- wren: Wren, to The Cellar" in mp and "Player: Not me. Go on." in mp.replace("Alex", "Player") and "`stays`" in mp, mp[-900:]
+# it is asked when someone is on their way even if nobody said anything about going; and without one, the old gate
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+f = install(moves=MV())
+made, _ = c._announced_moves(MODELS, said(("mick", "Pass the salt.")))
+assert f.kinds().count("moves") == 1 and made == [{"id": "wren", "to": "cellar"}] and world.character("wren")["location"] == "cellar"
+store, world, c = off_world()
+f = install(moves=MV())
+c._announced_moves(MODELS, said(("mick", "Pass the salt.")))
+assert "moves" not in f.kinds()
+store, world, c = off_world()
+f = install(moves=MV())
+c._announced_moves(MODELS, said(("wren", "I'll go and check the cellar.")))
+assert "`stays`" not in next(kw for k, kw in f.calls if k == "moves")["messages"][0]["content"], "nobody on their way: nothing to ask about staying"
+# a change of mind (or being asked to wait) cancels it
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+install(moves=STAY("wren", "mick", "ghost"))
+made, _ = c._announced_moves(MODELS, said(("player", "Wait, Wren, don't go down alone."), ("wren", "Fair enough. I'll stay.")))
+assert made == [] and world.character("wren")["leaving"] == "" and world.character("wren")["location"] == "kitchen", "and only those who were on their way count"
+# a place that can no longer be entered, or the scene's own place, drops it without a call
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+world.location("cellar")["locked"] = True
+f = install(moves=MV())
+assert c._announced_moves(MODELS, said(("mick", "Pass the salt.")))[0] == [] and world.character("wren")["leaving"] == "" and "moves" not in f.kinds()
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+world.move_scene("cellar", bring=["wren", "mick"])
+assert world.character("wren")["leaving"] == "", "the scene went there itself"
+# the watcher or the author putting them somewhere clears it; it is kept and normalised with the character; a reset forgets it
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+world.save()
+assert st.WorldState(world.path).character("wren")["leaving"] == "cellar"
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+install(character="ok", watch={"updates": [{"target": "wren", "field": "location", "value": "cellar", "why": "went"}]}, director=DIR96)
+c.turn("Hm.", MODELS)
+assert world.character("wren")["location"] == "cellar" and world.character("wren")["leaving"] == ""
+# a private line is not a beat; neither executes nor starts a departure
+store, world, c = off_world()
+world.character("wren")["leaving"] = "cellar"
+f = install(moves=MV(), character="ok", watch={"updates": []})
+c.turn("Wren, a word.", MODELS, to="wren")
+assert "moves" not in f.kinds() and world.character("wren")["leaving"] == "cellar" and world.character("wren")["location"] == "kitchen"
+# the watcher's departures take the same two beats on a public turn (it used to move people the moment the replies were in); 'none' (gone for good) and a whisper do not wait
+WGO = {"updates": [{"target": "wren", "field": "location", "value": "cellar", "why": "off to the cellar"}]}
+store, world, c = off_world()
+install(character="I'll check the cellar. Anyone coming?", watch=WGO, moves=MV(), **{k: v for k, v in GO.items() if k != "watch"})
+r = c.turn("Hm.", MODELS)
+assert world.character("wren")["location"] == "kitchen" and world.character("wren")["leaving"] == "cellar" and r["scene_changes"] == [], "she is still here to be answered"
+install(character="Off I go.", watch={"updates": []}, moves=MV(), **{k: v for k, v in GO.items() if k != "watch"})
+c.turn("Not me.", MODELS)
+assert world.character("wren")["location"] == "cellar" and world.character("wren")["leaving"] == "" and any(m.get("kind") == "depart" for m in c.history)
+store, world, c = off_world()
+install(character="ok", watch={"updates": [{"target": "wren", "field": "location", "value": "none", "why": "went home"}]}, moves=MV(), **{k: v for k, v in GO.items() if k != "watch"})
+c.turn("Hm.", MODELS)
+assert world.character("wren")["location"] == "", "gone for good: no second beat"
+store, world, c = off_world()
+install(character="ok", watch=WGO)
+c.turn("Wren, off you go.", MODELS, to="wren")
+assert world.character("wren")["location"] == "cellar", "a whisper's instruction is carried out at once"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

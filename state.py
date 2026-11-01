@@ -313,6 +313,7 @@ def _norm_character(c: dict, taken: set[str], loc_ids: set[str], here: str) -> d
     out.update({k: v for k, v in c.items() if k in out})
     out["active"] = bool(c.get("active", True))  # has a life while out of sight
     out["arriving"] = bool(c.get("arriving", False))  # hidden: on their way to the scene
+    out["leaving"] = str(c.get("leaving") or "")  # a place id: said they are going there; they leave at the end of the next exchange
     hist = c.get("offscreen_history") or []
     out["offscreen_history"] = [h for h in hist if isinstance(h, dict) and h.get("note")][-3:]
     ret = c.get("offscreen_retired") or []
@@ -645,7 +646,7 @@ class WorldState:
             for sec in place.get("secrets", []):
                 sec.update({"revealed": False, "revealed_at": "", "hints_shown": 0, "last_hint_at": -999})
         for c in d["characters"]:
-            c.update({"offscreen": "", "offscreen_at": "", "offscreen_history": [], "offscreen_retired": [], "arriving": False})
+            c.update({"offscreen": "", "offscreen_at": "", "offscreen_history": [], "offscreen_retired": [], "arriving": False, "leaving": ""})
         return d
 
     def save(self) -> None:
@@ -809,6 +810,7 @@ class WorldState:
         c["offscreen_at"] = ""
         c["offscreen_history"] = []
         c["arriving"] = False
+        c["leaving"] = ""
 
     def arrive_into_scene(self, cid: str) -> str:
         """A character who was on their way walks in. Returns where they came
@@ -824,6 +826,7 @@ class WorldState:
         """'On their way' is relative to where the scene was; a move voids it."""
         for c in self.characters:
             c["arriving"] = False
+            c["leaving"] = ""
 
     def set_locations(self, locations: list[dict]) -> None:
         """Replace the places wholesale (the UI saves them as one unit). A new
@@ -1005,7 +1008,7 @@ class WorldState:
                     c[f] = e[f]
         for c in self.characters:
             self._retire(c, self._notes_of(c))  # what they did offstage is about to be discarded: keep it for memory
-            c["offscreen"], c["offscreen_at"], c["offscreen_history"], c["arriving"] = "", "", [], False
+            c["offscreen"], c["offscreen_at"], c["offscreen_history"], c["arriving"], c["leaving"] = "", "", [], False, ""
         self.save()
         return {"id": p["id"], "name": p["name"], "opening": p["opening"], "present": self.present_ids()}
 
@@ -1300,10 +1303,12 @@ class WorldState:
             return False, llm.zero_usage()
 
     def watch(self, lines: list[dict], model: str,
-              present: list[str] | None = None) -> tuple[list[dict], dict]:
+              present: list[str] | None = None, defer_leavers: bool = False) -> tuple[list[dict], dict]:
         """Cheap per-turn pass: what about the current situation just changed?
 
-        `lines` is what was said this turn: [{"speaker": id, "content": str}]."""
+        `lines` is what was said this turn: [{"speaker": id, "content": str}]. With `defer_leavers`, a character in the scene whom it
+        sends to another place (not 'none') does not go yet: they start leaving (`leaving`), as when they say they are going, and go at the
+        end of the next exchange (Chatter._announced_moves), so that a question put to the player can be answered first."""
         names = self.names()
         player = names[PLAYER_ID]
 
@@ -1446,8 +1451,12 @@ class WorldState:
                     new = self.resolve_place(value)
                 if new is None or new == c.get("location", "") or (new and not self.can_enter(new)) or (new and new in vetoed):
                     continue
+                if defer_leavers and new and new != self.scene.get("location") and self.is_present(c):
+                    c["leaving"] = new
+                    continue
                 before = self.place_name(c.get("location"))
                 arriving = new == self.scene.get("location") and not self.is_present(c)
+                c["leaving"] = ""
                 c["location"] = new
                 if arriving:
                     self._arrive(c)

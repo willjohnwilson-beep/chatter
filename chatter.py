@@ -108,8 +108,9 @@ MOVES_SCHEMA = {
     "type": "object",
     "properties": {"moves": {"type": "array", "items": {"type": "object", "properties": {
         "id": {"type": "string"}, "to": {"type": "string"}, "why": {"type": "string"}},
-        "required": ["id", "to", "why"], "additionalProperties": False}}},
-    "required": ["moves"], "additionalProperties": False,
+        "required": ["id", "to", "why"], "additionalProperties": False}},
+        "stays": {"type": "array", "items": {"type": "string"}}},
+    "required": ["moves", "stays"], "additionalProperties": False,
 }
 def gate_words(text: str) -> set:
     """Words of a text that could name or describe a place (four letters or more, none of the everyday ones), to decide cheaply whether a line is
@@ -756,53 +757,77 @@ class Chatter:
         return ids
 
     def _announced_moves(self, models: dict, said: list[dict]) -> tuple[list[dict], dict]:
-        """A character who SAYS they are going somewhere ('I'll go and check the pantry') goes, whether or not the watcher notices: they
-        are moved to that place now, so they are out of the scene (and told so: 'Priya leaves for The Kitchen') and their life carries on
-        from there, instead of an offstage note inventing where they got to. Only a spoken line that sounds like going AND names something
-        about the world is asked about, and a destination that is part of a place (a pantry described in the kitchen) is that place.
-        Returns (the moves made, usage)."""
+        """A character who SAYS they are going somewhere ('I'll go and check the pantry') goes, whether or not the watcher notices, but not
+        in the same breath: the saying only starts it (`leaving` on the character). They stay through the next exchange, so that a question
+        they asked ('Anyone want to come?') can be answered and they can answer back, and leave at the end of that turn (told so: 'Priya
+        leaves for The Kitchen') unless they have changed their mind or been talked out of it. Their life then carries on from there, instead
+        of an offstage note inventing where they got to. Only a spoken line that sounds like going AND names something about the world is asked
+        about, and a destination that is part of a place (a pantry described in the kitchen) is that place. Returns (the moves made, usage)."""
         w = self.world
         here = w.scene.get("location")
         present = {c["id"]: c for c in w.characters if w.is_present(c)}
         places = [p for p in w.locations if p["id"] != here and not p.get("locked")]
+        open_ids = {p["id"] for p in places}
+        for c in present.values():   # a departure that can no longer happen (the place is locked, or it is where the scene is now) is dropped
+            if c.get("leaving") and c["leaving"] not in open_ids:
+                c["leaving"] = ""
+        pending = {cid: c["leaving"] for cid, c in present.items() if c.get("leaving")}
         vocab = set()
         for p in places:
             vocab |= gate_words(p["name"]) | gate_words(p.get("description", "")) | gate_words(p.get("brief", ""))
         lines = [m for m in said if m["speaker"] in present and not m.get("private_to") and GOING_RE.search(m["content"])
                  and (gate_words(m["content"]) & vocab)]
-        if not lines or not places:
+        if not places or not (lines or pending):
             return [], llm.zero_usage()
-        spoke = "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in said if m["speaker"] in present and not m.get("private_to"))
+        heard = "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in said
+                          if (m["speaker"] in present or m["speaker"] == PLAYER_ID) and not m.get("private_to") and m.get("kind") != "aside")
         prompt = (
             f"People in a roleplay scene have just spoken. The scene is at {w.place_name(here)}"
             + (f" ({w.current_location().get('description', '').strip()})" if w.current_location() and w.current_location().get("description") else "")
-            + ". Decide whether any of them SAYS they are going somewhere else right now.\n\nPLACES (id: name, description):\n"
+            + ". Decide whether any of them SAYS they are going somewhere else right now"
+            + (", and whether those who already said they were going still are" if pending else "")
+            + ".\n\nPLACES (id: name, description):\n"
             + "\n".join(f"- {p['id']}: {p['name']}" + (f", {p['description'].strip()}" if p.get("description") else "") for p in places)
             + "\n\nPEOPLE HERE (id, name):\n" + "\n".join(f"- {cid}: {c['name']}" for cid, c in present.items())
-            + f"\n\nWHAT THEY JUST SAID:\n{spoke}\n\nRULES:\n"
+            + (("\n\nALREADY HEADING OFF (they said earlier that they were going; they have not gone yet):\n"
+                + "\n".join(f"- {cid}: {present[cid]['name']}, to {w.place_name(to)}" for cid, to in pending.items())) if pending else "")
+            + f"\n\nWHAT WAS JUST SAID:\n{heard}\n\nRULES:\n"
             "- A move is a person saying THEY are going, setting off or heading to a place now ('I'll go and check the pantry', 'right, off to "
             "the library'), or plainly leaving for somewhere. `to` is the id of the place, and a part of a place counts as that place: "
             "something described inside the kitchen (a pantry) means the kitchen.\n"
             "- NOT a move: a plan for later ('after dinner we should check the pantry'), a suggestion or an order for someone else, a wish, "
             "a question, a visit already made, going somewhere in the place they are already in, or a place that is not one of those listed.\n"
-            "- Each person at most once. If nobody moves, return an empty list.\nAnswer in JSON.\n"
+            "- Each person at most once. If nobody moves, return an empty list.\n"
+            + ("- `stays` lists those ALREADY HEADING OFF who, in what was just said, have changed their mind, said they will stay or wait, or "
+               "been asked or persuaded to stay. Everyone else there is still going. Leave it empty if none.\n" if pending else "")
+            + "Answer in JSON.\n"
         )
         schema = {**MOVES_SCHEMA, "properties": {"moves": {**MOVES_SCHEMA["properties"]["moves"], "items": {**MOVES_SCHEMA["properties"]["moves"]["items"], "properties": {
-            "id": {"type": "string", "enum": list(present)}, "to": {"type": "string", "enum": [p["id"] for p in places]}, "why": {"type": "string"}}}}}}
+            "id": {"type": "string", "enum": list(present)}, "to": {"type": "string", "enum": [p["id"] for p in places]}, "why": {"type": "string"}}}},
+            "stays": {"type": "array", "items": {"type": "string", "enum": list(pending) or list(present)}}},
+            "required": ["moves", "stays"]}
         response = llm.client().messages.create(**llm.params(
             models["state"], max_tokens=300, messages=[{"role": "user", "content": prompt}],
             output_config={"format": {"type": "json_schema", "schema": schema}}))
-        got = json.loads(llm.text(response)).get("moves") or []
+        out = json.loads(llm.text(response))
+        stays = {cid for cid in (out.get("stays") or []) if cid in pending}
+        made = []
+        for cid, to in pending.items():   # first, the departures announced in an earlier exchange: this is the end of the exchange after
+            c = present[cid]
+            c["leaving"] = ""
+            if cid in stays or not w.can_enter(to):
+                continue
+            c["location"] = to
+            c["arriving"] = False
+            made.append({"id": cid, "to": to})
         spoke_ids = {m["speaker"] for m in lines}
-        made, seen = [], set()
-        for mv in got:
+        seen = set(pending)
+        for mv in out.get("moves") or []:   # then the ones announced in this one: they start now and finish after the next exchange
             cid, to = mv.get("id"), mv.get("to")
             if cid in seen or cid not in present or cid not in spoke_ids or to == here or not w.can_enter(to):
                 continue
             seen.add(cid)
-            present[cid]["location"] = to
-            present[cid]["arriving"] = False
-            made.append({"id": cid, "to": to})
+            present[cid]["leaving"] = to
         return made, llm.usage(response)
 
     def _premove(self, models: dict, message: str) -> dict | None:
@@ -1648,6 +1673,11 @@ class Chatter:
             else:
                 retrieved = []
             viewer_note = note
+            going = (self.world.character(viewer) or {}).get("leaving")
+            if going and self.world.can_enter(going):
+                viewer_note = (note + " " if note else "") + (
+                    f"You have said you are heading to {self.world.place_name(going)}. You leave when this exchange is over, so answer what "
+                    "you were asked and say any goodbye now; you may still change your mind.")
             sid = {f["to"]: f["id"] for f in decision.get("foreshadow", [])}.get(viewer)
             sec = next((s for s in self.world.secrets_at(old_loc) if s["id"] == sid), None) if sid else None
             if sec and viewer not in sec.get("known_by", []):
@@ -1676,7 +1706,7 @@ class Chatter:
                 _, u_moves = self._announced_moves(models, said)
             except Exception:
                 log.exception("announced moves failed")
-        changes, u_state = self.world.watch(said, models["state"], present=audience)
+        changes, u_state = self.world.watch(said, models["state"], present=audience, defer_leavers=self.offstage_rules and not private)
         u_state = {k: u_state[k] + u_moves[k] for k in u_state}   # the state model's work: where everyone is
         found, u_disc = [], llm.zero_usage()
         try:
