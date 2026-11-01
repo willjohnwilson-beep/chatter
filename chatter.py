@@ -93,12 +93,18 @@ MOVE_SCHEMA = {
     "type": "object",
     "properties": {
         "moves": {"type": "boolean"},
-        "to": {"type": "string", "description": "The id of the place they go to, or empty."},
+        "announce": {"type": "boolean", "description": "They say what they will do (going later or soon), not that they are going now."},
+        "to": {"type": "string", "description": "The id of the place they go to (or say they will), or empty."},
         "companions": {"type": "array", "items": {"type": "string"}, "description": "Ids of people here who go with them."},
         "why": {"type": "string"},
     },
-    "required": ["moves", "to", "companions", "why"],
+    "required": ["moves", "announce", "to", "companions", "why"],
     "additionalProperties": False,
+}
+COMPANIONS_SCHEMA = {
+    "type": "object",
+    "properties": {"companions": {"type": "array", "items": {"type": "string"}, "description": "Ids of people here who go with them."}},
+    "required": ["companions"], "additionalProperties": False,
 }
 GENERIC_PLACE_WORDS = {"room", "house", "the", "upstairs", "downstairs"}   # too common in a line to mean a place on their own
 GOING_RE = re.compile(
@@ -834,7 +840,8 @@ class Chatter:
         """Does the player's own line take them to another place? If so the scene goes there NOW, before anyone answers, so the replies
         come from the people in the room they have walked into. (The watcher used to decide this after the replies, from an exchange
         whose replies carried on in the old room, and often hedged.) Only people the line invites, or who plainly agree to come, go with
-        them; everyone else stays where they were. Only a line that names a place (or follows what others just said that names one: an invitation
+        them; everyone else stays where they were. A line that only says what they will do ('I guess I'll go look at the hatch') is an announcement
+        and is left to the watcher, which moves the scene after the others have answered. Only a line that names a place (or follows what others just said that names one: an invitation
         the player may be accepting) is asked about, and a failed call means no move."""
         w = self.world
         here = w.scene.get("location")
@@ -851,24 +858,32 @@ class Chatter:
 
         # What the others said just before: an invitation ('kitchen first... Come on, all of us') that the player's line may be answering
         # ('Lead on', 'Fine, I'll follow') without naming the place itself.
-        before = [m for m in self.history[:-1][-4:] if m["speaker"] != PLAYER_ID and m.get("kind") not in ("move", "aside") and not m.get("private_to")]
+        # Only what people said: a stage direction ('(Imogen leaves for The Front Hall.)') is not an invitation, and took the player there once.
+        before = [m for m in self.history[:-1][-4:] if m["speaker"] not in (PLAYER_ID, NARRATOR_ID) and not m.get("kind") and not m.get("private_to")]
         if not (names_a_place(message) or any(names_a_place(m["content"]) for m in before)):
             return None
         present = [c for c in w.characters if w.is_present(c)]
         player = self._name(PLAYER_ID)
         prompt = (
             f"{player}, the player, is in {w.place_name(here)}. Below is what they just wrote. Decide whether they GO to another place in "
-            "this line.\n\nPLACES (id: name):\n" + "\n".join(f"- {p['id']}: {p['name']}" for p in places) + "\n\nPEOPLE HERE (id, name):\n"
+            "this line.\n\nPLACES (id: name, what is there):\n"
+            + "\n".join(f"- {p['id']}: {p['name']}" + (f", {p['brief'].strip()}" if (p.get("brief") or "").strip() else "") for p in places)
+            + "\n\nPEOPLE HERE (id, name):\n"
             + ("\n".join(f"- {c['id']}: {c['name']}" for c in present) or "(no one)")
             + (("\n\nJUST BEFORE (what the others said):\n" + "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in before)) if before else "")
             + f"\n\nTHEIR LINE: {message}\n\n"
-            "RULES:\n- moves is true only if the line has them actually going: walking, heading, entering, leaving or setting off for "
-            "one of the places now, as an action or a plain statement ('*I walk into the kitchen*', 'Right, off to the library', 'I head "
-            "up to the Blue Room'), or going along with an invitation or order the others just gave ('lead on', 'fine, I'll follow', "
-            "'kitchen then'). A question, a wish, a plan, a suggestion, a mention of a place or an answer that does not accept the "
+            "RULES:\n- moves is true only if the line has them going NOW: walking, heading, entering, leaving or setting off for "
+            "one of the places as an action in progress or a plain statement that they are off ('*I walk into the kitchen*', 'Right, off "
+            "to the library', 'I head up to the Blue Room'), or accepting an invitation or order the others just gave, even in 'I'll' form "
+            "('lead on', 'fine, I'll follow you', 'kitchen then, I'll come'). Saying what they intend to do when nobody has just asked "
+            "them to go ('I guess I'll go look at the hatch', 'I think I'll head up', 'I might pop to the kitchen') is announcing: the "
+            "others get to answer before they go (a line built on 'I'll', 'I guess I'll', 'I think I'll', 'I'm going to', 'I might' that is "
+            "not answering an invitation is an announcement, however firm), so moves is false and announce is true (with `to` the place they say they will go to). "
+            "A question, a wish, a plan, a suggestion, a mention of a place or an answer that does not accept the "
             "invitation ('What's in the kitchen?', 'maybe we should try the library', 'Winifred, how is the kitchen?', 'you go ahead, "
             "I'm staying') is not going. Someone else calling for a move does not make the player go; only their own line does.\n"
-            "- `to` is the id of the place they go to, or empty.\n"
+            "- `to` is the id of the place they go to, or empty. When they accept an invitation, it is the place the others named just "
+            "before ('kitchen first... come on' then 'lead on' means the kitchen), never left blank.\n"
             "- `companions` are the people here who go WITH them: those who led or invited them there and those who plainly agreed to "
             "come ('come with me, Priya', 'let's all go'). One person calling for everyone to come ('come on, all of us') does not bring "
             "the others who have not answered; they stay where they are. So if one person says 'come on, all of us' and the player says "
@@ -883,15 +898,41 @@ class Chatter:
         except Exception:  # not being able to tell is not a move
             log.exception("move check failed")
             return None
-        to = w.resolve_place(got.get("to")) if got.get("moves") else None
+        announced = bool(got.get("announce")) and not got.get("moves")
+        to = w.resolve_place(got.get("to")) if (got.get("moves") or announced) else None
         if not to or to == here or to not in {p["id"] for p in places}:
             return None
+        if announced:   # the others answer first (in this room); the scene goes after the replies (Chatter.turn, _companions)
+            return {"announced": to}
         companions = [c for c in dict.fromkeys(got.get("companions") or []) if c in {x["id"] for x in present}]
         try:
             info = self.move(to, companions)
         except ValueError:
             return None
         return info
+
+    def _companions(self, models: dict, said: list[dict], to: str) -> tuple[list[str], dict]:
+        """The player said they would go to `to` and the others have answered: who goes with them? Only people who said or plainly showed
+        they come ('I'll come', 'wait for me', getting up to follow); someone who asked a question, stayed put or said nothing stays. Returns
+        (ids, usage)."""
+        w = self.world
+        present = [c for c in w.characters if w.is_present(c)]
+        if not present:
+            return [], llm.zero_usage()
+        heard = "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in said
+                          if (m["speaker"] in {c['id'] for c in present} or m["speaker"] == PLAYER_ID) and not m.get("private_to") and m.get("kind") != "aside")
+        prompt = (
+            f"{self._name(PLAYER_ID)}, the player, has said they are going to {w.place_name(to)}. The others have answered. Decide who goes "
+            f"WITH them.\n\nPEOPLE HERE (id, name):\n" + "\n".join(f"- {c['id']}: {c['name']}" for c in present)
+            + f"\n\nWHAT WAS SAID:\n{heard}\n\nRULES:\n- `companions` are the people here who said or plainly showed they are coming along ('I'll come', "
+            "'wait for me', getting up to follow), or whom the player asked to come. Someone who only asked a question, said nothing about "
+            "coming, stayed put or said they are staying does not go. One person speaking for everyone does not bring the rest.\nAnswer in JSON.\n"
+        )
+        response = llm.client().messages.create(**llm.params(
+            models["state"], max_tokens=200, messages=[{"role": "user", "content": prompt}],
+            output_config={"format": {"type": "json_schema", "schema": COMPANIONS_SCHEMA}}))
+        ids = [c for c in dict.fromkeys(json.loads(llm.text(response)).get("companions") or []) if c in {x["id"] for x in present}]
+        return ids, llm.usage(response)
 
     def _direct(self, models: dict, latest: str, message: str | None = None) -> dict:
         cands = self.candidates()
@@ -1626,6 +1667,7 @@ class Chatter:
 
         note = ""
         premoved = None
+        later = None
         if private:
             others = [p for p in public if p != to]
             if notice and others:
@@ -1647,6 +1689,9 @@ class Chatter:
         else:
             self._append(PLAYER_ID, message, public)
             gone = self._premove(models, message)
+            later = None
+            if gone and gone.get("announced"):
+                later, gone = gone["announced"], None
             if gone:
                 # They have walked somewhere: from here on, the people in that room are the scene.
                 public = self.world.present_ids()
@@ -1724,6 +1769,15 @@ class Chatter:
         if moved:
             self._append(NARRATOR_ID, f"(The scene moves to {moved['value']}.)",
                          self.world.present_ids(), kind="move")
+        elif later and self.world.scene.get("location") == old_loc:
+            try:   # they said what they would do and the others have answered: now they go, with whoever said they come
+                comps, u_comp = self._companions(models, said, later)
+                u_state = {k: u_state[k] + u_comp[k] for k in u_state}
+                info = self.move(later, comps)
+                moved = {"value": self.world.place_name(later)}
+                after = self.world.present_ids()
+            except (ValueError, Exception):
+                log.exception("announced move failed")
 
         # If the story's clock has passed a day something is scheduled for, it happens now, after what was said: whoever
         # is there has it in front of them at the next line.

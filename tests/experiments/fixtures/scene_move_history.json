@@ -1,0 +1,325 @@
+{
+ "history": [
+  {
+   "speaker": "player",
+   "content": "Oh, hey everyone...Gosh there are a lot of you",
+   "t": "Monday 5 October 2026, 7:01pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "And there he is! Late to his own party. Come in, come in, don't lurk in the doorway like a bailiff — we've had four hours to pick over this place and we're all desperate for a new face. Alex, is it? We found your name on a little brass card upstairs, which rather took the shine off the surprise. I'm Delphine.",
+   "t": "Monday 5 October 2026, 7:01pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "Now then, Alex — you've nothing to be nervous about, we're all strangers to each other. Winifred Achterberg.\n\n*Sets the cushion down.*",
+   "t": "Monday 5 October 2026, 7:01pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "*I come into the room slowly.*\n\nYou've all been here four hours? Why did they bring me so late?",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "Darling, do I look like the one who drew up the coach schedule? They rolled up, poured the eight of us out into the hall like a tray of canapés, and drove off. Nobody explained a thing. You got the limousine and the fanfare and arrived at the interval — that's the theatre for you. Sit down before the velvet goes cold.",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "Your guess is as good as mine, Alex — nobody told us either. We simply arrived and you didn't.",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "Three hours and fifty-one minutes. Not four. I've been watching the clock — this room has one, which is more than the hallway does. Priya.\n\n*Doesn't offer a hand, just the name.*\n\nDoorway's fine, by the way. Nobody's made you sit in the horseshoe yet.",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "*I go to sit in the horseshoe*\n\nIt was a van, not a limo. They kicked me out at the front door and made it pretty clear I was to come in",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "A van. Even better — I was being generous with you, darling, and you've gone and made it sound like a removal job. I stand corrected on the motorcade; the principle holds. And Priya, three hours fifty-one minutes, noted, I'll have the plaque made up. Fine. So none of us rode in together on a cloud of roses and none of us was told a blessed thing. Which brings me to the doors in the hall — the big ones with the keypad and no sign of a key. Has anyone tried to open them, or are we all being terribly British about it?",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "I looked at it. Didn't press it. Four hours in and nobody's told us what happens if we do.",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "saoirse",
+   "content": "Ah now, Delphine, you're doing an awful lot of the answering for a woman who was told nothing. Sure, that's a gift in itself.\n\n*Uncurls my legs and sits up a bit.*\n\nBut I'll bite on the keypad, since we're all being terribly British about it. Did anyone ask what happens if you do press it, or did we all just decide not to and call that manners?",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Who would you ask, Saoirse?",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "saoirse",
+   "content": "Ah, there's the rub, isn't it? The ones who'd answer drove off before any of us thought to ask. So my honest answer is: nobody. There's no front desk, no one to flag down.\n\nWhich is the strange part, when you say it out loud. You were dropped off, we were poured out, and not one of us has a name or a number to ring if the boiler goes. So the question isn't who I'd ask. It's why they made sure there'd be no one.",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "No one asked me anything. I signed the same sheet everyone signed and got the same silence you did.\n\nBut there's a second one of those readers. Library, end wall, next to the mirror — narrow door, brass handle, card reader beside it. Same kit as the hall. Two locked things in a house with nothing locked in it. Somebody decided where the walls go.",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "Saoirse, I'm an actress by trade, darling — if I can't fill four hours of silence with a bit of talk, they'll take my card away. I'm answering for all of us because someone has to, and nobody's stopped me yet.\n\nBut she's right about the readers. Priya, you've counted two, and I'll lay money there's more we haven't found. A reader on a door with no key means someone holds a card that isn't ours. Somebody has the keys to this house and is not in it. Wherever they are, they're deciding when we eat, when the hatch opens, and presumably when that keypad matters. So the question isn't who we'd ring. It's who's holding the card.",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "What hatch?",
+   "t": "Monday 5 October 2026, 7:10pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "The hatch, darling — kitchen wall, waist height, hinged flap, industrial-looking, not a scrap of charm to it. I found it when I was being nosy about the pantry. My assumption is that's how the food arrives, which would at least explain why nobody's offered us so much as a biscuit since we got here. I didn't keep it to myself so much as save it for company able to appreciate it. Though now I say it aloud, a hatch that opens from the outside and not the inside is precisely the sort of thing one should have mentioned sooner.",
+   "t": "Monday 5 October 2026, 7:10pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "ottoline",
+   "content": "It's exactly as Delphine says — kitchen, end wall, waist height. Steel flap, shut, and no handle on our side of it. For the record, that's the part I'd underline: a door that opens one way only isn't a delivery hatch, it's a rule with hinges on it.",
+   "t": "Monday 5 October 2026, 7:10pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Are you assuming about the food, or do we know?",
+   "t": "Monday 5 October 2026, 7:13pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "Assuming, darling, entirely — I've been caught red-handed and I'll take the shame standing up. I saw the hatch; I did not see a single crumb come through it. It's an inference dressed as a fact, and Ottoline's put her finger on the right part anyway: no handle on our side means it opens on somebody's say-so, and none of us has said so yet. So let's call it the most theatrical guess in the room until the thing actually moves.",
+   "t": "Monday 5 October 2026, 7:13pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  }
+ ],
+ "formed_upto": 0
+}

@@ -63,6 +63,8 @@ class Fake:
             kind = "moves"
         elif "themself GOES to" in first:
             kind = "goes"
+        elif "Decide who goes WITH them" in first:
+            kind = "comes"
         elif "You direct a roleplay scene" in first:
             kind = "director"
         elif "You track the current situation" in first:
@@ -105,6 +107,7 @@ class Fake:
                              else json.dumps({"moves": False, "to": "", "companions": [], "why": ""}) if kind == "premove"
                              else json.dumps({"moves": []}) if kind == "moves"
                              else json.dumps({"goes": True, "why": ""}) if kind == "goes"
+                             else json.dumps({"companions": []}) if kind == "comes"
                              else first.split("THE NEXT LINE:\n")[1].split("\n\nRewrite")[0] if kind == "rewrite"   # unchanged
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
@@ -5249,6 +5252,48 @@ store, world, c = off_world()
 install(character="ok", watch=WGO)
 c.turn("Wren, off you go.", MODELS, to="wren")
 assert world.character("wren")["location"] == "cellar", "a whisper's instruction is carried out at once"
+print("   PASS")
+
+print("== 113. a player who says what they will do is answered first, and the scene goes after the replies with whoever comes ==")
+ANN = {"moves": False, "announce": True, "to": "kitchen", "companions": [], "why": "announcing"}
+store, world, c = walk_world()
+f = install(premove=ANN, character="Mind the step.", watch={"updates": []}, comes={"companions": ["wren", "ghost"]}, director=DIR96)
+r = c.turn("I guess I'll go and look at the kitchen.", MODELS)
+assert r["premoved"] is None and f.kinds().index("character") < f.kinds().index("comes"), "nothing moved before the replies; the companions are asked after them"
+assert [m for m in c.history if m["speaker"] not in ("player", "narrator")][0]["loc"] == "salt-line", "the reply came from the room they were in"
+assert world.scene["location"] == "kitchen" and sorted(world.present_ids()) == ["mick", "wren"], "Wren said she comes; Mick was there; Sam and an invented id did not"
+assert r["moved"] == "The Kitchen" and c.history[-1]["kind"] == "move" and world.character("sam")["location"] == "salt-line"
+cp = next(kw for k, kw in f.calls if k == "comes")["messages"][0]["content"]
+assert "Decide who goes WITH them" in cp and "- wren: Wren" in cp and "Mind the step." in cp and "I guess I'll go and look at the kitchen." in cp
+# the watcher got there first: nothing more to do
+store, world, c = walk_world()
+f = install(premove=ANN, character="ok", director=DIR96, watch={"updates": [{"target": "scene", "field": "location", "value": "kitchen", "why": "go"},
+                                                                          {"target": "wren", "field": "location", "value": "kitchen", "why": "goes"}]})
+r = c.turn("I guess I'll go and look at the kitchen.", MODELS)
+assert "comes" not in f.kinds() and world.scene["location"] == "kitchen" and "wren" in world.present_ids()
+# an announcement for a place that cannot be entered, a failed question and an unchanged premove default are all no move
+for ann in (dict(ANN, to="library"), dict(ANN, to="salt-line"), dict(ANN, to="nowhere")):
+    store, world, c = walk_world()
+    f = install(premove=ann, character="ok", watch={"updates": []}, director=DIR96)
+    r = c.turn("I guess I'll go and look at the kitchen.", MODELS)
+    assert world.scene["location"] == "salt-line" and "comes" not in f.kinds(), ann
+store, world, c = walk_world()
+install(premove=ANN, character="ok", watch={"updates": []}, comes=lambda kw: (_ for _ in ()).throw(llm.LLMError("down")), director=DIR96)
+r = c.turn("I guess I'll go and look at the kitchen.", MODELS)
+assert r["replies"] and world.scene["location"] == "salt-line", "the turn goes on and nobody is moved on a guess"
+# the premove is told the difference, and sees what each place has
+store, world, c = walk_world()
+world.location("kitchen")["brief"] = "a kitchen with a steel hatch"
+f = install(premove=MOVE("kitchen", moves=False), character="ok", watch={"updates": []}, director=DIR96)
+c.turn("Is the kitchen far?", MODELS)
+pp = next(kw for k, kw in f.calls if k == "premove")["messages"][0]["content"]
+assert "- kitchen: The Kitchen, a kitchen with a steel hatch" in pp and "is announcing" in pp and "announce is true" in pp and "never left blank" in pp
+# a stage direction is not an invitation: 'lead on' after '(Wren leaves for The Kitchen.)' is not asked about
+store, world, c = walk_world()
+c._append("narrator", "(Wren leaves for The Kitchen.)", world.present_ids(), kind="depart")
+f = install(premove=MOVE("kitchen"), character="ok", watch={"updates": []}, director=DIR96)
+c.turn("Fine, lead on.", MODELS)
+assert "premove" not in f.kinds() and world.scene["location"] == "salt-line"
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

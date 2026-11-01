@@ -1287,8 +1287,9 @@ class WorldState:
             f"{player}, the player, is in a roleplay scene at {self.place_name(self.scene.get('location'))}. Decide whether {player} "
             f"themself GOES to {self.place_name(to)} in what follows.\n\n{player.upper()}'S OWN LINE:\n" + "\n".join(l["content"] for l in mine)
             + f"\n\nWHAT THE OTHERS SAID:\n{others or '(nothing)'}\n\n"
-            f"RULES:\n- goes is true only if {player}'s own line has them going there (walking, heading, setting off, following), or accepts an "
-            "invitation or order to go ('lead on', 'fine, I'll come'), or the narrator moves the scene there.\n"
+            f"RULES:\n- goes is true only if {player}'s own line has them going there (walking, heading, setting off, following) or says they will go there "
+            "('I guess I'll go look at the hatch': the others have had their say by now), or accepts an invitation or order to go "
+            "('lead on', 'fine, I'll come'), or the narrator moves the scene there.\n"
             f"- Other people calling for a move, ordering, inviting or heading there does not make {player} go. A question, an answer "
             f"about something else, stalling, objecting or declining ('you go ahead, I'm staying') is not going.\nAnswer in JSON.\n"
         )
