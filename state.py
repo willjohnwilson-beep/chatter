@@ -102,12 +102,20 @@ GUIDANCE = {
     ),
     "location": (
         "WHERE something is, as a location id from LOCATIONS. For target "
-        "'scene' it is where the scene now takes place: change it only when the "
-        "player (and whoever is with them) clearly goes somewhere else, or the "
-        "story jumps there. For a character it is where THAT character is. "
-        "When the scene moves, anyone you do not mention is assumed to have "
-        "come along, so if someone stays behind, give them a location update "
-        "naming the place the scene just left. A character who arrives in the "
+        "'scene' it is where the scene now takes place, which is where the "
+        "PLAYER is: change it only when the player's own line goes somewhere "
+        "(or goes along with an invitation: 'lead on', 'I'll follow'), or the "
+        "story itself jumps there. A character calling for a move ('come on, "
+        "all of us', 'kitchen first', 'let's go') is an invitation, not a move, "
+        "however many of them call for it: look at the player's own line, and "
+        "if it does not go (it asks something, answers about something else, "
+        "stalls or declines) the scene stays where it is. For a "
+        "character it is where THAT character is. "
+        "When the scene moves, give a location update (the NEW place) to each "
+        "character who goes with the player: the one who led, and anyone who "
+        "agreed or was told to come and did not refuse. Anyone you do not "
+        "list stays where they were. One person calling for everyone to come "
+        "does not move the others. A character who arrives in the "
         "scene gets the scene's location id. A character who leaves gets the "
         "id of where they went, or 'none' if it is not one of LOCATIONS. Only "
         "ever use an id from LOCATIONS, and never one marked LOCKED."
@@ -1260,6 +1268,37 @@ class WorldState:
             "additionalProperties": False,
         }
 
+    def _player_goes(self, lines: list[dict], model: str, to: str) -> tuple[bool, dict]:
+        """The scene is where the player is, so it moves only when the player goes (or the story does). Characters calling for a move
+        ('kitchen first, come on, all of us') are inviting, and the watcher, reading a whole exchange, sometimes took their word for it
+        (4 of 16 runs when two women ordered everyone to the kitchen and Alex asked about his door). So when the watcher proposes a move
+        and the player spoke, the player's own line is asked about on its own. No line from the player (the story moving by itself)
+        needs no check; not being able to tell is not a move. Returns (does the scene move, usage)."""
+        mine = [l for l in lines if l["speaker"] == PLAYER_ID and not l.get("private_to") and l.get("kind") != "aside"]
+        if not mine:
+            return True, llm.zero_usage()
+        names = self.names()
+        player = names.get(PLAYER_ID, "the player")
+        others = "\n".join(f"{names.get(l['speaker'], l['speaker'])}: {l['content']}" for l in lines if l["speaker"] != PLAYER_ID and not l.get("private_to"))
+        prompt = (
+            f"{player}, the player, is in a roleplay scene at {self.place_name(self.scene.get('location'))}. Decide whether {player} "
+            f"themself GOES to {self.place_name(to)} in what follows.\n\n{player.upper()}'S OWN LINE:\n" + "\n".join(l["content"] for l in mine)
+            + f"\n\nWHAT THE OTHERS SAID:\n{others or '(nothing)'}\n\n"
+            f"RULES:\n- goes is true only if {player}'s own line has them going there (walking, heading, setting off, following), or accepts an "
+            "invitation or order to go ('lead on', 'fine, I'll come'), or the narrator moves the scene there.\n"
+            f"- Other people calling for a move, ordering, inviting or heading there does not make {player} go. A question, an answer "
+            f"about something else, stalling, objecting or declining ('you go ahead, I'm staying') is not going.\nAnswer in JSON.\n"
+        )
+        try:
+            response = llm.client().messages.create(**llm.params(
+                model, max_tokens=200, messages=[{"role": "user", "content": prompt}],
+                output_config={"format": {"type": "json_schema", "schema": {
+                    "type": "object", "properties": {"goes": {"type": "boolean"}, "why": {"type": "string"}},
+                    "required": ["goes", "why"], "additionalProperties": False}}}))
+            return bool(json.loads(llm.text(response)).get("goes")), llm.usage(response)
+        except Exception:
+            return False, llm.zero_usage()
+
     def watch(self, lines: list[dict], model: str,
               present: list[str] | None = None) -> tuple[list[dict], dict]:
         """Cheap per-turn pass: what about the current situation just changed?
@@ -1343,16 +1382,26 @@ class WorldState:
             applied.append({"target": target, "target_name": target_name, "field": field,
                             "value": value, "why": why, "before": before})
 
-        # The scene moves first, and everyone who was here comes along unless a
-        # later update leaves them behind.
+        # The scene moves first, with the player. Of the people who were here only those the watcher lists as going (a location update to
+        # the new place) come along; the rest stay where they were, so one person calling for everyone to come moves nobody else.
+        used = llm.usage(response)
+        vetoed: set[str] = set()
         for u in updates:
             if u["target"] == "scene" and u["field"] == "location":
                 new = self.resolve_place(u["value"])
                 old = self.scene.get("location")
                 if not new or new == old or not self.can_enter(new):
                     continue
+                goes, ug = self._player_goes(lines, model, new)
+                used = {k: used[k] + ug[k] for k in used}
+                if not goes:
+                    vetoed.add(new)   # nor do the people the watcher sent there with it: only their own line sends someone off
+                    continue
+                going = {x["target"] for x in updates if x["field"] == "location" and x["target"] != "scene"
+                         and self.resolve_place(x["value"]) == new}
                 for cid in self.present_ids():
-                    self.character(cid)["location"] = new
+                    if cid in going:
+                        self.character(cid)["location"] = new
                 self.scene["location"] = new
                 self.clear_arrivals()
                 record("scene", "scene", "location", self.place_name(new), u["why"], self.place_name(old))
@@ -1395,7 +1444,7 @@ class WorldState:
                     new = self.scene.get("location") if flag else ""
                 else:
                     new = self.resolve_place(value)
-                if new is None or new == c.get("location", "") or (new and not self.can_enter(new)):
+                if new is None or new == c.get("location", "") or (new and not self.can_enter(new)) or (new and new in vetoed):
                     continue
                 before = self.place_name(c.get("location"))
                 arriving = new == self.scene.get("location") and not self.is_present(c)
@@ -1411,4 +1460,4 @@ class WorldState:
                 record(c["id"], c["name"], field, value, u["why"], before)
         if applied:
             self.save()
-        return applied, llm.usage(response)
+        return applied, used

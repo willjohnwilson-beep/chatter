@@ -809,32 +809,46 @@ class Chatter:
         """Does the player's own line take them to another place? If so the scene goes there NOW, before anyone answers, so the replies
         come from the people in the room they have walked into. (The watcher used to decide this after the replies, from an exchange
         whose replies carried on in the old room, and often hedged.) Only people the line invites, or who plainly agree to come, go with
-        them; everyone else stays where they were. Only a line that names a place is asked about, and a failed call means no move."""
+        them; everyone else stays where they were. Only a line that names a place (or follows what others just said that names one: an invitation
+        the player may be accepting) is asked about, and a failed call means no move."""
         w = self.world
         here = w.scene.get("location")
         places = [p for p in w.locations if p["id"] != here and not p.get("locked")]
-        low = message.lower()
-        hit = False
-        for p in places:
-            name = re.sub(r"^the\s+", "", p["name"].lower())
-            words = {x for x in re.findall(r"[a-z]{4,}", name) if x not in GENERIC_PLACE_WORDS}
-            if re.search(r"\b" + re.escape(name) + r"\b", low) or any(re.search(r"\b" + re.escape(x) + r"\b", low) for x in words):
-                hit = True
-                break
-        if not hit:
+
+        def names_a_place(text: str) -> bool:
+            low = text.lower()
+            for p in places:
+                name = re.sub(r"^the\s+", "", p["name"].lower())
+                words = {x for x in re.findall(r"[a-z]{4,}", name) if x not in GENERIC_PLACE_WORDS}
+                if re.search(r"\b" + re.escape(name) + r"\b", low) or any(re.search(r"\b" + re.escape(x) + r"\b", low) for x in words):
+                    return True
+            return False
+
+        # What the others said just before: an invitation ('kitchen first... Come on, all of us') that the player's line may be answering
+        # ('Lead on', 'Fine, I'll follow') without naming the place itself.
+        before = [m for m in self.history[:-1][-4:] if m["speaker"] != PLAYER_ID and m.get("kind") not in ("move", "aside") and not m.get("private_to")]
+        if not (names_a_place(message) or any(names_a_place(m["content"]) for m in before)):
             return None
         present = [c for c in w.characters if w.is_present(c)]
         player = self._name(PLAYER_ID)
         prompt = (
             f"{player}, the player, is in {w.place_name(here)}. Below is what they just wrote. Decide whether they GO to another place in "
             "this line.\n\nPLACES (id: name):\n" + "\n".join(f"- {p['id']}: {p['name']}" for p in places) + "\n\nPEOPLE HERE (id, name):\n"
-            + ("\n".join(f"- {c['id']}: {c['name']}" for c in present) or "(no one)") + f"\n\nTHEIR LINE: {message}\n\n"
+            + ("\n".join(f"- {c['id']}: {c['name']}" for c in present) or "(no one)")
+            + (("\n\nJUST BEFORE (what the others said):\n" + "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in before)) if before else "")
+            + f"\n\nTHEIR LINE: {message}\n\n"
             "RULES:\n- moves is true only if the line has them actually going: walking, heading, entering, leaving or setting off for "
             "one of the places now, as an action or a plain statement ('*I walk into the kitchen*', 'Right, off to the library', 'I head "
-            "up to the Blue Room'). A question, a wish, a plan, a suggestion or a mention of a place ('What's in the kitchen?', 'maybe we "
-            "should try the library', 'Winifred, how is the kitchen?') is not going.\n- `to` is the id of the place they go to, or empty.\n"
-            "- `companions` are the people here who go WITH them: only those the line invites or who plainly agree to come ('come with me, "
-            "Priya', 'let's all go'). Otherwise leave it empty: everyone else stays where they are.\nAnswer in JSON.\n"
+            "up to the Blue Room'), or going along with an invitation or order the others just gave ('lead on', 'fine, I'll follow', "
+            "'kitchen then'). A question, a wish, a plan, a suggestion, a mention of a place or an answer that does not accept the "
+            "invitation ('What's in the kitchen?', 'maybe we should try the library', 'Winifred, how is the kitchen?', 'you go ahead, "
+            "I'm staying') is not going. Someone else calling for a move does not make the player go; only their own line does.\n"
+            "- `to` is the id of the place they go to, or empty.\n"
+            "- `companions` are the people here who go WITH them: those who led or invited them there and those who plainly agreed to "
+            "come ('come with me, Priya', 'let's all go'). One person calling for everyone to come ('come on, all of us') does not bring "
+            "the others who have not answered; they stay where they are. So if one person says 'come on, all of us' and the player says "
+            "'lead on', only that person goes with them, plus anyone else who has said in the lines above that they are coming. Otherwise "
+            "leave it empty.\nAnswer in JSON.\n"
         )
         try:
             response = llm.client().messages.create(**llm.params(
@@ -1654,7 +1668,7 @@ class Chatter:
                 "private": private,
             })
 
-        said = [{"speaker": m["speaker"], "content": m["content"], "private_to": m.get("private_to")}
+        said = [{"speaker": m["speaker"], "content": m["content"], "private_to": m.get("private_to"), "kind": m.get("kind")}
                 for m in self.history[start:]]
         u_moves = llm.zero_usage()
         if self.offstage_rules and not private:

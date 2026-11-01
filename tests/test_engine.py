@@ -61,6 +61,8 @@ class Fake:
             kind = "premove"
         elif "Decide whether any of them SAYS they are going somewhere" in first:
             kind = "moves"
+        elif "themself GOES to" in first:
+            kind = "goes"
         elif "You direct a roleplay scene" in first:
             kind = "director"
         elif "You track the current situation" in first:
@@ -102,6 +104,7 @@ class Fake:
                              else json.dumps({"urge": 0, "cue": "", "why": ""}) if kind == "bid"
                              else json.dumps({"moves": False, "to": "", "companions": [], "why": ""}) if kind == "premove"
                              else json.dumps({"moves": []}) if kind == "moves"
+                             else json.dumps({"goes": True, "why": ""}) if kind == "goes"
                              else first.split("THE NEXT LINE:\n")[1].split("\n\nRewrite")[0] if kind == "rewrite"   # unchanged
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
@@ -745,11 +748,13 @@ def fresh():
 
 
 store, world, c = fresh()
-f = install(character="ok", watch={"updates": [{"target": "scene", "field": "location", "value": "cellar", "why": "went down"}]})
+f = install(character="ok", watch={"updates": [{"target": "scene", "field": "location", "value": "cellar", "why": "went down"},
+                                               {"target": "wren", "field": "location", "value": "cellar", "why": "goes too"},
+                                               {"target": "mick", "field": "location", "value": "cellar", "why": "goes too"}]})
 r = c.turn("Let's go down to the cellar.", MODELS, to="wren")
 wp = f.calls[-1][1]["messages"][0]["content"]
-assert "LOCATIONS:" in wp and "salt-line (The Salt Line)" in wp and "anyone you do not mention" in wp
-assert world.scene["location"] == "cellar" and world.present_ids() == ["wren", "mick"], "companions come along by default"
+assert "LOCATIONS:" in wp and "salt-line (The Salt Line)" in wp and "Anyone you do not list stays where they were" in wp
+assert world.scene["location"] == "cellar" and world.present_ids() == ["wren", "mick"], "the characters the watcher lists come along"
 assert r["moved"] == "Cellar" and c.history[-1]["kind"] == "move" and c.history[-1]["present"] == ["wren", "mick"]
 assert all(m["loc"] == "salt-line" for m in c.history[:-1]), "the turn itself took place at the old location"
 assert c.history[-1]["loc"] == "cellar" and c.history[-1]["t"], "marker is stamped with the new place and time"
@@ -757,11 +762,12 @@ assert c.history[-1]["loc"] == "cellar" and c.history[-1]["t"], "marker is stamp
 store, world, c = fresh()
 install(character="ok", watch={"updates": [
     {"target": "scene", "field": "location", "value": "Pier", "why": "walks out"},          # a name, not an id
+    {"target": "wren", "field": "location", "value": "pier", "why": "goes with them"},
     {"target": "mick", "field": "location", "value": "salt-line", "why": "stays at the bar"}]})
 r = c.turn("I'll take Wren out to the pier.", MODELS, to="wren")
 assert world.scene["location"] == "pier" and world.present_ids() == ["wren"]
 assert world.character("mick")["location"] == "salt-line", "explicit stay-behind respected"
-assert [x["field"] for x in r["scene_changes"]] == ["location", "location"]
+assert [x["field"] for x in r["scene_changes"]] == ["location"], "a stay-behind that changes nothing is not a change"
 assert r["scene_changes"][0]["value"] == "Pier" and r["scene_changes"][0]["before"] == "The Salt Line"
 
 store, world, c = fresh()
@@ -786,6 +792,7 @@ print("== 31. who hears the next line after a move ==")
 store, world, c = fresh()
 install(character=lambda kw: "ok", watch={"updates": [
     {"target": "scene", "field": "location", "value": "pier", "why": "go"},
+    {"target": "wren", "field": "location", "value": "pier", "why": "goes"},
     {"target": "mick", "field": "location", "value": "salt-line", "why": "stays"}]},
     director={"speakers": [{"id": "wren", "cue": ""}], "reason": "r"})
 c.turn("pier?", MODELS, to="wren")
@@ -871,7 +878,8 @@ assert f.kinds().count("offscreen") == n, "0 = off"
 
 store, world, c = life_world()
 f = install(character="ok", offscreen=LIFE("Idling."),
-            watch={"updates": [{"target": "scene", "field": "location", "value": "cellar", "why": "go"}]})
+            watch={"updates": [{"target": "scene", "field": "location", "value": "cellar", "why": "go"},
+                               {"target": "wren", "field": "location", "value": "cellar", "why": "go"}]})
 c.life_every = 6
 c.turn("down we go", MODELS, to="wren")
 assert "offscreen" not in f.kinds() and c._life_count == 4, "a move counts for more (1 + 3), not for everything"
@@ -1217,6 +1225,7 @@ print("== 44. the scene moves and someone is left behind: they see the player go
 store, world, c = fresh()
 install(character="ok", watch={"updates": [
     {"target": "scene", "field": "location", "value": "pier", "why": "walks out"},
+    {"target": "wren", "field": "location", "value": "pier", "why": "goes"},
     {"target": "mick", "field": "location", "value": "salt-line", "why": "stays at the bar"}]})
 c.turn("Wren, walk out to the pier with me.", MODELS, to="wren")
 dep, mv = c.history[-2], c.history[-1]
@@ -1233,7 +1242,9 @@ _ln = memory._line(dep, world.names())
 assert _ln.endswith(dep["content"]) and "Narrator" not in _ln, _ln
 
 store, world, c = fresh()                     # everyone goes along: no departure line at all
-install(character="ok", watch={"updates": [{"target": "scene", "field": "location", "value": "pier", "why": "go"}]})
+install(character="ok", watch={"updates": [{"target": "scene", "field": "location", "value": "pier", "why": "go"},
+                                           {"target": "wren", "field": "location", "value": "pier", "why": "goes"},
+                                           {"target": "mick", "field": "location", "value": "pier", "why": "goes"}]})
 c.turn("Out to the pier, all of us.", MODELS, to="wren")
 assert not any(m.get("kind") == "depart" for m in c.history) and c.history[-1]["kind"] == "move"
 
@@ -5089,6 +5100,65 @@ llm.embed, vectors.MODEL, vectors.SHORTLIST, vectors.MIN_POOL = real_embed, real
 memory.RECALL_LEXICAL = real_lex
 if not _had_key:
     del os.environ["OPENROUTER_API_KEY"]
+print("   PASS")
+
+print("== 111. an invitation from one character moves nobody: the scene goes where the player goes, with the people who go ==")
+GOES = lambda goes: {"goes": goes, "why": "x"}
+PUSH = {"updates": [{"target": "scene", "field": "location", "value": "kitchen", "why": "come on, all of us"},
+                    {"target": "wren", "field": "location", "value": "kitchen", "why": "invited"},
+                    {"target": "sam", "field": "location", "value": "kitchen", "why": "invited"}]}
+# the watcher proposes a move because the replies urged one, but the player's own line did not go: no move, and nobody is sent ahead
+store, world, c = walk_world()
+f = install(goes=GOES(False), character="Come on, all of us, to the kitchen.", watch=PUSH, director=DIR96)
+r = c.turn("How would I know if my door has a lock?", MODELS)
+assert "goes" in f.kinds() and world.scene["location"] == "salt-line" and r["moved"] is None
+assert world.character("wren")["location"] == "salt-line" and world.character("sam")["location"] == "salt-line", "the people the watcher sent with it stay too"
+assert not any(m.get("kind") == "move" for m in c.history)
+gp = next(kw for k, kw in f.calls if k == "goes")["messages"][0]["content"]
+assert "ALEX'S OWN LINE:\nHow would I know if my door has a lock?" in gp and "WHAT THE OTHERS SAID:" in gp and "Come on, all of us" in gp.split("WHAT THE OTHERS SAID:")[1]
+assert "Come on, all of us" not in gp.split("WHAT THE OTHERS SAID:")[0], "what the others said is not presented as the player's"
+# the player does go: the scene moves, with the people the watcher lists and nobody else
+store, world, c = walk_world()
+install(goes=GOES(True), character="This way.", watch={"updates": PUSH["updates"][:2]}, director=DIR96)
+r = c.turn("Fine, lead on.", MODELS)
+assert world.scene["location"] == "kitchen" and sorted(world.present_ids()) == ["mick", "wren"], "Wren was listed, Mick was already there"
+assert world.character("sam")["location"] == "salt-line", "Sam was not listed: one person calling for everyone does not move him"
+assert r["moved"] == "The Kitchen"
+# a move with no line from the player (the story itself moves) is not questioned; a failed question is not a move
+store, world, c = walk_world()
+f = install(watch={"updates": PUSH["updates"][:2]})
+changes, _ = world.watch([{"speaker": "narrator", "content": "Later, in the kitchen.", "private_to": None}], "m", present=["wren", "sam"])
+assert "goes" not in f.kinds() and world.scene["location"] == "kitchen"
+store, world, c = walk_world()
+install(goes=lambda kw: (_ for _ in ()).throw(llm.LLMError("down")), watch={"updates": PUSH["updates"][:2]})
+world.watch([{"speaker": "player", "content": "Fine.", "private_to": None}, {"speaker": "wren", "content": "Kitchen!", "private_to": None}], "m", present=["wren", "sam"])
+assert world.scene["location"] == "salt-line" and world.character("wren")["location"] == "salt-line"
+store, world, c = walk_world()                           # the marker of a whisper is not the player going anywhere
+f = install(watch={"updates": PUSH["updates"][:2]})
+world.watch([{"speaker": "player", "content": "(Alex leans in and says something quietly to Wren.)", "private_to": None, "kind": "aside"},
+             {"speaker": "player", "content": "Let's go to the kitchen.", "private_to": "wren"}], "m", present=["wren"])
+assert "goes" not in f.kinds() and world.scene["location"] == "kitchen"
+# the premove also looks at what the others just said: 'lead on' answers an invitation that named the place
+store, world, c = walk_world()
+c._append("wren", "Kitchen first. Come on, all of us.", world.present_ids())
+f = install(premove=MOVE("kitchen", ["wren"]), character="ok", watch={"updates": []}, director=DIR96)
+r = c.turn("Fine, lead on.", MODELS)
+assert f.kinds().count("premove") == 1 and r["premoved"] == "The Kitchen"
+assert sorted(world.present_ids()) == ["mick", "wren"] and world.character("sam")["location"] == "salt-line", "only Wren, who led, came along"
+pp = next(kw for k, kw in f.calls if k == "premove")["messages"][0]["content"]
+assert "JUST BEFORE (what the others said):\nWren: Kitchen first. Come on, all of us." in pp and "THEIR LINE: Fine, lead on." in pp
+assert "does not make the player go" in pp and "does not bring the others" in pp
+store, world, c = walk_world()                           # nothing named a place before or in the line: not asked
+f = install(premove=MOVE("kitchen"), character="ok", watch={"updates": []}, director=DIR96)
+c._append("wren", "I could murder a cup of tea.", world.present_ids())
+c.turn("Fine, lead on.", MODELS)
+assert "premove" not in f.kinds() and world.scene["location"] == "salt-line"
+store, world, c = walk_world()                           # a place named only in a whisper or a stage direction is not an invitation
+c._append("wren", "Kitchen, then.", ["wren"], private_to="sam")
+c._append("narrator", "(The scene moves to The Kitchen.)", world.present_ids(), kind="move")
+f = install(premove=MOVE("kitchen"), character="ok", watch={"updates": []}, director=DIR96)
+c.turn("Fine, lead on.", MODELS)
+assert "premove" not in f.kinds()
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
