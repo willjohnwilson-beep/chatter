@@ -18,7 +18,7 @@
   <div id="chat"></div>
   <div id="inputbar">
     <div id="cast-strip"></div>
-    <input id="redo-note" type="text" maxlength="600" style="display:none;width:100%;box-sizing:border-box;margin-bottom:8px" placeholder="Note for the redo (optional)" title="Tell the characters something for the rewritten reply only: a correction or a steer. They treat it as true; nobody in the scene hears it and it is not part of the conversation." onkeydown="if(event.key==='Enter'){event.preventDefault();retryLast();}">
+    <input id="redo-note" type="text" maxlength="600" style="display:none;width:100%;box-sizing:border-box;margin-bottom:8px" placeholder="Note for the redo (optional)" title="What to fix in the rewritten reply only: what went wrong with the thrown-away one, a fact to use, or a direction. The characters are told it is about the writing, not the story, so what it describes did not happen; nobody in the scene hears it and it is not part of the conversation." onkeydown="if(event.key==='Enter'){event.preventDefault();retryLast();}">
     <div id="inputrow">
       <select id="say-to" title="Who hears this. Resets to everyone after each line."></select>
       <button id="do-toggle" onclick="toggleDo()" title="Say: what you speak. Do: what you do, sent as an *action*. Also: start a line with /me. Resets to Say after each line.">Say</button>

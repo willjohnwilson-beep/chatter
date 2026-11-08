@@ -4778,6 +4778,7 @@ f = install(director=DIR96, character="Nine and nine. One each.", watch={"update
 r = c.retry(MODELS, hint="  " + HINT + "\n ")
 ctx = str([kw for k, kw in f.calls if k == "character"][0]["messages"])
 assert HINT in ctx and "A note from the author, for this reply only" in ctx and "never mention it" in ctx, "the replier is given the note"
+assert "nothing in it happened" in ctx and "do not mention it, react to it or correct it" in ctx and "truth of the matter" not in ctx, "it is a correction to a thrown-away attempt, not a fact of the scene"
 assert all(HINT not in m["content"] for m in c.history) and [m["content"] for m in c.history] == ["Nine jars. One each?", "Nine and nine. One each."], "it is not a line in the conversation"
 assert HINT not in json.dumps(store.memories) and HINT not in json.dumps(r.get("replies")), "nor a memory, nor handed back"
 # a plain redo carries no note, and the note is for one redo only

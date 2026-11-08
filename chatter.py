@@ -1616,9 +1616,14 @@ class Chatter:
 
     @staticmethod
     def author_note(hint: str) -> str:
-        """How the author's note reaches a character: as the truth of the matter or a direction, never as something said in the scene."""
-        return ("(A note from the author, for this reply only. Nobody in the scene can hear it, so never mention it or that it was given; "
-                "take it as the truth of the matter, or the direction to follow, and let it shape what you say in your own voice: " + hint + ")")
+        """How the author's note reaches a character: as a correction to an attempt that was thrown away, never as something said or done in the
+        scene. Told as 'the truth of the matter', a complaint about the discarded draft ('Yasmin assigned three people to a two bed room') became
+        story: in all 12 test redos someone then remarked on the assignment, which nobody in the kept conversation had made."""
+        return ("(A note from the author, for this reply only. Nobody in the scene can hear it, so never mention it or that it was given. "
+                "It is about the writing, not the story: an earlier attempt at this turn was thrown away, and nothing in it happened. If the note "
+                "describes something someone said or did, they did not; do not mention it, react to it or correct it, and do not treat it as a fact of "
+                "the scene. Just write your reply so that the mistake does not happen. If it states a fact about the world or a direction for your "
+                "reply, follow it quietly in your own voice. The note: " + hint + ")")
 
     def retry(self, models: dict, hint: str = "") -> dict:
         """Throw away the last turn and run it again from the same player line, with the world and memories as they were

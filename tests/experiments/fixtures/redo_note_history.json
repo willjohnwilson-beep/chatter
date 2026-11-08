@@ -1,0 +1,581 @@
+{
+ "message": "Ottoline, are you saying you want the room with my name on it? I said I wouldn't claim it if anyone else wanted it",
+ "history": [
+  {
+   "speaker": "player",
+   "content": "Oh...hey there, everyone. Gosh there are a lot of you",
+   "t": "Monday 5 October 2026, 7:01pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "And there he is. You've walked into a room of eight women who've had four hours to pick their bedrooms and form opinions. Brave. *turns from the mantelpiece card.* I'm Priya.",
+   "t": "Monday 5 October 2026, 7:01pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Hi, Priya. Four hours? You've all been here that long?",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "Four hours. Arrived together, no idea where we were going. Everyone's been picking rooms and circling each other ever since. Five bedrooms up that landing, by the way. Eight of you — sorry, nine of us. That maths is going to get interesting.",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "imogen",
+   "content": "Close to five, actually. They brought us in just after two and the clocks here are honest ones. *pats the sofa arm beside her.* Come and sit down before anyone else decides anything about you. Have they told you what the week ahead looks like, or are you in the dark like the rest of us?",
+   "t": "Monday 5 October 2026, 7:03pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "*I walk in and look at the sofa arm.* Perhaps not the arm?\n\nNo, I don't know a single thing. Well, that it's a \"social experiment\" or whatever, but nothing more",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "imogen",
+   "content": "Mm, fair enough. There's the whole horseshoe here if you'd rather keep your exit clear. *settles back into her own corner.* I only know what you know, and even that I'm not sure I've got straight — Priya's just told us five bedrooms and nine of us, which I've been quietly chewing on. Tell me, when they brought you here — was there a car, or were you left to find your own way?",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "Car for me. Sealed doors in the front hall either way, so it hardly matters. And it's not four hours of nothing — I've been counting. Five bedrooms, four doubles and a single. The single's got your name on it in brass. So someone did a headcount before we got here, and it wasn't five.",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "Not the arm — the boy has taste. I'm Delphine, darling. And Priya, if that single's got his name on the door, then whoever did the headcount already knew he was coming — which is a great deal more than the rest of us were told.",
+   "t": "Monday 5 October 2026, 7:05pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "*I find a place on the sofa.* They brought me in a van. Kick me out in front and sent me in",
+   "t": "Monday 5 October 2026, 7:07pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "Van, not a car. They brought me by car. Different arrangements for different arrivals — so it was planned in stages, not one pickup run. And Delphine's right. The brass card says ALEX in it. That wasn't written today. Somebody sat down with a list and put a man's name on the single before any of us ever saw this house.",
+   "t": "Monday 5 October 2026, 7:07pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "A van, though. Not a car like the rest of us — a van, delivered at the front door and sent in with no ceremony at all. That's how you move a thing, not a person. But the brass card says ALEX, so somebody knew precisely which thing was coming and what to call it. I've spent my whole life arriving places where someone's already decided what I am, and I've never once had my name in brass before I got there. Darling, be flattered. You've been booked.",
+   "t": "Monday 5 October 2026, 7:07pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "margo",
+   "content": "Okay but \"booked\" — no but booked for what, though? Like, they knew your name and not one of ours. That's the bit I can't.",
+   "t": "Monday 5 October 2026, 7:07pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "I'm sure they know your names. They had to recruit you all, right. They don't strike me as people who do things halfway. Do you mean because they didn't put your name on a bedroom door? Maybe they just want to watch you all fight",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "Not booked. Named. Different thing. A booking is a room held for you; the card means somebody wrote down who you were before you existed to us. And nobody's arguing about the other doors — there's no brass on any of them, I checked. Four plain numbers, one name. That's the whole fact.",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "ottoline",
+   "content": "Ottoline Brandt. I'll take the fight jibe as a joke, since it's the only way to take it.\n\nBut the brass card is the fact that matters, and it's not about whose name is on a door. Priya's right: somebody wrote ALEX down in brass before any of us saw this house. That means a list existed, with all nine of us on it, in some order, and we were moved to it in stages — car, van, whatever was arranged. For the record, that's not an experiment anyone wanders into. That's a schedule.",
+   "t": "Monday 5 October 2026, 7:09pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "So...What now?",
+   "t": "Monday 5 October 2026, 7:11pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "yasmin",
+   "content": "That's enough armchair detective work for one night. If we’re going to stay here, we need a plan, not just theories. We have nine people, five bedrooms, and nothing assigned yet. We need to establish routines, right then. \n\n*Straightens her posture.* Who's going to manage dinner and the rest of the week? We need a rotation before things get messy.",
+   "t": "Monday 5 October 2026, 7:11pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "Yasmin Haddad, that is the first sensible sentence spoken in this room, and I'll second it. Now then — before we divide up cooking we should find out what we're cooking with, because I looked into the kitchen on my way through and there's a full larder in there, bread, eggs, a ham, enough for three days at least. Which tells me the next delivery is not tomorrow, and probably not the day after.\n\nSo my view is this: nobody touches the kitchen tonight until we've agreed who does. One cook, one pair of hands on the washing up, and it changes daily so no one carries it. As for the bedrooms — five rooms, nine of us, and I have no intention of standing in a landing at midnight arbitrating that. But I'd rather we settled it with our clothes still in our bags.",
+   "t": "Monday 5 October 2026, 7:11pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "There are nine of us. That a decent cook. I think we can spare more than one person to cook and one person to clean",
+   "t": "Monday 5 October 2026, 7:13pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "A decent cook, yes — but nine people in a kitchen is a crowd, not a meal, and half of them will be standing about being helpful at each other. Two on the job, and the rest of us out of the way. *picks up her cup.* I've run a school kitchen for twenty years, Alex, and I promise you the food does not improve with the number of opinions in the room. Three at most on a Sunday.",
+   "t": "Monday 5 October 2026, 7:13pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "yasmin",
+   "content": "Winifred's right on the kitchen, Alex. Nine people in a kitchen is chaos, not cooking. Two on it, three if we're feeding a crowd on a Sunday.\n\nRight then. What I'd do — a written rota. Two names a night, one on food, one on washing up, changes every day so nobody's stuck with it. Put it on the kitchen wall where everyone can see it.\n\n*Picks up her cup.* And nobody signs up as a volunteer. We count through the list alphabetically, fair, no favourites, no hiding. Starting tonight. Fair?",
+   "t": "Monday 5 October 2026, 7:13pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Winifred, I said that we should have more than one cook. I do not appreciate you accepting my suggestion AND implying that I was unreasonable to make it in the first place. I did not say nine people should cook. I said there are nine people to cook for and one cook is not enough",
+   "t": "Monday 5 October 2026, 7:15pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "Alex, you're quite right and I owe you an apology — I answered a suggestion you hadn't made. You said there were nine to cook for, and I heard nine cooks. My fault, not yours.\n\nTwo on the rota, and we'll see how the first night goes before we pretend to know better. Yasmin, alphabetical, tonight included — put my name wherever it falls.",
+   "t": "Monday 5 October 2026, 7:15pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Thank you",
+   "t": "Monday 5 October 2026, 7:16pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "yasmin",
+   "content": "Right then. Achterberg, Brandt, Doyle, Haddad, Okafor, Quinn, Raman, Vale, and Alex — that's the order, more or less. Whoever's nearest the top cooks tonight, next name washes up.\n\n*Takes the pen off the mantelpiece and writes on the back of a card.* I'll pin this in the kitchen. Any complaints about the order, make them now, because after tonight it just runs.",
+   "t": "Monday 5 October 2026, 7:16pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "No complaints from me, and I'll take my turn wherever it lands. Now then — that leaves the other thing hanging, and I'd rather we didn't all trail upstairs at eleven o'clock and start being polite at each other's doorways.\n\nFive rooms, nine of us. I don't much mind which I get, but I do mind it being decided by who's boldest. So — has anyone already put a bag down on a bed? Say so now, honestly, and we'll start from there instead of pretending the rooms are empty.",
+   "t": "Monday 5 October 2026, 7:16pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Anyone?",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "Guilty, and not remotely sorry. I put my bag down on the west double about forty minutes in — the one with the window seat and the view over the garden, before anyone else had finished being shy about the stairs. I had a whole career built on arriving early and taking the good dressing room, darling, and I'm not about to unlearn it now.\n\nBut I'll be decent about it. If someone's been eyeing my window seat, say so to my face and I'll haggle. What I won't do is stand on that landing at midnight while nine grown adults perform politeness at each other.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "priya",
+   "content": "No bag down. By my count the west double's got two beds in it, Delphine, so you've claimed a room, not a bed. That's a different thing again, and worth saying plainly before eight of us start haggling over a window seat one of us could share.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "margo",
+   "content": "Oh I'm already accounted for — Rose Room, the pink one with the two beds and the mirror, I put my bag on the near bed like an hour ago and nobody said a word, so I'm taking that as a yes.\n\nNo but Rose Room though. *Rose* room. That's literally the most me thing in this house.\n\nAlso heads up, Yasmin — Achterberg, Brandt, Doyle, Haddad. I'm third. So I'm either cooking tomorrow or washing up tonight, and I'd rather know which before I get comfortable.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "Margo, since you asked plainly: the rota starts tonight with Achterberg cooking and Brandt washing up. You're tomorrow night, cooking, and Yasmin's on the washing up with you. So you can get comfortable.\n\nAnd thank you for being straight about the bag. That's two rooms spoken for, which leaves three for seven of us, and Delphine's right that a claimed room isn't a claimed bed. I haven't put a bag down anywhere — I was too busy counting larder shelves — so I'll take whatever's left when the rest of you have spoken.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "player",
+   "content": "Two cooks tonight, Achterberg and Brant, and at LEAST two people cleaning up: Doyle Haddad. We're not making a single person wash up after all of us.\n\nDelphine has not claimed a whole room. I don't believe that is what she was saying as it would be incredibly rude. There are nine beds and each one will get a resident, anything else would be absurd.\n\nThere is one room with my name on it, and it is the only single. IF someone else wants a room by themselves, I'm not going to be precious about claiming it, but it would mean one of you poor unfortunate ladies has to share a room with me.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "winifred",
+   "content": "Right — two cooks, two on the washing up, I'm corrected and I'll stop arguing the point. Now then, the room count, because we keep half-solving it and it's the one thing we can actually settle tonight.\n\nEight women and Alex, and five rooms. Four doubles and the single — that's eight beds in the doubles and one in the single. Which is exactly nine. So it fits, and it fits with no sharing of rooms at all: Alex takes the single, since his name's on the door and it would be a poor start to go to war with a brass card, and the eight of us go two to a double.\n\nThat leaves only the pairing, not the counting. I'll take whichever bed is left when the rest of you have paired off — and if someone's shy of sharing, put your hand up and share with me, because I sleep like a stone and I don't talk before breakfast.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "delphine",
+   "content": "Alex, darling, thank you — you've rescued me from a reputation I hadn't finished earning. It's true: I said west double, meaning the good bed in it, the one by the window. I've spent twenty years on location and I know exactly what I meant, which was \"the nice one, before anyone else develops taste.\"\n\nWhich leaves the honest version of the offer. That room's got two beds, one's better than the other, and if someone wants the lesser one, come and take it and I'll be charming about it. What I'm not doing is sleeping in a single the size of a coat check while the rest of you pair off like a school trip.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  },
+  {
+   "speaker": "ottoline",
+   "content": "Then I'll take the single, and say it plainly before anyone else decides to be gallant about it. A door that locks and no one else's alarm clock — I've shared enough rooms in my life to know what I'm giving up, and I'm not giving it up. Alex, that's a joke, not a claim on your brass card.",
+   "t": "Monday 5 October 2026, 7:18pm",
+   "present": [
+    "imogen",
+    "priya",
+    "delphine",
+    "margo",
+    "ottoline",
+    "saoirse",
+    "yasmin",
+    "winifred"
+   ],
+   "loc": "great-room"
+  }
+ ]
+}
