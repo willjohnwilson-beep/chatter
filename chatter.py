@@ -1718,6 +1718,7 @@ class Chatter:
                     self.store, self.latest_for(mem_viewer), self.recent_text(mem_viewer),
                     models["retrieval"], limit=self.recall_cap, viewer=viewer, names=names,
                     place=self.world.scene.get("location"), now=self.world.scene.get("fiction_time"),
+                    near=self.recent_text(mem_viewer, n=4),
                 )
                 u_retrieve = {k: u_retrieve[k] + ur[k] for k in u_retrieve}
             else:

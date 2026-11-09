@@ -5297,4 +5297,48 @@ c.turn("Fine, lead on.", MODELS)
 assert "premove" not in f.kinds() and world.scene["location"] == "salt-line"
 print("   PASS")
 
+print("== 114. a place the speaker knows, named in the last few lines, comes back with its description ==")
+pl = [{"id": "p1", "origin": "place", "summary": "The Rose Room: double bedroom in rose and cream", "detail": "A double bedroom in rose and cream: two beds, a mirror."},
+      {"id": "p2", "origin": "place", "summary": "The Gold Room: the grandest double", "detail": "The grandest of the doubles."},
+      {"id": "p3", "origin": "place", "summary": "Alex's Room: narrow single room", "detail": "A narrow room with a single bed."},
+      {"id": "m9", "origin": "", "summary": "Rose said something", "detail": "Rose Room gossip."}]
+assert memory.place_picks(pl, "Margot in the Rose room with an empty second bed", set(), 2) == ["p1"], "the whole name, whatever the case; only authored places"
+assert memory.place_picks(pl, "Her dress was a lovely rose pink", set(), 2) == [] and memory.place_picks(pl, "the golden hour", set(), 2) == [], "a stray word is not a place"
+assert memory.place_picks(pl, "The gold room, then the rose room", set(), 2) == ["p1", "p2"] and memory.place_picks(pl, "The gold room, then the rose room", set(), 1) == ["p1"], "the one named last first; capped"
+assert memory.place_picks(pl, "Is the Rose Room free? And Alex's room?", {"p1"}, 2) == ["p3"] and memory.place_picks(pl, "", set(), 2) == [] and memory.place_picks(pl, "Rose Room", set(), 0) == []
+store = memory.MemoryStore(os.path.join(tmp, "place_pull.json"))
+rose = store.apply_operations([lop(summary="The Rose Room: double bedroom in rose and cream", detail="A double bedroom in rose and cream: two beds, a mirror.", tags=["room"])],
+                              LB, all_ids=["wren"], subject_ids=["world"], known_by=["wren"])[0]
+store.by_id(rose["id"]).update(origin="place", place_id="room-rose")
+gold = store.apply_operations([lop(summary="The Gold Room: the grandest double", detail="The grandest of the doubles.", tags=["room"])],
+                              LB, all_ids=["mick"], subject_ids=["world"], known_by=["mick"])[0]
+store.by_id(gold["id"]).update(origin="place", place_id="room-gold")
+install(retrieve={"retrieved": []})
+near = "Alex: Margot in the Rose room with an empty second bed?\nDelphine: West is the big one."
+got, _ = memory.retrieve(store, "Delphine: West is the big one.", "r", "claude-haiku-5-5", limit=5, viewer="wren", near=near)
+assert [g["id"] for g in got] == [rose["id"]] and got[0]["reason"] == "a place named in the last few lines", "named a few lines back, though not in the line itself"
+got, _ = memory.retrieve(store, "Delphine: West is the big one.", "r", "claude-haiku-5-5", limit=5, viewer="mick", near=near)
+assert got == [], "Mick does not know the Rose Room, so it is not offered"
+assert memory.retrieve(store, "Delphine: West is the big one.", "r", "claude-haiku-5-5", limit=5, viewer="wren")[0] == [], "no recent lines given (the on-demand recall): no pull"
+memory.RECALL_PLACES = 0
+assert memory.retrieve(store, "Delphine: West is the big one.", "r", "claude-haiku-5-5", limit=5, viewer="wren", near=near)[0] == [], "off"
+memory.RECALL_PLACES = 2
+install(retrieve={"retrieved": [{"memory_id": rose["id"], "reason": "model", "relevance": 3}]})
+got, _ = memory.retrieve(store, "Delphine: West is the big one.", "r", "claude-haiku-5-5", limit=5, viewer="wren", near=near)
+assert [g["id"] for g in got] == [rose["id"]] and got[0]["reason"] == "model", "what the model already picked is not added twice"
+# the turn passes the last few lines it saw
+store, world, c = walk_world()
+c._append("player", "Is the Kitchen far?", world.present_ids())
+seen_near = []
+_real = memory.retrieve
+memory.retrieve = lambda *a, **k: (seen_near.append(k.get("near")) or ([], llm.zero_usage()))
+try:
+    install(character="ok", watch={"updates": []}, director=DIR96)
+    c.turn("Never mind.", MODELS)
+finally:
+    memory.retrieve = _real
+assert seen_near and "Is the Kitchen far?" in seen_near[0] and "Never mind." in seen_near[0], seen_near
+memory.RECALL_PLACES = int(os.environ.get("CHATTER_RECALL_PLACES", "2"))
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

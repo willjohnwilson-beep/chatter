@@ -46,6 +46,9 @@ EXCHANGES = os.environ.get("CHATTER_EXCHANGES", "1") != "0"
 RECALL_SCORED = os.environ.get("CHATTER_RECALL_SCORED", "1") != "0"
 RECALL_MIN = int(os.environ.get("CHATTER_RECALL_MIN", "3"))
 RECALL_LEXICAL = int(os.environ.get("CHATTER_RECALL_LEXICAL", "2"))
+# A place the speaker knows, named in the last few lines ("Rose Room"), brings its authored description with it (up to RECALL_PLACES of them), whatever the model rated: a character
+# talking about a room without its description in front of them makes it up, and "rose-print wallpaper" contradicts "rose and cream". CHATTER_RECALL_PLACES=0 turns it off.
+RECALL_PLACES = int(os.environ.get("CHATTER_RECALL_PLACES", "2"))
 
 STORE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "memories.json")
 
@@ -887,6 +890,7 @@ def retrieve(
     names: dict | None = None,
     place: str | None = None,
     now: str | None = None,
+    near: str | None = None,
 ) -> tuple[list[dict], dict]:
     """Pick which non-core memories this message calls for, from among those
     `viewer` knows. viewer=None is omniscient. `place` is where the scene is: a
@@ -963,6 +967,9 @@ def retrieve(
     if RECALL_SCORED:   # weak picks are dropped, and the strongest come first (stable, so the model's order stands among equals)
         picked = [p for p in picked if p.get("relevance", 3) >= RECALL_MIN]
         picked = sorted(picked, key=lambda p: -p.get("relevance", 3))
+    if RECALL_PLACES and near:   # a place they know, named in the last few lines, comes with its description
+        have = {p["memory_id"] for p in picked}
+        picked += [{"memory_id": mid, "reason": "a place named in the last few lines"} for mid in place_picks(candidates, near, have, RECALL_PLACES)]
     if RECALL_LEXICAL:   # a memory the line plainly names, which the model left out, is added after its own picks
         have = {p["memory_id"] for p in picked}
         picked += [{"memory_id": mid, "reason": "mentions what was just said"} for mid in lexical_picks(candidates, message, have, RECALL_LEXICAL)]
@@ -990,6 +997,24 @@ not but all any can has had her him his how its our out she who why yes""".split
 
 def _lex_tokens(text: str) -> set:
     return {w[:5] for w in re.findall(r"[a-z']{3,}", (text or "").lower()) if w not in _LEX_STOP}
+
+
+def place_picks(candidates: list[dict], near: str, exclude: set, k: int) -> list[str]:
+    """Up to k authored place descriptions among `candidates` whose whole name ('Rose Room', not a stray word like 'rose') appears in `near`, the last few lines the
+    speaker saw; the one named latest in the text comes first."""
+    low = (near or "").lower()
+    found = []
+    for m in candidates:
+        if m.get("origin") != "place" or m["id"] in exclude:
+            continue
+        name = re.sub(r"^the\s+", "", (m.get("summary") or "").split(":")[0].strip().lower())
+        if len(name) < 4:
+            continue
+        hit = [x.start() for x in re.finditer(r"\b" + re.escape(name) + r"\b", low)]
+        if hit:
+            found.append((max(hit), m["id"]))
+    found.sort(key=lambda x: -x[0])
+    return [mid for _, mid in found[:k]]
 
 
 def lexical_picks(candidates: list[dict], message: str, exclude: set, k: int) -> list[str]:
