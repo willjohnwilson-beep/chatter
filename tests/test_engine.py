@@ -5341,4 +5341,29 @@ assert seen_near and "Is the Kitchen far?" in seen_near[0] and "Never mind." in 
 memory.RECALL_PLACES = int(os.environ.get("CHATTER_RECALL_PLACES", "2"))
 print("   PASS")
 
+print("== 115. the player's character: a public description every speaker is told, private notes nobody is ==")
+store, world, c = walk_world()
+assert world.player.get("description", "") == "" and world.player.get("background", "") == "", "empty by default"
+assert "AS ANYONE WHO MEETS THEM SEES THEM" not in world.render_fixed("wren"), "nothing written: nothing said"
+world.set_cast(world.characters, None, {"name": "Alex", "description": "  Late thirties,   a Londoner with a limp.  ", "background": "Secretly owes money to a brewery."})
+assert world.player["description"] == "Late thirties, a Londoner with a limp." and world.player["background"] == "Secretly owes money to a brewery."
+for who in ("wren", "mick", "narrator"):
+    fx = world.render_fixed(who)
+    assert "Alex, THE PERSON YOU ARE TALKING WITH, AS ANYONE WHO MEETS THEM SEES THEM" in fx and "Late thirties, a Londoner with a limp." in fx, who
+    assert "owes money" not in fx and "brewery" not in fx, "the private notes never reach a prompt: " + who
+world.set_cast(world.characters, None, {"name": "Alex"})
+assert world.player["description"] == "Late thirties, a Londoner with a limp." and world.player["background"].startswith("Secretly"), "a save that does not mention them keeps them"
+world.set_cast(world.characters, None, {"description": "", "background": ""})
+assert world.player["name"] == "Alex" and not world.player["description"] and "AS ANYONE" not in world.render_fixed("wren"), "cleared"
+import scenario
+world2 = scenario.build_world({"places": [{"name": "A", "connects_to": ["B"]}, {"name": "B", "connects_to": ["A"]}], "characters": [
+    {"name": "Una", "place": "A"}, {"name": "Vic", "place": "A"}], "player_name": "Sam", "player_description": "  Tall,\n  quiet.  "})[0]
+assert world2["player"] == {"name": "Sam", "description": "Tall, quiet.", "background": ""}, world2["player"]
+old = os.path.join(tmp, "oldplayer.json")
+json.dump({**world2, "player": {"name": "Old"}}, open(old, "w"))
+assert st.WorldState(old).player == {"name": "Old", "description": "", "background": ""}, "a world file from before has neither"
+tmpl = ui_text()
+assert 'id="player-description"' in tmpl and 'id="player-background"' in tmpl and 'description: document.getElementById("player-description")' in tmpl
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

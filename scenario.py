@@ -216,7 +216,8 @@ def build_world(draft: dict, player_name: str | None = None) -> tuple[dict, list
                   "fiction_time": str(draft.get("fiction_time") or "").strip() or st.DEFAULT_SCENE["fiction_time"]},
         "locations": locations, "characters": characters, "presets": presets, "reserved": reserved,
         "narrator": dict(st.DEFAULT_NARRATOR),
-        "player": {"name": (player_name or draft.get("player_name") or "").strip() or st.DEFAULT_PLAYER["name"]},
+        "player": {**st.DEFAULT_PLAYER, "name": (player_name or draft.get("player_name") or "").strip() or st.DEFAULT_PLAYER["name"],
+                   "description": " ".join(str(draft.get("player_description") or "").split())},
     }
     warnings += leaks(world)
     return world, warnings

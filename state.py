@@ -274,7 +274,9 @@ DEFAULT_NARRATOR = {
     ),
 }
 
-DEFAULT_PLAYER = {"name": "Player"}
+# `description` is what anyone who meets the player's character can see or would be told (age, look, manner, why they are here); it goes into
+# every character's and the narrator's prompt. `background` is the player's own private note and is never shown to a character.
+DEFAULT_PLAYER = {"name": "Player", "description": "", "background": ""}
 
 PRESET_CHAR_FIELDS = ["status", "view_of_player", "relationship"]
 
@@ -1066,8 +1068,12 @@ class WorldState:
         if narrator is not None:
             self.narrator.update({k: v for k, v in narrator.items() if k in DEFAULT_NARRATOR})
             self.narrator["enabled"] = bool(self.narrator.get("enabled"))
-        if player is not None and (player.get("name") or "").strip():
-            self.player["name"] = player["name"].strip()
+        if player is not None:
+            if (player.get("name") or "").strip():
+                self.player["name"] = player["name"].strip()
+            for k in ("description", "background"):
+                if k in player:
+                    self.player[k] = " ".join(str(player.get(k) or "").split()) if k == "description" else str(player.get(k) or "").strip()
         self.save()
 
     # ---------- rendering ----------
@@ -1076,13 +1082,14 @@ class WorldState:
         """The authored, never-changing part of a speaker's system prompt."""
         premise = (self.scene.get("premise") or "").strip()
         scene_part = ("THIS SCENE: " + premise) if premise else ""
+        looks = self._player_text()
         if viewer == NARRATOR_ID:
-            parts = [self.narrator.get("persona", ""), self.fixed.get("scenario", ""), scene_part, self._grounding(NARRATOR_ID),
+            parts = [self.narrator.get("persona", ""), self.fixed.get("scenario", ""), scene_part, looks, self._grounding(NARRATOR_ID),
                      self._reserved_text(NARRATOR_ID)]
         else:
             c = self.character(viewer) or {}
             parts = [self.fixed.get("core_instructions", ""), c.get("persona", ""),
-                     self.fixed.get("scenario", ""), scene_part, self._grounding(viewer), self._reserved_text(viewer),
+                     self.fixed.get("scenario", ""), scene_part, looks, self._grounding(viewer), self._reserved_text(viewer),
                      self._actions_mode()[0]]
             if self.multi_party():
                 parts.append(
@@ -1092,6 +1099,15 @@ class WorldState:
                     f"person you are talking with plays {self.player.get('name', 'the player')}."
                 )
         return "\n\n".join(p.strip() for p in parts if p and p.strip())
+
+    def _player_text(self) -> str:
+        """What the player's character looks like to anyone who meets them, from the author; empty when none was written. The private
+        `background` is never part of it."""
+        d = (self.player.get("description") or "").strip()
+        if not d:
+            return ""
+        return (f"{self.player.get('name') or 'The player'}, THE PERSON YOU ARE TALKING WITH, AS ANYONE WHO MEETS THEM SEES THEM (this is all that is "
+                f"visible or already known of them; anything else about their past, plans or feelings you learn only from what they say or do): {d}")
 
     def _grounding(self, viewer: str) -> str:
         """The invention-dial paragraph for this speaker."""

@@ -46,6 +46,8 @@ function charCardHtml(c, idx) {
 function renderCast(changes) {
   if (!W) return;
   document.getElementById("player-name").value = W.player.name || "";
+  document.getElementById("player-description").value = W.player.description || "";
+  document.getElementById("player-background").value = W.player.background || "";
   document.getElementById("nar-enabled").checked = !!W.narrator.enabled;
   document.getElementById("nar-persona").value = W.narrator.persona || "";
   document.getElementById("nar-reminder").value = W.narrator.reminder || "";
@@ -95,7 +97,11 @@ async function saveCast() {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       characters,
-      player: { name: document.getElementById("player-name").value },
+      player: {
+        name: document.getElementById("player-name").value,
+        description: document.getElementById("player-description").value,
+        background: document.getElementById("player-background").value,
+      },
       narrator: {
         enabled: document.getElementById("nar-enabled").checked,
         persona: document.getElementById("nar-persona").value,

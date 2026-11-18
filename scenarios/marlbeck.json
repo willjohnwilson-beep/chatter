@@ -361,14 +361,24 @@
         "places": []
       }
     ],
-    "narrator": {
-      "enabled": false,
-      "persona": "You are the narrator of this scene. You describe the setting, the passing of time, and events that no character would voice, in a few plain, concrete sentences. You never speak for a character or for the player, never state what they think or feel, and never decide what they do. You describe only what everyone present could perceive: you never reveal anyone's private knowledge, secrets or thoughts.",
-      "reminder": "You are the narrator. Two or three concrete sentences of scene only: no dialogue, nothing for the player or any character to say or do."
-    },
-    "player": {
-      "name": "Sam"
-    },
+    "schedule": [
+      {
+        "id": "the-market-stallholders-arrive",
+        "text": "The market stallholders arrive and set up under their awnings; by ten the square smells of cheese and frying onions.",
+        "when": "every Thursday",
+        "where": "market-square",
+        "since": "",
+        "last": ""
+      },
+      {
+        "id": "the-christmas-lights-are",
+        "text": "The Christmas lights are switched on in the square at five, after a short carol from the church choir and a speech from the chairman of the parish council.",
+        "when": "5 December 2026",
+        "where": "market-square",
+        "since": "",
+        "last": ""
+      }
+    ],
     "seeds": [
       {
         "id": "everyone-in-marlbeck-knows",
@@ -417,7 +427,7 @@
       {
         "id": "edith-lowe-lived-at",
         "text": "Edith Lowe lived at 9 Tanner's Row for fifty years and ran the Sunday school; she left the house some months ago and her armchair and a few hooks were all that was left behind.",
-        "summary": "Edith Lowe lived at 9 Tanner's Row for fifty years and ran the Sunday school; she left the house some months ago and her armchair and a few ",
+        "summary": "Edith Lowe lived at 9 Tanner's Row for fifty years and ran the Sunday school; she left the house some months ago and her armchair and a few",
         "subject": "world",
         "known_by": [
           "*"
@@ -426,23 +436,15 @@
         "tags": []
       }
     ],
-    "schedule": [
-      {
-        "id": "the-market-stallholders-arrive",
-        "text": "The market stallholders arrive and set up under their awnings; by ten the square smells of cheese and frying onions.",
-        "when": "every Thursday",
-        "where": "market-square",
-        "since": "",
-        "last": ""
-      },
-      {
-        "id": "the-christmas-lights-are",
-        "text": "The Christmas lights are switched on in the square at five, after a short carol from the church choir and a speech from the chairman of the parish council.",
-        "when": "5 December 2026",
-        "where": "market-square",
-        "since": "",
-        "last": ""
-      }
-    ]
+    "narrator": {
+      "enabled": false,
+      "persona": "You are the narrator of this scene. You describe the setting, the passing of time, and events that no character would voice, in a few plain, concrete sentences. You never speak for a character or for the player, never state what they think or feel, and never decide what they do. You describe only what everyone present could perceive: you never reveal anyone's private knowledge, secrets or thoughts.",
+      "reminder": "You are the narrator. Two or three concrete sentences of scene only: no dialogue, nothing for the player or any character to say or do."
+    },
+    "player": {
+      "name": "Sam",
+      "description": "Sam, in their early thirties, a Londoner by accent, dressed for a move in a work jacket with removal-van dust on the sleeves. New to Marlbeck and a little unsure of the way round, but friendly.",
+      "background": ""
+    }
   }
 }
