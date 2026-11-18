@@ -27,6 +27,10 @@ function charCardHtml(c, idx) {
       <select class="c-location">${placeOptions(c.location)}</select></div>
     <div class="field"><label>Brief (what others could tell at a glance)</label>
       <input type="text" class="c-brief" value="${esc(c.brief || "")}"></div>
+    <div class="field"><label>Lasting description (what anyone who sees them can tell: age, build, manner)</label>
+      <textarea class="c-desc one">${esc(c.description || "")}</textarea></div>
+    <div class="field"><label>Looking right now (clothes, injuries, dirt, paint)<span class="changed c-ch-appearance"></span></label>
+      <input type="text" class="c-look" value="${esc(c.appearance || "")}"></div>
     <div class="field"><label>Persona</label>
       <textarea class="c-persona multi">${esc(c.persona || "")}</textarea></div>
     <div class="field"><label>Reminder (rides beside the latest line)</label>
@@ -47,6 +51,7 @@ function renderCast(changes) {
   if (!W) return;
   document.getElementById("player-name").value = W.player.name || "";
   document.getElementById("player-description").value = W.player.description || "";
+  document.getElementById("player-appearance").value = W.player.appearance || "";
   document.getElementById("player-background").value = W.player.background || "";
   document.getElementById("nar-enabled").checked = !!W.narrator.enabled;
   document.getElementById("nar-persona").value = W.narrator.persona || "";
@@ -55,8 +60,13 @@ function renderCast(changes) {
   // don't clobber a card the user is typing in
   if (holder.contains(document.activeElement) && !changes) return;
   holder.innerHTML = W.characters.map((c, i) => charCardHtml(c, i)).join("");
-  const field = { status: "status", view_of_player: "view_of_player", relationship: "relationship", location: "location" };
+  const field = { status: "status", appearance: "appearance", view_of_player: "view_of_player", relationship: "relationship", location: "location" };
   for (const ch of changes || []) {
+    if (ch.target === "player") {
+      const pm = document.getElementById("player-appearance-changed");
+      if (pm && ch.field === "appearance") pm.textContent = "changed";
+      continue;
+    }
     const card = holder.querySelector(`.char-card[data-id="${CSS.escape(ch.target)}"]`);
     const mark = card && card.querySelector(".c-ch-" + field[ch.field]);
     if (mark) mark.textContent = "changed";
@@ -82,6 +92,8 @@ function collectCast() {
     name: card.querySelector(".c-name").value,
     brief: card.querySelector(".c-brief").value,
     persona: card.querySelector(".c-persona").value,
+    description: card.querySelector(".c-desc").value,
+    appearance: card.querySelector(".c-look").value,
     reminder: card.querySelector(".c-reminder").value,
     location: card.querySelector(".c-location").value,
     status: card.querySelector(".c-status").value,
@@ -100,6 +112,7 @@ async function saveCast() {
       player: {
         name: document.getElementById("player-name").value,
         description: document.getElementById("player-description").value,
+        appearance: document.getElementById("player-appearance").value,
         background: document.getElementById("player-background").value,
       },
       narrator: {

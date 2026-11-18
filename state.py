@@ -42,7 +42,7 @@ RESERVED_IDS = {PLAYER_ID, NARRATOR_ID, WORLD_ID, "*"}
 FIXED_FIELDS = ["core_instructions", "scenario", "invention", "actions"]
 # `location` (the id of the scene place) is not free text, so it is not among these.
 SCENE_FIELDS = ["fiction_time", "extras", "open_threads"]
-CHAR_STATE_FIELDS = ["status", "view_of_player", "relationship", "location"]
+CHAR_STATE_FIELDS = ["status", "appearance", "view_of_player", "relationship", "location"]
 LOCATION_STATE_FIELDS = ["state"]
 # What the watcher may call "no defined place".
 OFFSTAGE_WORDS = {"", "none", "nowhere", "away", "offstage", "off-stage", "elsewhere", "unknown"}
@@ -86,8 +86,18 @@ GUIDANCE = {
         "promise made, something deferred. REMOVE a line once it is resolved."
     ),
     "status": (
-        "A character's transient condition — what they're doing, mood, anything "
-        "physical. Not personality. Max 12 words."
+        "A character's transient condition — what they're doing, mood, bodily state "
+        "(tired, out of breath). How they LOOK (clothes, injuries, dirt) is the "
+        "appearance field, not this one. Not personality. Max 12 words."
+    ),
+    "appearance": (
+        "How a person LOOKS right now, as anyone there could see: clothing, injuries, dirt, paint, hair, what they carry or wear. Not what "
+        "they are doing, not mood, not lasting traits (build, age, scars they always had). For a character the target is their id; for the "
+        "PLAYER the target is 'player'. Change it only when the exchange shows a change (dressing or changing, getting hurt or bandaged, "
+        "muddy, soaked, cleaned up, taking something off or putting it on; a plaster or a bruise counts), and give the full look as it now "
+        "stands, keeping whatever still holds. Write it as a plain noun phrase with no pronouns (the person's gender may not be given). Record "
+        "a change only once it has happened, not when someone says they will do it ('I'll nip home and change' changes nothing yet), and never invent one that was not said or shown or record "
+        "something concealed. Max 15 words."
     ),
     "view_of_player": (
         "That character's READING of the player: their apparent condition and "
@@ -274,9 +284,10 @@ DEFAULT_NARRATOR = {
     ),
 }
 
-# `description` is what anyone who meets the player's character can see or would be told (age, look, manner, why they are here); it goes into
-# every character's and the narrator's prompt. `background` is the player's own private note and is never shown to a character.
-DEFAULT_PLAYER = {"name": "Player", "description": "", "background": ""}
+# `description` is what is lasting about how the player's character looks and comes across (age, build, manner, why they are here); `appearance` is how
+# they look right now (clothes, injuries, dirt), which the watcher keeps up to date from play. Both go into the scene text of everyone who can see them.
+# `background` is the player's own private note and is never shown to a character.
+DEFAULT_PLAYER = {"name": "Player", "description": "", "appearance": "", "background": ""}
 
 PRESET_CHAR_FIELDS = ["status", "view_of_player", "relationship"]
 
@@ -310,7 +321,7 @@ def _norm_character(c: dict, taken: set[str], loc_ids: set[str], here: str) -> d
     """`here` is the scene's place: where a character goes when nothing says
     otherwise. Pre-places data said `present: true/false`; that maps onto
     here / offstage."""
-    out = {k: "" for k in ("id", "name", "brief", "persona", "reminder", "status",
+    out = {k: "" for k in ("id", "name", "brief", "persona", "reminder", "status", "description", "appearance",
                            "view_of_player", "relationship", "location", "offscreen", "offscreen_at")}
     out.update({k: v for k, v in c.items() if k in out})
     out["active"] = bool(c.get("active", True))  # has a life while out of sight
@@ -1071,9 +1082,9 @@ class WorldState:
         if player is not None:
             if (player.get("name") or "").strip():
                 self.player["name"] = player["name"].strip()
-            for k in ("description", "background"):
+            for k in ("description", "appearance", "background"):
                 if k in player:
-                    self.player[k] = " ".join(str(player.get(k) or "").split()) if k == "description" else str(player.get(k) or "").strip()
+                    self.player[k] = " ".join(str(player.get(k) or "").split()) if k != "background" else str(player.get(k) or "").strip()
         self.save()
 
     # ---------- rendering ----------
@@ -1082,14 +1093,13 @@ class WorldState:
         """The authored, never-changing part of a speaker's system prompt."""
         premise = (self.scene.get("premise") or "").strip()
         scene_part = ("THIS SCENE: " + premise) if premise else ""
-        looks = self._player_text()
         if viewer == NARRATOR_ID:
-            parts = [self.narrator.get("persona", ""), self.fixed.get("scenario", ""), scene_part, looks, self._grounding(NARRATOR_ID),
+            parts = [self.narrator.get("persona", ""), self.fixed.get("scenario", ""), scene_part, self._grounding(NARRATOR_ID),
                      self._reserved_text(NARRATOR_ID)]
         else:
             c = self.character(viewer) or {}
             parts = [self.fixed.get("core_instructions", ""), c.get("persona", ""),
-                     self.fixed.get("scenario", ""), scene_part, looks, self._grounding(viewer), self._reserved_text(viewer),
+                     self.fixed.get("scenario", ""), scene_part, self._grounding(viewer), self._reserved_text(viewer),
                      self._actions_mode()[0]]
             if self.multi_party():
                 parts.append(
@@ -1100,14 +1110,19 @@ class WorldState:
                 )
         return "\n\n".join(p.strip() for p in parts if p and p.strip())
 
-    def _player_text(self) -> str:
-        """What the player's character looks like to anyone who meets them, from the author; empty when none was written. The private
-        `background` is never part of it."""
-        d = (self.player.get("description") or "").strip()
-        if not d:
-            return ""
-        return (f"{self.player.get('name') or 'The player'}, THE PERSON YOU ARE TALKING WITH, AS ANYONE WHO MEETS THEM SEES THEM (this is all that is "
-                f"visible or already known of them; anything else about their past, plans or feelings you learn only from what they say or do): {d}")
+    def _looks_lines(self, viewer: str) -> list[str]:
+        """How each person in the scene looks, for `viewer`: the lasting description and how they look right now. Visible to anyone
+        there, so it is the same for everyone (the viewer's own line begins "You"). Someone with nothing written has no line. The player's
+        private `background` is never part of it."""
+        out = []
+        for who, label, rec in [(PLAYER_ID, self.player.get("name") or "The player", self.player)] + [
+                (c["id"], c["name"], c) for c in self.characters if self.is_present(c)]:
+            if who == viewer:
+                label = "You"
+            d, a = (rec.get("description") or "").strip(), (rec.get("appearance") or "").strip()
+            if d or a:
+                out.append(f"{label}: " + " ".join(x for x in (d, f"Right now: {a}" if a else "") if x))
+        return out
 
     def _grounding(self, viewer: str) -> str:
         """The invention-dial paragraph for this speaker."""
@@ -1169,6 +1184,10 @@ class WorldState:
                 label = f"Between you and {player}" if multi else "Between you"
                 lines.append(f"{label}: {c['relationship'].strip()}")
 
+        looks = self._looks_lines(viewer)
+        if looks:
+            lines.append("How the people here look (all that you know of them by sight; anything else about their past, plans or feelings you "
+                         "learn only from what they say or do):\n" + "\n".join("    " + ln for ln in looks))
         others = [o["name"] for o in self.characters if self.is_present(o) and o["id"] != viewer]
         extras = [ln.strip() for ln in (self.scene.get("extras") or "").splitlines() if ln.strip()]
         if multi and viewer != PLAYER_ID:
@@ -1262,7 +1281,7 @@ class WorldState:
     # ---------- the watcher ----------
 
     def _watch_schema(self) -> dict:
-        targets = ["scene"] + self.character_ids() + self.location_ids()
+        targets = ["scene", PLAYER_ID] + self.character_ids() + self.location_ids()
         fields = SCENE_FIELDS + [f for f in CHAR_STATE_FIELDS + LOCATION_STATE_FIELDS if f not in SCENE_FIELDS]
         fields = list(dict.fromkeys(["location"] + fields))
         return {
@@ -1344,10 +1363,11 @@ class WorldState:
             f"{c['id']} ({c['name']}, "
             f"{'IN the scene' if self.is_present(c) else 'not here'}; location: {c.get('location') or 'none'}):\n"
             f"    status: {c.get('status') or '(empty)'}\n"
+            f"    appearance: {c.get('appearance') or '(empty)'}\n"
             f"    view_of_player: {c.get('view_of_player') or '(empty)'}\n"
             f"    relationship: {c.get('relationship') or '(empty)'}"
             for c in self.characters
-        )
+        ) + f"\nplayer ({player}; target 'player', field appearance only):\n    appearance: {self.player.get('appearance') or '(empty)'}"
         guidance = "\n".join(f"- {f}: {GUIDANCE[f]}" for f in GUIDANCE)
         def _who(l):
             who = names.get(l["speaker"], l["speaker"])
@@ -1446,6 +1466,13 @@ class WorldState:
                 else:
                     self.scene[field] = value
                 record("scene", "scene", field, value, u["why"], before)
+                continue
+            if target == PLAYER_ID:
+                if field != "appearance" or value.strip() == (self.player.get("appearance") or "").strip():
+                    continue
+                before = self.player.get("appearance", "")
+                self.player["appearance"] = " ".join(value.split())
+                record(PLAYER_ID, player, "appearance", self.player["appearance"], u["why"], before)
                 continue
             place = self.location(target)
             if place is not None:

@@ -5344,26 +5344,66 @@ print("   PASS")
 print("== 115. the player's character: a public description every speaker is told, private notes nobody is ==")
 store, world, c = walk_world()
 assert world.player.get("description", "") == "" and world.player.get("background", "") == "", "empty by default"
-assert "AS ANYONE WHO MEETS THEM SEES THEM" not in world.render_fixed("wren"), "nothing written: nothing said"
+assert "How the people here look" not in world.render_scene("wren"), "nothing written: nothing said"
 world.set_cast(world.characters, None, {"name": "Alex", "description": "  Late thirties,   a Londoner with a limp.  ", "background": "Secretly owes money to a brewery."})
 assert world.player["description"] == "Late thirties, a Londoner with a limp." and world.player["background"] == "Secretly owes money to a brewery."
 for who in ("wren", "mick", "narrator"):
-    fx = world.render_fixed(who)
-    assert "Alex, THE PERSON YOU ARE TALKING WITH, AS ANYONE WHO MEETS THEM SEES THEM" in fx and "Late thirties, a Londoner with a limp." in fx, who
-    assert "owes money" not in fx and "brewery" not in fx, "the private notes never reach a prompt: " + who
+    fx = world.render_scene(who)
+    assert "How the people here look" in fx and "Alex: Late thirties, a Londoner with a limp." in fx, who
+    assert "owes money" not in fx + world.render_fixed(who) and "brewery" not in fx + world.render_fixed(who), "the private notes never reach a prompt: " + who
 world.set_cast(world.characters, None, {"name": "Alex"})
 assert world.player["description"] == "Late thirties, a Londoner with a limp." and world.player["background"].startswith("Secretly"), "a save that does not mention them keeps them"
 world.set_cast(world.characters, None, {"description": "", "background": ""})
-assert world.player["name"] == "Alex" and not world.player["description"] and "AS ANYONE" not in world.render_fixed("wren"), "cleared"
+assert world.player["name"] == "Alex" and not world.player["description"] and "How the people here look" not in world.render_scene("wren"), "cleared"
 import scenario
 world2 = scenario.build_world({"places": [{"name": "A", "connects_to": ["B"]}, {"name": "B", "connects_to": ["A"]}], "characters": [
     {"name": "Una", "place": "A"}, {"name": "Vic", "place": "A"}], "player_name": "Sam", "player_description": "  Tall,\n  quiet.  "})[0]
-assert world2["player"] == {"name": "Sam", "description": "Tall, quiet.", "background": ""}, world2["player"]
+assert world2["player"] == {"name": "Sam", "description": "Tall, quiet.", "appearance": "", "background": ""}, world2["player"]
 old = os.path.join(tmp, "oldplayer.json")
 json.dump({**world2, "player": {"name": "Old"}}, open(old, "w"))
-assert st.WorldState(old).player == {"name": "Old", "description": "", "background": ""}, "a world file from before has neither"
+assert st.WorldState(old).player == {"name": "Old", "description": "", "appearance": "", "background": ""}, "a world file from before has none of them"
 tmpl = ui_text()
 assert 'id="player-description"' in tmpl and 'id="player-background"' in tmpl and 'description: document.getElementById("player-description")' in tmpl
+print("   PASS")
+
+print("== 116. how people look: a lasting description and a look right now, seen by whoever is there, kept up to date by the watcher ==")
+store, world, c = walk_world()
+world.set_cast([{**ch_, **({"description": "Tall, grey at the temples, a sailor's stoop.", "appearance": "Apron, sleeves rolled."} if ch_["id"] == "wren" else {}),
+                 **({"appearance": "Muddy boots."} if ch_["id"] == "mick" else {})} for ch_ in world.characters], None,
+               {"name": "Alex", "description": "Late thirties.", "appearance": "Wet coat."})
+sc = world.render_scene("sam")
+assert "How the people here look" in sc and "Wren: Tall, grey at the temples, a sailor's stoop. Right now: Apron, sleeves rolled." in sc and "Alex: Late thirties. Right now: Wet coat." in sc
+assert "Mick" not in sc.split("How the people here look")[1].split("Also here")[0], "Mick is in the kitchen: not seen from here"
+assert "    You: " not in sc and "Sam:" not in sc.split("Also here")[0].split("How the people")[1], "Sam has nothing written and is not the viewer's line"
+own = world.render_scene("wren")
+assert "    You: Tall, grey at the temples, a sailor's stoop. Right now: Apron, sleeves rolled." in own and "    Wren:" not in own
+assert "Alex: Late thirties. Right now: Wet coat." in world.render_scene("narrator")
+world.character("mick")["location"] = "salt-line"
+assert "Mick: Right now: Muddy boots." in world.render_scene("wren"), "once he is here, his look is seen"
+world.set_cast(world.characters, None, {"appearance": ""})
+assert "Alex: Late thirties." in world.render_scene("wren") and "Wet coat" not in world.render_scene("wren")
+# the watcher: a character's look, the player's look (target "player"), nothing else for the player, nothing for an unchanged one
+store, world, c = walk_world()
+f = install(watch={"updates": [
+    {"target": "player", "field": "appearance", "value": "Tea down a grey shirt", "why": "spilled tea"},
+    {"target": "wren", "field": "appearance", "value": "Apron, a bandaged left hand", "why": "cut her hand"},
+    {"target": "player", "field": "status", "value": "Embarrassed", "why": "x"},
+    {"target": "sam", "field": "appearance", "value": "", "why": "unchanged"}]})
+changes, _ = world.watch([{"speaker": "player", "content": "Ah, tea all down my shirt."}, {"speaker": "wren", "content": "I cut my hand on a glass, it is nothing."}], "m", present=["wren", "sam"])
+assert world.player["appearance"] == "Tea down a grey shirt" and world.character("wren")["appearance"] == "Apron, a bandaged left hand"
+assert [(x["target"], x["field"]) for x in changes] == [("player", "appearance"), ("wren", "appearance")], changes
+assert changes[0]["target_name"] == world.player["name"] and changes[0]["before"] == ""
+prompt = f.calls[0][1]["messages"][0]["content"]
+assert "appearance: (empty)" in prompt and "target 'player', field appearance only" in prompt and "- appearance: How a person LOOKS right now" in prompt
+schema = f.calls[0][1]["output_config"]["format"]["schema"]["properties"]["updates"]["items"]["properties"]
+assert "player" in schema["target"]["enum"] and "appearance" in schema["field"]["enum"]
+changes, _ = world.watch([{"speaker": "player", "content": "Again."}], "m", present=["wren", "sam"])
+assert changes == [] or all(x["value"] != "Tea down a grey shirt" for x in changes), "the same look is not a change"
+assert world.player["appearance"] == "Tea down a grey shirt"
+world.save()
+w2 = st.WorldState(world.path)
+assert w2.player["appearance"] == "Tea down a grey shirt" and w2.character("wren")["appearance"] == "Apron, a bandaged left hand", "it is kept with the world"
+assert world.snapshot()["player"]["appearance"] == "Tea down a grey shirt" and world.snapshot()["characters"][0]["appearance"] in ("", "Apron, a bandaged left hand")
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

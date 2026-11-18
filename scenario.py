@@ -181,7 +181,7 @@ def build_world(draft: dict, player_name: str | None = None) -> tuple[dict, list
             warnings.append(f"{c['name']} starts at {c.get('place')!r}, which isn't a place; put in the start place")
         characters.append(st._norm_character({
             "id": cid[c["name"].strip().lower()], "name": c["name"], "brief": c.get("brief", ""), "persona": c.get("persona", ""),
-            "reminder": c.get("reminder", ""), "status": c.get("status", ""), "view_of_player": c.get("view_of_player", ""),
+            "description": c.get("description", ""), "appearance": c.get("appearance", ""), "reminder": c.get("reminder", ""), "status": c.get("status", ""), "view_of_player": c.get("view_of_player", ""),
             "relationship": c.get("relationship", ""), "location": where or start}, set(), set(by_id), start))
     here = [c for c in characters if c["location"] == start]
     if len(here) < 2:
@@ -217,7 +217,8 @@ def build_world(draft: dict, player_name: str | None = None) -> tuple[dict, list
         "locations": locations, "characters": characters, "presets": presets, "reserved": reserved,
         "narrator": dict(st.DEFAULT_NARRATOR),
         "player": {**st.DEFAULT_PLAYER, "name": (player_name or draft.get("player_name") or "").strip() or st.DEFAULT_PLAYER["name"],
-                   "description": " ".join(str(draft.get("player_description") or "").split())},
+                   "description": " ".join(str(draft.get("player_description") or "").split()),
+                   "appearance": " ".join(str(draft.get("player_appearance") or "").split())},
     }
     warnings += leaks(world)
     return world, warnings

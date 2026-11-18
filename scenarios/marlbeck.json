@@ -176,7 +176,9 @@
         "arriving": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": []
+        "offscreen_retired": [],
+        "description": "Small and round-faced, grey curls, forearms like a baker's, sixty-three.",
+        "appearance": "Flowery apron over a cardigan, flour on one sleeve."
       },
       {
         "id": "ray-duckworth",
@@ -194,7 +196,9 @@
         "arriving": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": []
+        "offscreen_retired": [],
+        "description": "Broad and weathered, close-cropped grey hair, a faded anchor tattoo on one forearm, late fifties.",
+        "appearance": "Shirtsleeves rolled, a bar towel over one shoulder."
       },
       {
         "id": "chloe-whitcombe",
@@ -212,7 +216,9 @@
         "arriving": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": []
+        "offscreen_retired": [],
+        "description": "Tall, short dark hair, a quick walk, forty-one.",
+        "appearance": "Dog collar under a waxed jacket, muddy wellies."
       },
       {
         "id": "arthur-bell",
@@ -230,7 +236,9 @@
         "arriving": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": []
+        "offscreen_retired": [],
+        "description": "Thin and upright, white moustache, seventy-eight, a precise way of standing.",
+        "appearance": "Tweed jacket and tie, flat cap, a folded newspaper under one arm."
       },
       {
         "id": "kez-dunmore",
@@ -248,7 +256,9 @@
         "arriving": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": []
+        "offscreen_retired": [],
+        "description": "Nineteen, small, a dark bob with a purple streak, a nose stud.",
+        "appearance": "Tea-room apron over a hoodie, headphones round her neck."
       }
     ],
     "presets": [
@@ -443,8 +453,9 @@
     },
     "player": {
       "name": "Sam",
-      "description": "Sam, in their early thirties, a Londoner by accent, dressed for a move in a work jacket with removal-van dust on the sleeves. New to Marlbeck and a little unsure of the way round, but friendly.",
-      "background": ""
+      "description": "Sam, in their early thirties, a Londoner by accent. New to Marlbeck and a little unsure of the way round, but friendly.",
+      "background": "",
+      "appearance": "Work jacket with removal-van dust on the sleeves, jeans, trainers."
     }
   }
 }
