@@ -129,6 +129,59 @@ def gate_words(text: str) -> set:
     return {w for w in re.findall(r"[a-z]{4,}", (text or "").lower()) if w not in _EVERYDAY_WORDS and w not in GENERIC_PLACE_WORDS}
 
 
+_SHORT_STOP = {"the", "and", "for", "with", "but", "not", "you", "are", "was", "old", "new", "one", "two", "our", "all", "out", "off", "low", "big"}
+
+
+def _short_words(text: str) -> set:
+    """Three-letter words ('pub', 'bar', 'tea'), which gate_words leaves out as too common; used only for what a place is NAMED or called in a line's own words."""
+    return {w for w in re.findall(r"[a-z]+", (text or "").lower()) if len(w) == 3 and w not in _SHORT_STOP}
+
+
+def place_vocab(places: list[dict]) -> set:
+    """Everything in the names, briefs and descriptions of these places that a line about going there might share (the three-letter words of the names and briefs too: 'pub')."""
+    vocab: set = set()
+    for p in places:
+        vocab |= gate_words(p["name"]) | gate_words(p.get("description", "")) | gate_words(p.get("brief", ""))
+        vocab |= _short_words(p["name"]) | _short_words(p.get("brief", ""))
+    return vocab
+
+
+# The second way into the gate: a first-person line (or a clause that opens with the verb, 'Popping to the shop') that has a word of motion in it. The place does not have to be
+# named: 'I'm nipping to the square' shares nothing with 'Market Square' once 'the' is dropped, 'off to church' is a churchyard, 'come round yours' is a house, and 'home' and 'bed'
+# are in no place's description.
+_FIRST_RE = re.compile(r"\b(?:i'm|i am|i'll|i will|i shall|i must|i need to|i have to|i've got to|i'd better|i better|let me|gotta|got to|we'll|we're|we will)\b", re.I)
+_CLAUSE_START_RE = re.compile(r"(?:^|[.!?;,]\s+)(?:(?:right|well|ok|okay|so|anyway|just)[,\s]+)*(?:popping|nipping|heading|going|off|back|away|dashing|running|walking)\b", re.I)
+# A verb of motion counts only with a direction after it ('going out', 'nip to the', 'heading up', 'pop over'), not on its own: 'I'll go and have a think' and 'I'm going to need a drink' go nowhere.
+_DIRECTION = r"(?:to (?:the|my|our|a|an|church|bed|work|town|school)|into|in|up|down|out|over|round|off|back|away|home|upstairs|downstairs|outside|along|across)"
+_MOTION_RE = re.compile(
+    r"\b(?:(?:go|going|head|heading|nip|nipping|pop|popping|run|running|dash|dashing|step|stepping|slip|slipping|wander|wandering|walk|walking)(?: just| straight| right)? " + _DIRECTION + r"\b|"
+    r"dash|dashing|(?:must|have to|got to|gotta|need to) go|leave|leaving|be off|off (?:to|down|up|out|home|for)|away (?:to|home)|back (?:to|down|up|in|home|out|over)|come (?:round|over|back))\b", re.I)
+
+
+# How people take their leave without saying 'go': 'I'd best be getting along', 'time I made tracks', 'I'll be at the pub', 'if anyone wants me'.
+_LEAVE_RE = re.compile(
+    r"\b(?:best be (?:off|going|getting|on)|time (?:i|to|for me to) \w+|(?:make|made|making) (?:tracks|a move|my way)|turn(?:ing)? in\b|retire|on my way|off i (?:go|pop)|"
+    r"(?:be|getting|get) along|that's me (?:away|off|done|gone)|(?:i'll|i will|i'd) be (?:at|in|over|round|down|up)|if anyone (?:wants|needs|asks)|i've gone|gone (?:to|up|down|over|out))", re.I)
+
+
+def shares_a_place_word(text: str, vocab: set) -> bool:
+    """A word of the line is a word of some place (exactly, or the first five letters of a longer one: 'church' for 'churchyard'; three-letter words count too)."""
+    low = (text or "").lower()
+    words = {w for w in re.findall(r"[a-z]+", low) if (len(w) >= 4 and w not in _EVERYDAY_WORDS and w not in GENERIC_PLACE_WORDS) or (len(w) == 3 and w not in _SHORT_STOP)}
+    if words & vocab:
+        return True
+    prefixes = {v[:5] for v in vocab if len(v) >= 6}
+    return any(w[:5] in prefixes for w in words if len(w) >= 5)
+
+
+def going_gate(text: str, vocab: set) -> bool:
+    """Is this spoken line worth asking a model whether the speaker is going somewhere? Either it sounds like going (or like taking a leave) AND shares a word with one of the places,
+    or it is a first-person line with a word of motion in it, whether or not it names a place."""
+    if (GOING_RE.search(text) or _LEAVE_RE.search(text)) and shares_a_place_word(text, vocab):
+        return True
+    return bool(_FIRST_RE.search(text) or _CLAUSE_START_RE.search(text)) and bool(_MOTION_RE.search(text))
+
+
 def place_words(p: dict | None) -> set:
     """What marks a place out: the words of its name (four letters or more) and the longer words of its description."""
     p = p or {}
@@ -783,11 +836,8 @@ class Chatter:
             if c.get("leaving") and c["leaving"] not in open_ids:
                 c["leaving"] = ""
         pending = {cid: c["leaving"] for cid, c in present.items() if c.get("leaving")}
-        vocab = set()
-        for p in places:
-            vocab |= gate_words(p["name"]) | gate_words(p.get("description", "")) | gate_words(p.get("brief", ""))
-        lines = [m for m in said if m["speaker"] in present and not m.get("private_to") and GOING_RE.search(m["content"])
-                 and (gate_words(m["content"]) & vocab)]
+        vocab = place_vocab(places)
+        lines = [m for m in said if m["speaker"] in present and not m.get("private_to") and going_gate(m["content"], vocab)]
         if not places or not (lines or pending):
             return [], llm.zero_usage()
         heard = "\n".join(f"{self._name(m['speaker'])}: {m['content']}" for m in said
@@ -811,6 +861,10 @@ class Chatter:
             "Also not a move: an offer or invitation that the person they are talking with should go too ('come on, I'll walk you round', 'want me "
             "to come and have a look?', 'give me two minutes and I'll show you', 'shall we?'), which waits for that person's answer; and an offer "
             "that depends on something ('if it still won't start, knock and I'll come and look').\n"
+            "- Never guess a destination. If where they say they are going ('home', 'my bed', 'the shop') is not one of the places listed, "
+            "and is not plainly a part of one (a pantry in the kitchen, a vestry in the church), nobody moves: a place that merely looks nearest, "
+            "or somewhere that is another person's home, is not the one they said. Only 'yours' or 'your place', said to someone, is that person's "
+            "own home, if one of the places is plainly theirs; 'the boiler at yours' or 'your door' points to it as well.\n"
             "- Each person at most once. If nobody moves, return an empty list.\n"
             + ("- `stays` lists those ALREADY HEADING OFF who, in what was just said, have changed their mind, said they will stay or wait, or "
                "been asked or persuaded to stay. Everyone else there is still going. Leave it empty if none.\n" if pending else "")

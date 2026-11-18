@@ -1,0 +1,1442 @@
+[
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm off to The Wheatsheaf — don't let anyone touch my good teapot while I'm gone."
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "the-wheatsheaf",
+  "line": "Well, I'd best be getting along, love. The pub won't pour itself, will it?"
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "the-wheatsheaf",
+  "line": "That's me done for the day — I'm popping over to the old place with the low beams for a bit."
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "the-wheatsheaf",
+  "line": "I'll be back in a couple of hours, so mind the shop and keep the kettle warm."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "Right, I'm off to Market Square — that clock's been slow since I was a girl, so don't you dare use it to time my return."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "I'm just popping out for a bit, won't be long, and no, I'm not telling you where, so don't ask."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "Need anything while I'm out? I'm heading over to the cobbles by the square to see what's on offer."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "Well, that's me away — time to go see a man about some mushrooms, and if that slow old clock's right for once I'll be back by noon."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'm just slipping off to St Oswald's now, so shout if you need me before I'm back."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Right, I'm away to the churchyard to check on the flowers before the light goes."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Off on my rounds, loves — got to pay my respects, haven't I?"
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Anyway, I'll leave you lot to it for a bit; won't be long."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "marsh-s-tea-room",
+  "line": "Right, I'd best be off to Marsh's Tea Room before the lunch crowd beats me there."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "marsh-s-tea-room",
+  "line": "I'm heading back to open up the café now, so I'll catch you all later."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "marsh-s-tea-room",
+  "line": "Sorry to dash, but the kettle won't boil itself — off I go."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "marsh-s-tea-room",
+  "line": "Well, I've dawdled here long enough. Time to get moving!"
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Right, I'm off to Market Square, and I'll not be back till that clock's chimed twice."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I'm popping over to the cobbles for a bit, so don't let anyone pinch my seat."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Heading into town, if anyone wants to walk with me."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I'd best get going before the traders pack up."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm off to the Wheatsheaf."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Time I got back and opened up. Someone's got to pour the beer."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "I'll be getting along, then. Pints won't pull themselves."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "That's me done here. I'll see you all later, no doubt."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "7-tanner-s-row",
+  "line": "Right, I'm off. Got to see a man about a joiner's terrace."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "7-tanner-s-row",
+  "line": "I'll leave you lot to it. Seven Tanner's Row won't knock on its own door."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "7-tanner-s-row",
+  "line": "Time I wasn't here. Next door's calling."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "7-tanner-s-row",
+  "line": "That's me done. See you later."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "7-tanner-s-row",
+  "line": "Right, I'm off next door."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "7-tanner-s-row",
+  "line": "Just going to pop round to the joiner's terrace."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "7-tanner-s-row",
+  "line": "That's me done here — time to see what's happening at number seven."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "7-tanner-s-row",
+  "line": "I'll be back in a bit."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm off to the Wheatsheaf."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "Time I got back and opened up."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "I'll be at mine if anyone needs me."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "Best get the beer flowing before the crowd turns up."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'm away to St Oswald's now, see the rest of you when I'm back."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Right, that's me off to the churchyard. Don't let the pub burn down while I'm gone."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Time I was moving. Got somewhere to be, and it won't wait."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Just popping up to the grey church for a bit. Won't be long."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "Right, I'm off to Market Square — try not to burn the place down while I'm gone."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "Just popping out to check the clock's still slow and the cobbles are still there. Back shortly."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "Time I showed my face at the market before they forget what a vicar looks like."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "market-square",
+  "line": "That's me away — things to do, souls to save, and all that."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Right then, I'm away to the square, the clock's wrong and I intend to complain about it."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I'll head over to Market Square now, unless anyone fancies coming along to watch me be brisk at strangers."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I'm going to see a man about a slow clock — the usual place, if anyone needs me."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Off I pop, before that clock gets any slower."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "st-oswald-s-churchyard",
+  "line": "Right, I'm off to St Oswald's. Anyone need anything while I'm out?"
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'm just going to pop up the churchyard for a bit. Back shortly, don't let them give my seat away."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "st-oswald-s-churchyard",
+  "line": "Going to pay my respects to the departed, seeing as the departed are better company than some of you lot."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'll be back in twenty minutes. Try not to burn the place down while I'm gone."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Right, I'm off to St Oswald's now — things to see to, graves don't dig themselves. Well, obviously they do, but you know what I mean."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'd best be getting along to the churchyard before the light goes. Anyone needing me can find me among the headstones."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Time I made tracks — got a date with a grey old church and its even greyer congregation."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Off I go. Do try not to burn the place down while I'm gone."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "9-tanner-s-row",
+  "line": "Right, I'm off to 9 Tanner's Row — somebody's got to welcome the new lot before the kettle goes cold."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "9-tanner-s-row",
+  "line": "I'll head over and get the door open for them, shall I? No sense all of us standing about in this drizzle."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "9-tanner-s-row",
+  "line": "Time I made tracks, I think. Someone's expecting me with a key and a smile."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "9-tanner-s-row",
+  "line": "Well, I'd best be off — can't have the new neighbours thinking the vicar's forgotten them already."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "I shall be taking my leave now — I'm bound for The Wheatsheaf."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm off to the old place by the square for a pint."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "If anyone wants me, I'll be at the pub."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "the-wheatsheaf",
+  "line": "It's getting on, so I'll bid you all good evening."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "I shall be taking my leave now, as I have a mind to visit St Oswald's before the day is out."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "If anyone should ask after me, I've gone up to the grey church on the hill for a spell."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "I think I'll stretch my legs and pay my respects to old friends, if you'll excuse me."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Well then, I shan't keep you any longer. Good day to you all."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "marsh-s-tea-room",
+  "line": "I shall take my leave now, I think. Marsh's Tea Room is expecting me."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "marsh-s-tea-room",
+  "line": "If you'll excuse me, I'm in need of a decent cup of tea and a sit-down somewhere warm."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "marsh-s-tea-room",
+  "line": "Right, I'll be off then. Time I wasn't here."
+ },
+ {
+  "world": "m",
+  "here": "the-wheatsheaf",
+  "to": "marsh-s-tea-room",
+  "line": "I'm going to that steamy little café round the corner, the one with all the mismatched cups. Good day to you all."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "the-wheatsheaf",
+  "line": "Right, I think I shall take my leave now — I'm off to The Wheatsheaf."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "the-wheatsheaf",
+  "line": "Well, I shan't impose on you any longer; I'm popping down the pub for a bit."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "the-wheatsheaf",
+  "line": "If anyone wants me, I'll be at the old place on the corner for the next hour or so."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "the-wheatsheaf",
+  "line": "Goodness, is that the time? I'd best be on my way."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I shall be making my way to Market Square now."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Right, I'm off to see what time that clock's showing today."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I think I'll take myself into town for a bit."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Well, I'd best be getting along. Good day to you all."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "marsh-s-tea-room",
+  "line": "Right, I'm off to Marsh's, this place is doing my head in."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "marsh-s-tea-room",
+  "line": "I'm going to get a cup of tea, and no, I'm not bringing anyone back a scone."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "marsh-s-tea-room",
+  "line": "Anyway, I've had enough of dead people for one afternoon. See you lot later."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "marsh-s-tea-room",
+  "line": "Shift starts in ten, so I'm doing a runner before anyone else ropes me into something."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm off to The Wheatsheaf."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Time I was in the pub."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "I'm going to get a drink — anyone coming or what?"
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "This is me done. See you."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Right, I'm off to St Oswald's. Try not to burn the place down while I'm gone."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Gonna go hang out with the dead for a bit. Catch you later."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'm heading over to the churchyard, alright? Don't wait up."
+ },
+ {
+  "world": "m",
+  "here": "market-square",
+  "to": "st-oswald-s-churchyard",
+  "line": "Time for me to make tracks, I reckon."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm off to the Wheatsheaf before this place gives me the creeps. Anyone coming or am I drinking alone like a sad act?"
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "I'm done standing around a graveyard — heading for that pub with the low beams. Last call for company."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "See you lot later, I'm getting a drink."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "I can't take another minute of tombs and drizzle, so I'm walking. You know where to find me if you fancy it."
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "market-square",
+  "line": "I'm heading over to Market Square, so if anyone needs me, that's where I'll be."
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "market-square",
+  "line": "Right, I'm off — got to go stare at that clock that's always wrong."
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "market-square",
+  "line": "Anyway, I'm leaving now. Enjoy your tea."
+ },
+ {
+  "world": "m",
+  "here": "marsh-s-tea-room",
+  "to": "market-square",
+  "line": "Going to the square, before that slow clock makes me even later than I already am."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Right, I'm heading off to Market Square now — that clock's been slow for years and I still can't stop checking it."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I'll be off then, just popping over to the square to see if anything's happening."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Better get moving, I've got a few errands to run before the stalls pack up."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Off to the cobbles now, see you lot later."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Right, I'm heading off to Market Square — that slow clock won't wait for anyone, will it?"
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "I'll be off then; just popping over to the square for a bit."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Anyway, I'd best get going before it gets too late."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "market-square",
+  "line": "Cheers everyone — I'm making a move, got a few bits to sort out by the market."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Right, I'm heading off to The Wheatsheaf now, anyone else coming along?"
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "I think I'll make a move and get myself over to the pub before it fills up."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "Time I wasn't here, so I'll say cheerio and see you all in a bit."
+ },
+ {
+  "world": "m",
+  "here": "st-oswald-s-churchyard",
+  "to": "the-wheatsheaf",
+  "line": "That's me done, I'm off for a pint, see you there if you're coming."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "st-oswald-s-churchyard",
+  "line": "Right, I'm off to St Oswald's now, I'll catch up with you lot later."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "st-oswald-s-churchyard",
+  "line": "Just popping out for a bit, got somewhere I need to be."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "st-oswald-s-churchyard",
+  "line": "Time I made a move, that grey church won't visit itself."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "st-oswald-s-churchyard",
+  "line": "I'm heading over to the churchyard, see you all in a while."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "marsh-s-tea-room",
+  "line": "Right, I'm off to Marsh's Tea Room — anyone want anything bringing back?"
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "marsh-s-tea-room",
+  "line": "I'll be heading over to the café now, so I'll catch the rest of you later."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "marsh-s-tea-room",
+  "line": "Time I wasn't here. See you all in a bit."
+ },
+ {
+  "world": "m",
+  "here": "9-tanner-s-row",
+  "to": "marsh-s-tea-room",
+  "line": "Just popping round the corner for a cup of tea — won't be long."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "I'm heading up to the Gold Room now; I'll see you all in a bit."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "Right, I'm going to make my way to the grand double—the gold and black one—so I'll catch up with you later."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "Time for me to move on. Take care of yourselves."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "I'm off to the top floor suite now, so I'll leave you to it."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "Right, I'm heading up to the landing now — five doors up there, so I'll see who's where."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "I think I'll make my way upstairs and check on everyone before it gets too late."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "Just going to do a quick round of the bedrooms, if anyone needs me."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "Off I go — hold the fort down here, I won't be long."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "pool",
+  "line": "I'm going to head over to the Pool Terrace now, if anyone wants to come along."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "pool",
+  "line": "I think I'll take myself off for a swim before the light goes."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "pool",
+  "line": "Right, I'm off to that lovely glass-roofed spot for a bit of quiet."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "pool",
+  "line": "Time for me to slip away for a while, I think."
+ },
+ {
+  "world": "s",
+  "here": "library",
+  "to": "pool",
+  "line": "I'm going to head over to the Pool Terrace now, if anyone wants to come along."
+ },
+ {
+  "world": "s",
+  "here": "library",
+  "to": "pool",
+  "line": "Right, I think I'll make my way to the pool before it gets too crowded."
+ },
+ {
+  "world": "s",
+  "here": "library",
+  "to": "pool",
+  "line": "Just going to catch a bit of air under that glass roof, back in a while."
+ },
+ {
+  "world": "s",
+  "here": "library",
+  "to": "pool",
+  "line": "Time for me to slip away for a swim, I'll see you all later."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-gold",
+  "line": "Right, I'm heading up to the Gold Room now."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-gold",
+  "line": "If anyone needs me, I'll be in the big gold-and-black double."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-gold",
+  "line": "I'm going to get settled in before the evening gets away from us."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-gold",
+  "line": "Time for me to slip away and get ready."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-rose",
+  "line": "I'm going up to the Rose Room now."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-rose",
+  "line": "I'm turning in for the night, so I'll bid you all good evening."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-rose",
+  "line": "Right, I'm off to bed."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-rose",
+  "line": "My apologies, but I have an early start tomorrow and need to retire. Goodnight, everyone."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "I'm going up to the landing. I'll be back shortly, I expect."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "Right, I'm heading off to the five doors. Try not to miss me."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "If anyone needs me, I'll be just up the stairs."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "landing",
+  "line": "I'm leaving now."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "front-hall",
+  "line": "I'm heading over to the Front Hall now."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "front-hall",
+  "line": "Right, I'm off to the tiled hall with the sealed double doors."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "front-hall",
+  "line": "Time I moved on, I think."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "front-hall",
+  "line": "I'll be in the Front Hall if anyone needs me."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "I'm going to The Kitchen now. I need to check on the delivery hatch."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "Right, I'm heading off to the marble showroom. Things to see to."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "I'm stepping out for a bit. Don't wait on me."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "I'm making my way to the kitchen. The hatch needs my attention."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-rose",
+  "line": "I'm going to the Rose Room now."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-rose",
+  "line": "Right, I'm turning in for the night, so I'll see you all in the morning."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-rose",
+  "line": "I'm heading up to that rose and cream double bedroom to get some sleep."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "room-rose",
+  "line": "Time for me to call it a day."
+ },
+ {
+  "world": "s",
+  "here": "room-blue",
+  "to": "library",
+  "line": "Darlings, I simply must tear myself away — the library is calling, and you know I can never resist leather bindings and a good gilt mirror."
+ },
+ {
+  "world": "s",
+  "here": "room-blue",
+  "to": "library",
+  "line": "I'm off to the library now, my loves. Do try not to say anything too delicious while I'm gone, or I shall never forgive you."
+ },
+ {
+  "world": "s",
+  "here": "room-blue",
+  "to": "library",
+  "line": "Right, I'm slipping out to the place with all the books and that divine mirror. Hold that thought — I want every morsel when I return."
+ },
+ {
+  "world": "s",
+  "here": "room-blue",
+  "to": "library",
+  "line": "Well, this has been delightful, but I really must be going now. Ta-ta, darlings."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "Right, I'm off to The Library — leather bindings and that divine gilt mirror are calling my name."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "I'm slipping away to the book room for a bit, darlings; do try not to start anything scandalous without me."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "Well, I shall take myself off now — there's a rather pressing appointment with a certain mirror and a good spine or two."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "Do excuse me, I simply must tear myself away this instant!"
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-blue",
+  "line": "Right, darlings, I'm off to The Blue Room — don't anyone dare start the good gossip without me."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-blue",
+  "line": "I'm going to take a little lie-down in that blue and white boudoir of mine, so hold your tongues till I'm back."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-blue",
+  "line": "Off I trot, my loves — Mama needs her beauty sleep, and lots of it."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-blue",
+  "line": "Well, this has been delicious, but I must fly. Ta-ta!"
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "kitchen",
+  "line": "I'm heading off to The Kitchen, darlings — do try not to start any scandals without me."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "kitchen",
+  "line": "Right, I'm popping down to that marble palace with the delivery hatch. Someone has to inspect the canapés."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "kitchen",
+  "line": "Off I go, my loves. The caterers simply cannot be trusted unsupervised."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "kitchen",
+  "line": "I'm making my exit now. Do behave yourselves."
+ },
+ {
+  "world": "s",
+  "here": "room-rose",
+  "to": "room-gold",
+  "line": "Right then, darlings, I'm off to The Gold Room — do try not to have all the fun without me."
+ },
+ {
+  "world": "s",
+  "here": "room-rose",
+  "to": "room-gold",
+  "line": "If anyone needs me, I shall be holding court in the gold and black double down the corridor."
+ },
+ {
+  "world": "s",
+  "here": "room-rose",
+  "to": "room-gold",
+  "line": "I've had quite enough of this wallpaper for one evening, so I'm taking myself somewhere far grander."
+ },
+ {
+  "world": "s",
+  "here": "room-rose",
+  "to": "room-gold",
+  "line": "Well, this has been delightful, but I hear a very large drink calling my name."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "alex-room",
+  "line": "Right, I'm heading down to Alex's room — come find me if anything kicks off."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "alex-room",
+  "line": "Okay, I'm gonna go shoot some content in that little shoebox at the end of the hall."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "alex-room",
+  "line": "I'm out — catch you lot later."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "alex-room",
+  "line": "Just going to see Alex, back in a bit."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "room-gold",
+  "line": "Alright, I'm heading down to the Gold Room, and if you're smart you'll follow me."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "room-gold",
+  "line": "Okay loves, I'm off to the grandest double in this whole place — gold and black, obviously."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "room-gold",
+  "line": "Right, I'm making a move — come find me when you lot finally get your act together."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "room-gold",
+  "line": "I can't stand around here any longer, so I'm going now."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "Alright, I'm heading up to The Gold Room now."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "Okay, I'm out — time to go see the grandest double."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "Welp, guess I'm off to the gold and black one."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "room-gold",
+  "line": "Right, I'm gonna go get ready in there."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "Okay, I'm out — Kitchen time, let's go."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "Right, I'm heading through to the marble showroom, catch you lot in a bit."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "Gonna go grab a bite, back soon."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "Alright, I'm off — don't miss me too much."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "front-hall",
+  "line": "Alright, I'm out — gotta go get set up in the front hall before everyone piles in there."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "front-hall",
+  "line": "Okay, I'm heading to the tiled hall now, so if you need me, that's where I'll be."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "front-hall",
+  "line": "Hey, I'm gonna go grab my spot by the doors before the rush hits."
+ },
+ {
+  "world": "s",
+  "here": "kitchen",
+  "to": "front-hall",
+  "line": "Okay, I'm taking off now, catch you guys in a bit!"
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "I am going to The Kitchen now."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "I'm heading over to the marble showroom to check on the delivery hatch."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "If anyone needs me, I'll be in the room with the hatch."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "kitchen",
+  "line": "I'm stepping out for a moment."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "front-hall",
+  "line": "I am proceeding to the Front Hall now."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "front-hall",
+  "line": "I shall take my leave and make my way to the tiled hall with the sealed double doors."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "front-hall",
+  "line": "If anyone needs me, I will be just beyond the sealed doors."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "front-hall",
+  "line": "Good evening to you all; I am going now."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-gold",
+  "line": "I am proceeding to the Gold Room now; I expect the rest of you to follow shortly."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-gold",
+  "line": "I believe I shall remove to the grand double on the upper floor and await you all there."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-gold",
+  "line": "Right, I am going on ahead to the gold and black suite to see that everything is in order."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-gold",
+  "line": "I shall take my leave of you now; do join me once you have finished here."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-green",
+  "line": "I am now departing for the Green Room; I expect to remain there for the rest of the evening."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-green",
+  "line": "If anyone requires me, I shall be in the double bedroom done in green and brass."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-green",
+  "line": "I am going to turn in now, so please keep the noise down in the corridor."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "room-green",
+  "line": "Goodnight, everyone; I am retiring for the night."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-blue",
+  "line": "I am going to The Blue Room now."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-blue",
+  "line": "I shall retire to the double bedroom in blue and white."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-blue",
+  "line": "I will take my leave and head up to that blue and white room."
+ },
+ {
+  "world": "s",
+  "here": "front-hall",
+  "to": "room-blue",
+  "line": "I am leaving now; I bid you all good evening."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "landing",
+  "line": "Right, I'm off up to the landing — five doors and not a pick between them, so wish me luck."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "landing",
+  "line": "Heading up to check on the rooms, see if anyone's claimed the good one yet."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "landing",
+  "line": "Well, I'll be off. Don't let them start the good songs without me."
+ },
+ {
+  "world": "s",
+  "here": "alex-room",
+  "to": "landing",
+  "line": "Away upstairs with me now — shout if you need anything."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "room-green",
+  "line": "Right, I'm off to the Green Room — sleep's been calling my name for the last hour and I've run out of ways to ignore it."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "room-green",
+  "line": "That's me done for the night, loves. I'm heading up to that green and brass nest of mine before I fall asleep in this chair."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "room-green",
+  "line": "I'm calling it — off to bed with me now, so say your goodnights while I'm still standing."
+ },
+ {
+  "world": "s",
+  "here": "great-room",
+  "to": "room-green",
+  "line": "Well, I've had my fill of company and songs for one evening. Don't wreck the place without me."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "Right, I'm off to The Library — the one with the leather books and that gilt mirror I keep threatening to steal."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "I'm heading out now, so behave yourselves while I'm gone."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "If anyone needs me, I'll be among the leather and the gilt, pretending to read."
+ },
+ {
+  "world": "s",
+  "here": "landing",
+  "to": "library",
+  "line": "Off I go — and no, you can't come."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "Right, I'm off to The Kitchen, so I'll see you all in a bit."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "I'm heading through to the marble showroom now — give a shout if you need me."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "Off to the delivery hatch to see if that order's come in."
+ },
+ {
+  "world": "s",
+  "here": "room-gold",
+  "to": "kitchen",
+  "line": "I'd best be going, so I would. Don't let anyone drink all the good tea while I'm away."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "great-room",
+  "line": "Right, I'm off to the big room. Anyone coming, or am I talking to myself in there?"
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "great-room",
+  "line": "I'm going to find a seat by that ridiculous window before somebody else claims it."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "great-room",
+  "line": "Sure, this lot won't settle anywhere else, so I'll head on through and save us a spot."
+ },
+ {
+  "world": "s",
+  "here": "room-green",
+  "to": "great-room",
+  "line": "Come on, up you get. There's a fire waiting and I've no intention of missing it."
+ }
+]

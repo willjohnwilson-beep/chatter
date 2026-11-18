@@ -1,8 +1,8 @@
 """Does a character's offer or condition ("knock on and I'll come and look") start a departure that was never meant?
 
 (Result: no. The conditional line started nothing in 12 of 12 runs by either path. The real fault was an offer to go together being registered as the speaker's own departure: see exp_offer_go.py.
-Kept as a check that conditional offers stay quiet. "coffee" and "now_player" never reach the model, because the cheap words gate in `_announced_moves` does not pass them: "nipping" is not in GOING_RE, and
-"toolbag"/"round" name nothing in the world; that is a separate gap.)
+Kept as a check that conditional offers stay quiet. "coffee" and "now_player" used to be blocked by the cheap word gate in `_announced_moves` ("nipping" was not a going phrase, and "toolbag"/"round" named nothing in the
+world); the gate was widened (see exp_gate.py) and "coffee" now registers 11 of 11. "now_player" still does not: it names no place, and the check sees only this exchange, not the earlier talk about number 9.)
 
 In a Marlbeck test play, Tom (the joiner at number 7) said to Sam, who had come to his gate about a sticking door and a boiler that would not start: "If it still won't have it, knock on and I'll come and look
 properly." The detector for spoken departures (`Chatter._announced_moves`) took that as Tom going to number 9, and at the end of the next exchange he left, with Sam alone in his yard.

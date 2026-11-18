@@ -5435,4 +5435,28 @@ assert "an offer or invitation that the person they are talking with should go t
 assert "if it still won't start, knock and I'll come and look" in prompt, "a conditional offer is not going either"
 print("   PASS")
 
+print("== 118. the word gate in front of the departure check lets colloquial leaving through, and still holds back talk that goes nowhere ==")
+PLACES = [{"name": "The Wheatsheaf", "brief": "low-beamed stone pub", "description": "A low stone pub with black beams and a dartboard."},
+          {"name": "St Oswald's Churchyard", "brief": "grey church and graveyard", "description": "A squat grey Norman church with a yew."},
+          {"name": "Market Square", "brief": "cobbled square", "description": "A cobbled square with a war memorial."},
+          {"name": "9 Tanner's Row", "brief": "the player's new terraced house", "description": "A narrow terrace with a blue door."}]
+vocab = ch.place_vocab(PLACES)
+assert "pub" in vocab and "wheatsheaf" in vocab and "the" not in vocab and "old" not in vocab, "three-letter words of a place's name and brief count ('pub'), the common ones do not"
+assert ch.shares_a_place_word("I'll say a prayer in church", vocab), "the first five letters of a longer place word: church for churchyard"
+assert not ch.shares_a_place_word("Pass the salt and the bread", vocab)
+for line in ("I'm just nipping to the square for a coffee.", "I'm popping over to the pub, anyone want anything?", "Right, I'm off to church.", "Yes, I'll get my toolbag and come round yours.",
+             "Time I showed my face at the market.", "I'd best be getting along to the churchyard.", "If anyone wants me, I'll be at the pub.", "Going out to the garden for a bit.",
+             "I'm heading home, my feet are killing me.", "I'll go and check the churchyard.", "Popping to the shop for a minute.", "I must dash, I've a pie in the oven."):
+    assert ch.going_gate(line, vocab), line
+for line in ("I'll go and have a little think.", "I'm going to need another tea.", "I'll have the soup, please.", "I'll be honest with you, I don't know.", "Let me think about that.",
+             "That's me done. See you later.", "Good day to you all.", "I'll go with the pie.", "Four hours, and nobody knew where we were going."):
+    assert not ch.going_gate(line, vocab), line
+store, world, c = off_world()
+f = install(moves=MV())
+c._announced_moves(MODELS, said(("wren", "I'm just nipping out to the cellar.")))
+assert f.kinds().count("moves") == 1
+prompt = next(kw for k, kw in f.calls if k == "moves")["messages"][0]["content"]
+assert "Never guess a destination" in prompt and "'yours' or 'your place'" in prompt
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")
