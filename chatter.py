@@ -110,6 +110,11 @@ GENERIC_PLACE_WORDS = {"room", "house", "the", "upstairs", "downstairs"}   # too
 GOING_RE = re.compile(
     r"\b(?:i'll|i will|i'm going|i am going|i'm off|i'm heading|i shall|going to|let me|off to|heading (?:to|for|off|out|over|down|up)|"
     r"(?:pop|nip|head|step|wander|slip|run|dash|walk|go) (?:in|out|over|down|up|to|into|off|back)|go and|go (?:check|look|find|see|get|fetch))", re.I)
+# An offer or invitation to go somewhere together ('come on, I'll walk you round', 'want me to come and have a look?', 'follow me'): the player's answer to it
+# ('yes please') names no place, so a line that follows one is worth asking the move check about even when no place is named.
+INVITE_RE = re.compile(
+    r"\b(?:come (?:on|with|along|round|over|and|see|have)|follow me|walk you|show you|take you|shall we|want me to (?:come|walk|show|take)|"
+    r"(?:i'll|i will|let me|i could|i can) (?:come|walk|show|take|go with)|let's|lead the way)", re.I)
 MOVES_SCHEMA = {
     "type": "object",
     "properties": {"moves": {"type": "array", "items": {"type": "object", "properties": {
@@ -802,7 +807,10 @@ class Chatter:
             "the library'), or plainly leaving for somewhere. `to` is the id of the place, and a part of a place counts as that place: "
             "something described inside the kitchen (a pantry) means the kitchen.\n"
             "- NOT a move: a plan for later ('after dinner we should check the pantry'), a suggestion or an order for someone else, a wish, "
-            "a question, a visit already made, going somewhere in the place they are already in, or a place that is not one of those listed.\n"
+            "a question, a visit already made, going somewhere in the place they are already in, or a place that is not one of those listed. "
+            "Also not a move: an offer or invitation that the person they are talking with should go too ('come on, I'll walk you round', 'want me "
+            "to come and have a look?', 'give me two minutes and I'll show you', 'shall we?'), which waits for that person's answer; and an offer "
+            "that depends on something ('if it still won't start, knock and I'll come and look').\n"
             "- Each person at most once. If nobody moves, return an empty list.\n"
             + ("- `stays` lists those ALREADY HEADING OFF who, in what was just said, have changed their mind, said they will stay or wait, or "
                "been asked or persuaded to stay. Everyone else there is still going. Leave it empty if none.\n" if pending else "")
@@ -860,7 +868,7 @@ class Chatter:
         # ('Lead on', 'Fine, I'll follow') without naming the place itself.
         # Only what people said: a stage direction ('(Imogen leaves for The Front Hall.)') is not an invitation, and took the player there once.
         before = [m for m in self.history[:-1][-4:] if m["speaker"] not in (PLAYER_ID, NARRATOR_ID) and not m.get("kind") and not m.get("private_to")]
-        if not (names_a_place(message) or any(names_a_place(m["content"]) for m in before)):
+        if not (names_a_place(message) or any(names_a_place(m["content"]) or INVITE_RE.search(m["content"]) for m in before)):
             return None
         present = [c for c in w.characters if w.is_present(c)]
         player = self._name(PLAYER_ID)
@@ -883,7 +891,9 @@ class Chatter:
             "invitation ('What's in the kitchen?', 'maybe we should try the library', 'Winifred, how is the kitchen?', 'you go ahead, "
             "I'm staying') is not going. Someone else calling for a move does not make the player go; only their own line does.\n"
             "- `to` is the id of the place they go to, or empty. When they accept an invitation, it is the place the others named just "
-            "before ('kitchen first... come on' then 'lead on' means the kitchen), never left blank.\n"
+            "before ('kitchen first... come on' then 'lead on' means the kitchen), never left blank. If the invitation named no place ('come on, I'll "
+            "walk you round', 'want me to come and have a look?' about a problem at the player's own house), it is the place the offer plainly points to "
+            "from what was said and what each place is.\n"
             "- `companions` are the people here who go WITH them: those who led or invited them there and those who plainly agreed to "
             "come ('come with me, Priya', 'let's all go'). One person calling for everyone to come ('come on, all of us') does not bring "
             "the others who have not answered; they stay where they are. So if one person says 'come on, all of us' and the player says "

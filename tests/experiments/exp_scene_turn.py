@@ -48,8 +48,8 @@ if os.environ.get("ONLY"):
 def run(case):
     said, line = CASES[case]
     d = tempfile.mkdtemp()
-    for f in ("world.json", "memories.json"):
-        shutil.copy(os.path.join(ROOT, f), os.path.join(d, f))
+    json.dump(json.load(open(os.path.join(ROOT, "scenarios/sixty.json"), encoding="utf-8"))["world"], open(os.path.join(d, "world.json"), "w", encoding="utf-8"))   # not the live world
+    open(os.path.join(d, "memories.json"), "w").write("{\"memories\": []}")
     hist = [{**m, "present": list(ALL), "loc": "great-room", "t": m.get("t", "")} for m in FIXTURE]
     hist += [{"speaker": s, "content": t, "t": hist[-1]["t"], "present": list(ALL), "loc": "great-room"} for s, t in said]
     json.dump({"history": hist, "formed_upto": 0}, open(os.path.join(d, "conversation.json"), "w", encoding="utf-8"))

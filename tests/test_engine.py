@@ -5406,4 +5406,33 @@ assert w2.player["appearance"] == "Tea down a grey shirt" and w2.character("wren
 assert world.snapshot()["player"]["appearance"] == "Tea down a grey shirt" and world.snapshot()["characters"][0]["appearance"] in ("", "Apron, a bandaged left hand")
 print("   PASS")
 
+print("== 117. an offer to go together waits for the player's answer: 'yes please' is asked about, and the offer is not a departure ==")
+store, world, c = walk_world()
+here = world.present_ids()
+f = install(premove=MOVE("kitchen", ["mick"], moves=False))
+c._append("wren", "Lift it as you push, that door. Right, give me two minutes and I'll show you rather than describe it. Come on, I'll walk you round.", here)
+c._append("player", "Yes please, that would be brilliant.", here)
+n = f.kinds().count("premove")
+c._premove(MODELS, "Yes please, that would be brilliant.")
+assert f.kinds().count("premove") - n == 1, "an offer to go together, with no place named, makes the player's 'yes' worth asking about"
+prompt = next(kw for k, kw in reversed(f.calls) if k == "premove")["messages"][0]["content"]
+assert "Come on, I'll walk you round." in prompt and "If the invitation named no place" in prompt
+store, world, c = walk_world()
+here = world.present_ids()
+f = install(premove=MOVE("kitchen", moves=False))
+c._append("wren", "Lift it as you push, that door, and thump the boiler low and left.", here)
+c._append("player", "Yes please, that would be brilliant.", here)
+c._premove(MODELS, "Yes please, that would be brilliant.")
+assert "premove" not in f.kinds(), "no offer and no place: no call"
+for line, offer in (("Come on, I'll walk you round.", True), ("Want me to come and have a look?", True), ("Give me two minutes and I'll show you.", True), ("Follow me.", True),
+                    ("Shall we?", True), ("Let me show you the workshop.", True), ("Lift as you push.", False), ("I could pop round later.", False), ("The workshop is out the back.", False)):
+    assert bool(ch.INVITE_RE.search(line)) == offer, line
+store, world, c = off_world()
+f = install(moves=MV())
+c._announced_moves(MODELS, said(("wren", "I'll go and check the cellar.")))
+prompt = next(kw for k, kw in f.calls if k == "moves")["messages"][0]["content"]
+assert "an offer or invitation that the person they are talking with should go too" in prompt and "which waits for that person's answer" in prompt
+assert "if it still won't start, knock and I'll come and look" in prompt, "a conditional offer is not going either"
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")
