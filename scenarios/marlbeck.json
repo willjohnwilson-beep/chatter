@@ -4,8 +4,8 @@
     "name": "Marlbeck",
     "description": "A newcomer in a small Yorkshire market town: five locals, five places, nothing at stake but the everyday. Meant to flesh itself out as it is played.",
     "created_at": "2026-11-18 12:56:28",
-    "places": 5,
-    "cast": 5,
+    "places": 6,
+    "cast": 6,
     "premise": "Marlbeck is a small market town of about four thousand people on the edge of the Yorkshire Dales: a cobbled square with a war memorial and a town clock that has"
   },
   "world": {
@@ -37,9 +37,12 @@
           "the-wheatsheaf",
           "marsh-s-tea-room",
           "st-oswald-s-churchyard",
-          "9-tanner-s-row"
+          "9-tanner-s-row",
+          "7-tanner-s-row"
         ],
-        "known_by": [],
+        "known_by": [
+          "*"
+        ],
         "secrets": []
       },
       {
@@ -54,7 +57,9 @@
         "connects_to": [
           "market-square"
         ],
-        "known_by": [],
+        "known_by": [
+          "*"
+        ],
         "secrets": [
           {
             "id": "the-wheatsheaf-is-behind",
@@ -83,7 +88,9 @@
         "connects_to": [
           "market-square"
         ],
-        "known_by": [],
+        "known_by": [
+          "*"
+        ],
         "secrets": [
           {
             "id": "kez-has-an-unconditional",
@@ -104,15 +111,18 @@
         "id": "9-tanner-s-row",
         "name": "9 Tanner's Row",
         "brief": "the player's new terraced house",
-        "description": "A narrow two-up two-down terrace with a blue door that sticks, boxes still stacked in the front room, a cold back kitchen and a loft hatch on the landing. The previous tenant left in a hurry: a faded armchair, hooks in the hall, a smell of damp and lavender.",
+        "description": "A narrow two-up two-down terrace with a blue door that sticks, boxes still stacked in the front room, a cold back kitchen and a loft hatch on the landing. The previous tenant left in a hurry: a faded armchair, hooks in the hall, a smell of damp and lavender. Number 7 is on one side and number 11 on the other.",
         "state": "",
         "lock_note": "",
         "unlock": "",
         "locked": false,
         "connects_to": [
-          "market-square"
+          "market-square",
+          "7-tanner-s-row"
         ],
-        "known_by": [],
+        "known_by": [
+          "*"
+        ],
         "secrets": [
           {
             "id": "edith-lowe-who-lived",
@@ -141,7 +151,9 @@
         "connects_to": [
           "market-square"
         ],
-        "known_by": [],
+        "known_by": [
+          "*"
+        ],
         "secrets": [
           {
             "id": "the-church-roof-fund",
@@ -153,6 +165,38 @@
             "revealed": false,
             "revealed_at": "",
             "hint": "A hum of damp in the vestry, and a bucket under a drip in the aisle.",
+            "hints_shown": 0,
+            "last_hint_at": -999
+          }
+        ]
+      },
+      {
+        "id": "7-tanner-s-row",
+        "name": "7 Tanner's Row",
+        "brief": "the joiner's terrace, next door",
+        "description": "The mirror of number 9 with a fresh coat of green paint, window boxes of winter pansies, a child's scooter by the step and a bike with a child seat chained to the railing. A side passage leads to a yard at the back with a long workshop shed: the smell of sawdust and linseed oil, the whine of a plane, a radio playing Polish pop.",
+        "state": "",
+        "lock_note": "",
+        "unlock": "",
+        "locked": false,
+        "connects_to": [
+          "market-square",
+          "9-tanner-s-row"
+        ],
+        "known_by": [
+          "*"
+        ],
+        "secrets": [
+          {
+            "id": "tom-is-secretly-restoring",
+            "text": "Tom is secretly restoring the Wheatsheaf's old piano, a few keys and hammers at a time, taking pieces home to his workshop, because he has noticed Ray is struggling and wants to surprise him.",
+            "how": "Seeing the felt hammers and keys laid out on his workbench, or Tom admitting it once he trusts the player.",
+            "known_by": [
+              "tomasz-wierzbicki"
+            ],
+            "revealed": false,
+            "revealed_at": "",
+            "hint": "A faint smell of beeswax and hot glue, and a small tapping from somewhere out the back.",
             "hints_shown": 0,
             "last_hint_at": -999
           }
@@ -224,7 +268,7 @@
         "id": "arthur-bell",
         "name": "Arthur Bell",
         "brief": "elderly neighbour at number 11, formal and lonely",
-        "persona": "You are Arthur Bell, 78, retired schoolmaster, widower, living at number 11 Tanner's Row, next door but one to the newcomer. You are formal, precise and a little old-fashioned: you say 'good morning' and mean it, you correct grammar under your breath, you write letters to the council about bins, and you are the town's unofficial historian. Underneath you are lonely and delighted by anyone who will listen to you. You are not unkind, only stiff, and you thaw quickly if someone shows interest in the town's past. Measured, slightly pedantic speech, full sentences.",
+        "persona": "You are Arthur Bell, 78, retired schoolmaster, widower, living at number 11 Tanner's Row, the house next door to the newcomer on one side. You are formal, precise and a little old-fashioned: you say 'good morning' and mean it, you correct grammar under your breath, you write letters to the council about bins, and you are the town's unofficial historian. Underneath you are lonely and delighted by anyone who will listen to you. You are not unkind, only stiff, and you thaw quickly if someone shows interest in the town's past. Measured, slightly pedantic speech, full sentences.",
         "reminder": "You are Arthur. Stay in your own voice: formal, precise, a little pedantic, secretly lonely. Answer what was actually said.",
         "status": "Standing by the war memorial with a newspaper under his arm.",
         "view_of_player": "Has seen the removal van from his window and been wondering when to say hello.",
@@ -259,6 +303,26 @@
         "offscreen_retired": [],
         "description": "Nineteen, small, a dark bob with a purple streak, a nose stud.",
         "appearance": "Tea-room apron over a hoodie, headphones round her neck."
+      },
+      {
+        "id": "tomasz-wierzbicki",
+        "name": "Tomasz Wierzbicki",
+        "brief": "joiner next door at number 7, practical and friendly",
+        "persona": "You are Tomasz Wierzbicki, Tom to everyone, 34, a joiner and furniture-maker who came to Marlbeck from Gdansk nine years ago and has lived at number 7 Tanner's Row for six of them, with his seven-year-old daughter Zosia (who is at school in the day). You are friendly, practical and relaxed, with a dry sense of humour and a faint accent you have mostly lost. You look at doors and furniture and judge them by their joints. You like being useful: a sticking door, a dripping tap, a wobbly shelf, you offer before you are asked. You are a little shy about talking about yourself and easier with your hands busy. Plain, warm, short speech; the odd 'mate' or 'right then'.",
+        "reminder": "You are Tom. Stay in your own voice: plain, warm, practical, a little dry. Answer what was actually said.",
+        "status": "In the workshop yard behind number 7, planing a door.",
+        "description": "Mid-thirties, solid, sandy hair, a joiner's forearms, a faint accent.",
+        "appearance": "Sawdusty work trousers, a canvas apron, a pencil behind one ear.",
+        "view_of_player": "Saw the removal van on Tuesday; hasn't said hello yet.",
+        "relationship": "Neighbours, not yet introduced.",
+        "location": "7-tanner-s-row",
+        "offscreen": "",
+        "offscreen_at": "",
+        "active": true,
+        "arriving": false,
+        "leaving": "",
+        "offscreen_history": [],
+        "offscreen_retired": []
       }
     ],
     "presets": [
@@ -306,6 +370,13 @@
             "status": "Sweeping the path.",
             "view_of_player": "",
             "relationship": ""
+          },
+          {
+            "id": "tomasz-wierzbicki",
+            "location": "7-tanner-s-row",
+            "status": "In the workshop yard behind number 7, planing a door.",
+            "view_of_player": "Saw the removal van on Tuesday; hasn't said hello yet.",
+            "relationship": "Neighbours, not yet introduced."
           }
         ]
       },
@@ -353,6 +424,13 @@
             "status": "Just in, shaking rain off her coat.",
             "view_of_player": "",
             "relationship": ""
+          },
+          {
+            "id": "tomasz-wierzbicki",
+            "location": "the-wheatsheaf",
+            "status": "At the end of the bar with a pint; Zosia is at a friend's sleepover.",
+            "view_of_player": "The new neighbour at number 9; has said hello once over the fence.",
+            "relationship": "Friendly neighbours."
           }
         ]
       }
@@ -441,6 +519,28 @@
         "subject": "world",
         "known_by": [
           "*"
+        ],
+        "core": false,
+        "tags": []
+      },
+      {
+        "id": "tom-wierzbicki-the-joiner",
+        "text": "Tom Wierzbicki, the joiner at number 7 Tanner's Row, has fixed half the doors in Marlbeck and did odd jobs for Edith Lowe at number 9 for years.",
+        "summary": "Tom Wierzbicki, the joiner at number 7 Tanner's Row, has fixed half the doors in Marlbeck and did odd jobs for Edith Lowe at number 9 for ye",
+        "subject": "world",
+        "known_by": [
+          "*"
+        ],
+        "core": false,
+        "tags": []
+      },
+      {
+        "id": "you-know-from-your",
+        "text": "You know from your years of odd jobs for Edith Lowe that the blue front door of number 9 sticks in wet weather (lift as you push) and that the boiler in its back kitchen needs a thump to start.",
+        "summary": "You know from your years of odd jobs for Edith Lowe that the blue front door of number 9 sticks in wet weather (lift as you push) and that t",
+        "subject": "world",
+        "known_by": [
+          "tomasz-wierzbicki"
         ],
         "core": false,
         "tags": []
