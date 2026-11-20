@@ -42,7 +42,7 @@ RESERVED_IDS = {PLAYER_ID, NARRATOR_ID, WORLD_ID, "*"}
 FIXED_FIELDS = ["core_instructions", "scenario", "invention", "actions"]
 # `location` (the id of the scene place) is not free text, so it is not among these.
 SCENE_FIELDS = ["fiction_time", "extras", "open_threads"]
-CHAR_STATE_FIELDS = ["status", "appearance", "view_of_player", "relationship", "location"]
+CHAR_STATE_FIELDS = ["status", "appearance", "apart", "view_of_player", "relationship", "location"]
 LOCATION_STATE_FIELDS = ["state"]
 # What the watcher may call "no defined place".
 OFFSTAGE_WORDS = {"", "none", "nowhere", "away", "offstage", "off-stage", "elsewhere", "unknown"}
@@ -98,6 +98,12 @@ GUIDANCE = {
         "stands, keeping whatever still holds. Write it as a plain noun phrase with no pronouns (the person's gender may not be given). Record "
         "a change only once it has happened, not when someone says they will do it ('I'll nip home and change' changes nothing yet), and never invent one that was not said or shown or record "
         "something concealed. Max 15 words."
+    ),
+    "apart": (
+        "Whether a character who is in the scene is OUT OF EARSHOT: 'true' when they are across the place, busy at another stall, or have drifted off, so that talk "
+        "at a normal volume would not carry to them and they are not part of the conversation; 'false' when they are close enough to hear and join in. Change it "
+        "only when the story moves someone nearer or further (the player goes over to them or away from them, someone comes over to talk, someone wanders off), never "
+        "because someone is quiet or has nothing to say. Value 'true' or 'false'."
     ),
     "view_of_player": (
         "That character's READING of the player: their apparent condition and "
@@ -326,6 +332,7 @@ def _norm_character(c: dict, taken: set[str], loc_ids: set[str], here: str) -> d
     out.update({k: v for k, v in c.items() if k in out})
     out["active"] = bool(c.get("active", True))  # has a life while out of sight
     out["arriving"] = bool(c.get("arriving", False))  # hidden: on their way to the scene
+    out["apart"] = bool(c.get("apart", False))  # in this place but out of earshot: sees and is seen, hears nothing, cannot join in until they come over
     out["leaving"] = str(c.get("leaving") or "")  # a place id: said they are going there; they leave at the end of the next exchange
     hist = c.get("offscreen_history") or []
     out["offscreen_history"] = [h for h in hist if isinstance(h, dict) and h.get("note")][-3:]
@@ -488,7 +495,7 @@ def _norm_preset(p: dict, taken: set[str], loc_ids: set[str], char_ids: set[str]
         seen.add(cid)
         loc = str(e.get("location") or "keep").strip()
         loc = loc if loc in loc_ids or loc == "none" else "keep"
-        cast.append({"id": cid, "location": loc,
+        cast.append({"id": cid, "location": loc, "apart": bool(e.get("apart")),
                      **{f: str(e.get(f) or "").strip() for f in PRESET_CHAR_FIELDS}})
     out["cast"] = cast
     return out
@@ -784,6 +791,14 @@ class WorldState:
         loc = c.get("location")
         return bool(loc) and loc == self.scene.get("location")
 
+    def hearing_ids(self) -> list[str]:
+        """Who is in the conversation: here, and not out of earshot. They hear every line, may answer, and remember it. (`present_ids` is who is in the place.)"""
+        return [c["id"] for c in self.characters if self.is_present(c) and not c.get("apart")]
+
+    def apart_ids(self) -> list[str]:
+        """Here in the place, but too far off to hear: visible, not part of what is said."""
+        return [c["id"] for c in self.characters if self.is_present(c) and c.get("apart")]
+
     def present_ids(self) -> list[str]:
         return [c["id"] for c in self.characters if self.is_present(c)]
 
@@ -824,6 +839,7 @@ class WorldState:
         c["offscreen_history"] = []
         c["arriving"] = False
         c["leaving"] = ""
+        c["apart"] = False
 
     def arrive_into_scene(self, cid: str) -> str:
         """A character who was on their way walks in. Returns where they came
@@ -840,6 +856,7 @@ class WorldState:
         for c in self.characters:
             c["arriving"] = False
             c["leaving"] = ""
+            c["apart"] = False
 
     def set_locations(self, locations: list[dict]) -> None:
         """Replace the places wholesale (the UI saves them as one unit). A new
@@ -983,7 +1000,7 @@ class WorldState:
             "open_threads": "\n".join(
                 ln for ln in self._thread_lines(self.scene.get("open_threads")) if self._thread_visible(ln, PLAYER_ID)
             ),
-            "cast": [{"id": c["id"], "location": c.get("location") or "none",
+            "cast": [{"id": c["id"], "location": c.get("location") or "none", "apart": bool(c.get("apart")),
                       **{f: c.get(f, "") for f in PRESET_CHAR_FIELDS}} for c in self.characters],
         }, taken, set(self.location_ids()), set(self.character_ids()))
         self.presets.append(p)
@@ -1019,6 +1036,7 @@ class WorldState:
             for f in PRESET_CHAR_FIELDS:
                 if e[f]:
                     c[f] = e[f]
+            c["apart"] = bool(e.get("apart"))
         for c in self.characters:
             self._retire(c, self._notes_of(c))  # what they did offstage is about to be discarded: keep it for memory
             c["offscreen"], c["offscreen_at"], c["offscreen_history"], c["arriving"], c["leaving"] = "", "", [], False, ""
@@ -1188,13 +1206,17 @@ class WorldState:
         if looks:
             lines.append("How the people here look (all that you know of them by sight; anything else about their past, plans or feelings you "
                          "learn only from what they say or do):\n" + "\n".join("    " + ln for ln in looks))
-        others = [o["name"] for o in self.characters if self.is_present(o) and o["id"] != viewer]
+        others = [o["name"] for o in self.characters if self.is_present(o) and not o.get("apart") and o["id"] != viewer]
+        far = [o for o in self.characters if self.is_present(o) and o.get("apart") and o["id"] != viewer]
         extras = [ln.strip() for ln in (self.scene.get("extras") or "").splitlines() if ln.strip()]
         if multi and viewer != PLAYER_ID:
             roster = [player] + others + extras
             lines.append("Also here: " + ", ".join(roster))
         elif extras:
             lines.append("Others around: " + ", ".join(extras))
+        if far:
+            lines.append("In this place but out of earshot (you can see them, not hear them, and they cannot hear what is said here): "
+                         + "; ".join(o["name"] + (f" ({o['status'].strip()})" if (o.get("status") or "").strip() else "") for o in far))
 
         # Where the rest of the cast are, as far as this character could know: someone in
         # a neighbouring place is known; anyone else is not, so they have nothing to
@@ -1363,7 +1385,8 @@ class WorldState:
             f"{c['id']} ({c['name']}, "
             f"{'IN the scene' if self.is_present(c) else 'not here'}; location: {c.get('location') or 'none'}):\n"
             f"    status: {c.get('status') or '(empty)'}\n"
-            f"    appearance: {c.get('appearance') or '(empty)'}\n"
+            + (f"    apart: {'true' if c.get('apart') else 'false'}\n" if self.is_present(c) else "")
+            + f"    appearance: {c.get('appearance') or '(empty)'}\n"
             f"    view_of_player: {c.get('view_of_player') or '(empty)'}\n"
             f"    relationship: {c.get('relationship') or '(empty)'}"
             for c in self.characters
@@ -1505,6 +1528,13 @@ class WorldState:
                 if arriving:
                     self._arrive(c)
                 record(c["id"], c["name"], "location", self.place_name(new), u["why"], before)
+            elif field == "apart":
+                v = str(value).strip().lower()
+                flag = True if v in {"true", "yes", "1", "far", "apart", "out of earshot"} else False if v in {"false", "no", "0", "near", "close", "within earshot"} else None
+                if flag is None or flag == bool(c.get("apart")) or not self.is_present(c):
+                    continue
+                c["apart"] = flag
+                record(c["id"], c["name"], "apart", "out of earshot" if flag else "within earshot", u["why"], "out of earshot" if not flag else "within earshot")
             elif field in CHAR_STATE_FIELDS:
                 before = c.get(field, "")
                 if value.strip() == before.strip():

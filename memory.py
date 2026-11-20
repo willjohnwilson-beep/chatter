@@ -173,7 +173,7 @@ MAX_PLACES = 3
 # character) or a character about themselves establish it. The author can CONFIRM a claim.
 AUTHORED = ("place", "seed")   # memories the author wrote (a place, a seeded fact): play never edits, merges or deletes them
 PRIORITY = {"confirmed": 5, "scene": 4, "observed": 3, "player": 3, "self": 2, "stance": 2, "claim": 1, "": 0}
-_NOTICE = ("move", "depart", "arrive", "discover", "aside")
+_NOTICE = ("move", "depart", "arrive", "discover", "aside", "approach")
 
 
 def _provenance(line: dict | None, subject: str) -> tuple[str, str]:
@@ -1062,7 +1062,7 @@ def _line(turn: dict, names: dict) -> str:
     if pt:
         who += f" (privately, only {names.get(pt, pt)} hears)"
     stamp = f"[{turn['t']}] " if turn.get("t") else ""
-    if turn.get("kind") in ("move", "depart", "arrive", "discover"):  # a stage direction, not something anyone said
+    if turn.get("kind") in ("move", "depart", "arrive", "discover", "approach"):  # a stage direction, not something anyone said
         return f"{stamp}{turn['content']}"
     return f"{stamp}{who}: {turn['content']}"
 

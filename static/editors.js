@@ -37,6 +37,7 @@ function charCardHtml(c, idx) {
       <textarea class="c-reminder one">${esc(c.reminder || "")}</textarea></div>
     <div class="field"><label>Doing right now<span class="changed c-ch-status"></span></label>
       <input type="text" class="c-status" value="${esc(c.status || "")}"></div>
+    <div class="field"><label><input type="checkbox" class="c-apart" ${c.apart ? "checked" : ""}> Out of earshot (in the place, but too far off to hear: takes no part, and remembers nothing said, until they come over)<span class="changed c-ch-apart"></span></label></div>
     <div class="field"><label><input type="checkbox" class="c-active" ${c.active !== false ? "checked" : ""}> Has a life while out of sight</label></div>
     ${EDIT.live ? `<div class="field"><label>Offscreen: what they're up to (hidden from the story)<span class="changed c-ch-offscreen"></span></label>
       <input type="text" class="c-offscreen" value="${esc(c.offscreen || "")}"></div>` : ""}
@@ -60,7 +61,7 @@ function renderCast(changes) {
   // don't clobber a card the user is typing in
   if (holder.contains(document.activeElement) && !changes) return;
   holder.innerHTML = W.characters.map((c, i) => charCardHtml(c, i)).join("");
-  const field = { status: "status", appearance: "appearance", view_of_player: "view_of_player", relationship: "relationship", location: "location" };
+  const field = { status: "status", appearance: "appearance", apart: "apart", view_of_player: "view_of_player", relationship: "relationship", location: "location" };
   for (const ch of changes || []) {
     if (ch.target === "player") {
       const pm = document.getElementById("player-appearance-changed");
@@ -98,6 +99,7 @@ function collectCast() {
     location: card.querySelector(".c-location").value,
     status: card.querySelector(".c-status").value,
     active: card.querySelector(".c-active").checked,
+    apart: card.querySelector(".c-apart").checked,
     offscreen: card.querySelector(".c-offscreen")?.value ?? "",
     view_of_player: card.querySelector(".c-view").value,
     relationship: card.querySelector(".c-rel").value,
@@ -328,7 +330,8 @@ function presetCardHtml(p, idx) {
         style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
       <span style="width:64px;color:${colorOf(c.id)}">${esc(c.name)}</span>
       <select class="pc-loc" style="width:150px">${placeSel(e.location, extra)}</select>
-      <input type="text" class="pc-status" placeholder="doing (blank = keep)" value="${esc(e.status || "")}" style="flex:1"></div>`;
+      <input type="text" class="pc-status" placeholder="doing (blank = keep)" value="${esc(e.status || "")}" style="flex:1">
+      <label title="Out of earshot: in the place but too far off to hear, until they come over" style="white-space:nowrap"><input type="checkbox" class="pc-apart" ${e.apart ? "checked" : ""}> far</label></div>`;
   }).join("");
   return `<div class="char-card preset-card" data-id="${esc(p.id || "")}" style="border-left-color:${color}">
     <div class="head">
@@ -383,7 +386,7 @@ function collectPresets() {
     extras: card.querySelector(".ps-extras").value,
     open_threads: card.querySelector(".ps-threads").value,
     cast: [...card.querySelectorAll(".pc-row")].map(r => ({
-      id: r.dataset.id, location: r.querySelector(".pc-loc").value, status: r.querySelector(".pc-status").value,
+      id: r.dataset.id, location: r.querySelector(".pc-loc").value, status: r.querySelector(".pc-status").value, apart: r.querySelector(".pc-apart").checked,
       view_of_player: r.dataset.view, relationship: r.dataset.rel,
     })),
   })).filter(p => p.name.trim());

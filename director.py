@@ -82,6 +82,7 @@ def decide(
     offstage: list[str] | None = None,
     arriving: list[dict] | None = None,
     hints: list[dict] | None = None,
+    apart: list[dict] | None = None,
 ) -> tuple[list[dict], str, dict, list[str], list[dict]]:
     """Pick who speaks, in order.
 
@@ -92,10 +93,12 @@ def decide(
     `hints`: [{"id", "hint"}], atmosphere the author wrote about things hidden at this
     place (the hidden facts themselves are never given here). One may be let through
     to one chosen speaker.
+    `apart`: [{"id", "name", "status"}], in this place but out of earshot: they cannot take part in what is said, and can be a speaker only by coming over to engage
+    the player (at most one is kept, and the engine narrates it).
     `cap` is a ceiling, not a target: how many speak is the director's call.
     Returns (speakers, reason, usage, arrivals, foreshadow); each speaker is
     {"id", "cue", "weight"} and each foreshadow entry {"id", "to"}."""
-    ids = [r["id"] for r in roster]
+    ids = [r["id"] for r in roster] + [a["id"] for a in apart or []]
     lines = []
     for r in roster:
         if r["id"] == NARRATOR:
@@ -116,7 +119,12 @@ def decide(
         "Your only job is to decide who speaks next, and in what order, in "
         f"response to what was just said. The player is {player_name}; the "
         "player is never one of the speakers.\n\n"
-        "WHO COULD SPEAK:\n" + "\n".join(lines) + "\n\n"
+        "WHO COULD SPEAK:\n" + ("\n".join(lines) or "(nobody is within earshot)") + "\n\n"
+        + (
+            "OUT OF EARSHOT (in this place but too far off to hear a conversation at a normal volume; they take no part in what is said):\n"
+            + "\n".join(f"- {a['id']} ({a['name']})" + (f" [right now: {a['status']}]" if a.get("status") else "") for a in apart) + "\n\n"
+            if apart else ""
+        ) +
         f"THE SCENE:\n{scene_text or '(no scene notes)'}\n\n"
         + (
             "FORESHADOWING (optional atmosphere the author wrote; the hidden things themselves "
@@ -140,6 +148,14 @@ def decide(
         "invite a reaction, one person's is enough). "
         f"Never more than {cap}, and never everyone just because they are present. A character who has "
         "nothing to add stays out.\n"
+        + (
+            "- People OUT OF EARSHOT cannot hear this exchange and never chime in on it. The one exception: one of them may come over to engage "
+            f"{player_name} (list them as a speaker; they will be shown walking over first). Do that only when they plausibly would right now: "
+            f"{player_name} went up to them, called out to them, or did something that draws attention across the place, or their own situation "
+            "says they are about to say hello to someone new. At most ONE, usually nobody. If nobody comes over, only the people who can "
+            "hear may answer, and if nobody can hear, return no speakers (the narrator, if listed, may describe the scene).\n"
+            if apart else ""
+        ) +
         "- Someone addressed by name, by the player or by another character in the last few lines, "
         "who has not answered yet, speaks, and goes first.\n"
         "- A spoken question, greeting or invitation is meant for the people here, so somebody answers "
@@ -194,9 +210,15 @@ def decide(
     result = json.loads(llm.text(response))
 
     speakers, last = [], None
+    far = {a["id"] for a in apart or []}
+    came = False
     for s in result["speakers"]:
         if s["id"] not in ids or s["id"] == last:
             continue
+        if s["id"] in far:   # out of earshot: only one may come over, and only if the roster says so
+            if came:
+                continue
+            came = True
         speakers.append({"id": s["id"], "cue": s["cue"].strip(), "weight": s.get("weight") if s.get("weight") in WEIGHTS else ""})
         last = s["id"]
         if len(speakers) >= cap:

@@ -93,6 +93,8 @@ class Fake:
             kind = "discover"
         elif "Rewrite THE NEXT LINE as one standalone" in first:
             kind = "rewrite"
+        elif "Write ONE short stage direction" in first:
+            kind = "approach"
         else:
             kind = "character"
         self.calls.append((kind, kw))
@@ -109,6 +111,7 @@ class Fake:
                              else json.dumps({"goes": True, "why": ""}) if kind == "goes"
                              else json.dumps({"companions": []}) if kind == "comes"
                              else first.split("THE NEXT LINE:\n")[1].split("\n\nRewrite")[0] if kind == "rewrite"   # unchanged
+                             else "(Someone crosses the place to talk.)" if kind == "approach"
                              else f"reply-{self.n}")
         out = h(kw) if callable(h) else h
         return text_resp(out if isinstance(out, str) else json.dumps(out))
@@ -5457,6 +5460,114 @@ c._announced_moves(MODELS, said(("wren", "I'm just nipping out to the cellar."))
 assert f.kinds().count("moves") == 1
 prompt = next(kw for k, kw in f.calls if k == "moves")["messages"][0]["content"]
 assert "Never guess a destination" in prompt and "'yours' or 'your place'" in prompt
+print("   PASS")
+
+print("== 119. out of earshot: someone in the place who cannot hear takes no part, remembers nothing said, and comes over (with a line) before they speak ==")
+store, world, c = make([WREN, MICK, SAM])
+for cid in ("wren", "mick", "sam"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+assert world.present_ids() == ["wren", "mick", "sam"] == world.hearing_ids() and world.apart_ids() == [], "everyone hears unless marked"
+world.character("mick")["apart"], world.character("mick")["status"] = True, "Sitting at the far end of the bar"
+world.character("sam")["apart"] = True
+assert world.present_ids() == ["wren", "mick", "sam"] and world.hearing_ids() == ["wren"] and world.apart_ids() == ["mick", "sam"]
+sc = world.render_scene("wren")
+assert "Also here: Alex" in sc and "Mick" not in sc.split("Also here")[1].split("\n")[0], "the roster of who is in the conversation leaves them out"
+assert "In this place but out of earshot" in sc and "Mick (Sitting at the far end of the bar)" in sc and "Sam" in sc.split("out of earshot")[1]
+assert c.candidates() == ["wren"], "only those within earshot can speak"
+# what is said is stamped for those who hear it, so the others never see it and form nothing from it
+install(character="hello", watch={"updates": []}, director=DIR96)
+r = c.turn("Morning, all.", MODELS)
+assert c.history[0]["present"] == ["wren"] and c.history[1]["present"] == ["wren"], [m["present"] for m in c.history]
+assert not any("Morning, all." in m["content"] for m in c.viewer_messages("mick")), "Mick did not hear it"
+# the director: told who is out of earshot; one may come over, and only one
+f = install(character="hi there", watch={"updates": []}, director={"speakers": [{"id": "mick", "cue": "says hello to the newcomer"}, {"id": "sam", "cue": "also"}, {"id": "wren", "cue": ""}], "reason": "x"})
+store, world, c = make([WREN, MICK, SAM])
+for cid in ("wren", "mick", "sam"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+world.character("mick")["apart"] = world.character("sam")["apart"] = True
+r = c.turn("*looks around the room*", MODELS)
+prompt = next(kw for k, kw in f.calls if k == "director")["messages"][0]["content"]
+assert "OUT OF EARSHOT" in prompt and "- mick (Mick)" in prompt and "- sam (Sam)" in prompt and "one of them may come over" in prompt and "- wren (Wren)" in prompt.split("OUT OF EARSHOT")[0]
+assert [x["speaker"] for x in r["replies"]] == ["narrator", "mick", "wren"], [x["speaker"] for x in r["replies"]]
+assert world.character("mick")["apart"] is False and world.character("sam")["apart"] is True, "only the first of them came over"
+beat = next(m for m in c.history if m.get("kind") == "approach")
+assert beat["approach"] == "mick" and beat["content"].startswith("(") and set(beat["present"]) == {"wren", "mick", "sam"}, beat
+assert c.history.index(beat) < next(i for i, m in enumerate(c.history) if m["speaker"] == "mick"), "the line comes before they speak"
+assert c.history[0]["present"] == ["wren", "mick"], "they have caught what was said this turn, which is what drew them"
+assert any(kw for k, kw in f.calls if k == "approach") and "Mick" in next(kw for k, kw in f.calls if k == "approach")["messages"][0]["content"]
+assert "Sitting at the far end" not in c.recent_text("mick") and "(" in c.recent_text("mick"), "characters see it as a stage direction"
+# calling to someone out of earshot by name brings them over, whatever the director chose
+store, world, c = make([WREN, MICK, SAM])
+for cid in ("wren", "mick", "sam"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+world.character("sam")["apart"] = True
+install(character="coming", watch={"updates": []}, director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"})
+r = c.turn("Sam, are you there?", MODELS)
+assert [x["speaker"] for x in r["replies"]][:2] == ["narrator", "sam"] and world.character("sam")["apart"] is False, [x["speaker"] for x in r["replies"]]
+# nobody within earshot, the narrator on: it answers, so the turn is not empty; narrator off: no one replies
+store, world, c = make([WREN, MICK], narrator=True)
+for cid in ("wren", "mick"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+    world.character(cid)["apart"] = True
+install(character="The market hums.", watch={"updates": []}, director={"speakers": [], "reason": "nobody hears"})
+r = c.turn("*wanders about*", MODELS)
+assert [x["speaker"] for x in r["replies"]] == ["narrator"], r["replies"]
+store, world, c = make([WREN, MICK])
+for cid in ("wren", "mick"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+    world.character(cid)["apart"] = True
+install(character="x", watch={"updates": []}, director={"speakers": [], "reason": "nobody hears"})
+assert c.turn("*wanders about*", MODELS)["replies"] == [], "nobody in earshot and no narrator: nobody replies"
+# a private line to someone out of earshot is refused, and nobody is reported as leaving when only earshot changes
+store, world, c = make([WREN, MICK, SAM])
+for cid in ("wren", "mick", "sam"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+world.character("mick")["apart"] = True
+try:
+    c.turn("psst", MODELS, to="mick")
+    assert False, "should refuse"
+except ValueError as e:
+    assert "out of earshot" in str(e)
+f = install(character="hello", director=DIR96, watch={"updates": [{"target": "sam", "field": "apart", "value": "true", "why": "wanders off"}]})
+r = c.turn("Hello.", MODELS)
+assert world.character("sam")["apart"] is True and not any(m.get("kind") in ("depart", "arrive") for m in c.history), "drifting out of earshot is not leaving"
+# the watcher keeps it up to date, both ways; someone brought back is shown coming over, and a value it cannot read changes nothing
+f = install(character="hello", director=DIR96, watch={"updates": [{"target": "sam", "field": "apart", "value": "false", "why": "Alex walks over to Sam"},
+                                                                    {"target": "mick", "field": "apart", "value": "maybe", "why": "x"}]})
+r = c.turn("*I walk over to Sam*", MODELS)
+assert world.character("sam")["apart"] is False and world.character("mick")["apart"] is True
+assert any(x.get("approach") == "sam" for x in r["replies"]) and any(m.get("kind") == "approach" and m["approach"] == "sam" for m in c.history), "a line says they came over"
+assert [x["field"] for x in r["scene_changes"] if x["target"] == "sam"] == ["apart"] and r["scene_changes"][0]["value"] == "within earshot"
+prompt = next(kw for k, kw in f.calls if k == "watch")["messages"][0]["content"]
+assert "apart: true" in prompt and "- apart: Whether a character who is in the scene is OUT OF EARSHOT" in prompt
+assert "apart" in next(kw for k, kw in f.calls if k == "watch")["output_config"]["format"]["schema"]["properties"]["updates"]["items"]["properties"]["field"]["enum"]
+# a move of the scene, or a walk into it, brings everyone into one conversation again
+store, world, c = make([WREN, MICK, SAM])
+world.set_locations([{"id": "salt-line", "name": "The Salt Line", "connects_to": ["kitchen"]}, {"id": "kitchen", "name": "The Kitchen", "connects_to": ["salt-line"]}])
+for cid in ("wren", "mick", "sam"):
+    world.character(cid)["location"] = world.scene["location"] = "salt-line"
+world.character("mick")["apart"] = True
+world.move_scene("kitchen", ["wren", "mick"])
+assert world.character("mick")["apart"] is False
+world.character("sam")["location"], world.character("sam")["apart"] = "", True
+world.character("sam")["location"] = "salt-line"
+world._arrive(world.character("sam"))
+assert world.character("sam")["apart"] is False
+# presets: the author says who starts out of earshot; capturing the scene keeps it
+store, world, c = make([WREN, MICK, SAM])
+world.set_presets([{"name": "Market", "location": "salt-line", "cast": [{"id": "wren", "location": "salt-line"}, {"id": "mick", "location": "salt-line", "apart": True}]}])
+pid = world.presets[0]["id"]
+assert world.presets[0]["cast"][1]["apart"] is True and world.presets[0]["cast"][0]["apart"] is False
+world.character("wren")["apart"] = True
+world.apply_preset(pid)
+assert world.character("mick")["apart"] is True and world.character("wren")["apart"] is False, "the preset says who is far and who is near"
+cap = world.capture_preset("Now")
+assert [e["apart"] for e in cap["cast"] if e["id"] in ("wren", "mick")] == [False, True]
+old = os.path.join(tmp, "oldapart.json")
+json.dump({"fixed": {}, "scene": {}, "characters": [{"name": "Wren"}], "narrator": {}, "player": {}}, open(old, "w"))
+assert st.WorldState(old).characters[0]["apart"] is False, "a world file from before has nobody out of earshot"
+tmpl = ui_text()
+assert 'class="c-apart"' in tmpl or "c-apart" in tmpl and "pc-apart" in tmpl and "Out of earshot" in tmpl and "c.present && !c.apart" in tmpl
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")

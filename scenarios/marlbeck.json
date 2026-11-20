@@ -211,6 +211,8 @@
         "persona": "You are Maureen Marsh, known to everyone as Mo, 63, who has run Marsh's Tea Room for thirty-one years. Born in Marlbeck, widowed, with a daughter in Leeds. You are warm, chatty, nosy and entirely without malice: you ask questions because you want to look after people, you press tea and scones on them, and you know who is related to whom, who fell out in 1998 and why. Plain Yorkshire speech ('love', 'give over', 'nowt'). You mean well and sometimes say too much, and you are quietly proud of the town and quietly worried it is shrinking. You take to newcomers who are friendly and mind their manners.",
         "reminder": "You are Mo Marsh. Stay in your own voice: warm, chatty, nosy, plain Yorkshire. Answer what was actually said.",
         "status": "Wiping down the counter at the caf\u00e9.",
+        "description": "Small and round-faced, grey curls, forearms like a baker's, sixty-three.",
+        "appearance": "Flowery apron over a cardigan, flour on one sleeve.",
         "view_of_player": "Has heard there is a new face at number 9 but not met them yet.",
         "relationship": "Strangers.",
         "location": "marsh-s-tea-room",
@@ -218,11 +220,10 @@
         "offscreen_at": "",
         "active": true,
         "arriving": false,
+        "apart": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": [],
-        "description": "Small and round-faced, grey curls, forearms like a baker's, sixty-three.",
-        "appearance": "Flowery apron over a cardigan, flour on one sleeve."
+        "offscreen_retired": []
       },
       {
         "id": "ray-duckworth",
@@ -231,6 +232,8 @@
         "persona": "You are Ray Duckworth, 58, landlord of the Wheatsheaf for twenty years, before that a long time at sea. You are dry, laconic and deadpan, with a talent for saying very little and being funny by accident. You judge people by whether they listen, tip fairly and leave the dartboard alone. You do not gossip but you hear everything, and you will answer a direct question honestly if it is a fair one. You have a soft spot for the pub's regulars and for the underdog. Short sentences, northern, few words.",
         "reminder": "You are Ray. Stay in your own voice: dry, laconic, few words. Answer what was actually said.",
         "status": "Changing a barrel in the cellar.",
+        "description": "Broad and weathered, close-cropped grey hair, a faded anchor tattoo on one forearm, late fifties.",
+        "appearance": "Shirtsleeves rolled, a bar towel over one shoulder.",
         "view_of_player": "Not met them yet.",
         "relationship": "Strangers.",
         "location": "the-wheatsheaf",
@@ -238,11 +241,10 @@
         "offscreen_at": "",
         "active": true,
         "arriving": false,
+        "apart": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": [],
-        "description": "Broad and weathered, close-cropped grey hair, a faded anchor tattoo on one forearm, late fifties.",
-        "appearance": "Shirtsleeves rolled, a bar towel over one shoulder."
+        "offscreen_retired": []
       },
       {
         "id": "chloe-whitcombe",
@@ -251,6 +253,8 @@
         "persona": "You are the Reverend Chloe Whitcombe, 41, vicar of St Oswald's for two and a half years. Before that you were a solicitor in Manchester, so you are brisk, organised and quick, with a dry sense of humour and no patience for pomposity. You came here as an outsider and still feel a bit like one, so you are especially kind to newcomers and honest about how the town takes getting used to. You are not preachy: you talk about the roof, the bell-ringers and the weather more than God unless asked. Southern accent, contractions, quick sentences.",
         "reminder": "You are Chloe. Stay in your own voice: brisk, funny, kind, not preachy. Answer what was actually said.",
         "status": "Clearing leaves off the church path with a broom.",
+        "description": "Tall, short dark hair, a quick walk, forty-one.",
+        "appearance": "Dog collar under a waxed jacket, muddy wellies.",
         "view_of_player": "Not met them yet but has heard about them.",
         "relationship": "Strangers.",
         "location": "st-oswald-s-churchyard",
@@ -258,11 +262,10 @@
         "offscreen_at": "",
         "active": true,
         "arriving": false,
+        "apart": false,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": [],
-        "description": "Tall, short dark hair, a quick walk, forty-one.",
-        "appearance": "Dog collar under a waxed jacket, muddy wellies."
+        "offscreen_retired": []
       },
       {
         "id": "arthur-bell",
@@ -271,6 +274,8 @@
         "persona": "You are Arthur Bell, 78, retired schoolmaster, widower, living at number 11 Tanner's Row, the house next door to the newcomer on one side. You are formal, precise and a little old-fashioned: you say 'good morning' and mean it, you correct grammar under your breath, you write letters to the council about bins, and you are the town's unofficial historian. Underneath you are lonely and delighted by anyone who will listen to you. You are not unkind, only stiff, and you thaw quickly if someone shows interest in the town's past. Measured, slightly pedantic speech, full sentences.",
         "reminder": "You are Arthur. Stay in your own voice: formal, precise, a little pedantic, secretly lonely. Answer what was actually said.",
         "status": "Standing by the war memorial with a newspaper under his arm.",
+        "description": "Thin and upright, white moustache, seventy-eight, a precise way of standing.",
+        "appearance": "Tweed jacket and tie, flat cap, a folded newspaper under one arm.",
         "view_of_player": "Has seen the removal van from his window and been wondering when to say hello.",
         "relationship": "Neighbours, not yet introduced.",
         "location": "market-square",
@@ -278,11 +283,10 @@
         "offscreen_at": "",
         "active": true,
         "arriving": false,
+        "apart": true,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": [],
-        "description": "Thin and upright, white moustache, seventy-eight, a precise way of standing.",
-        "appearance": "Tweed jacket and tie, flat cap, a folded newspaper under one arm."
+        "offscreen_retired": []
       },
       {
         "id": "kez-dunmore",
@@ -291,6 +295,8 @@
         "persona": "You are Keziah Dunmore, Kez to everyone, 19, who works in Mo's caf\u00e9 five days a week. You grew up here and are sharp, sardonic, funny and slightly bored by Marlbeck, though you would defend it against anyone from outside. You are the one who tells newcomers the truth about the place: which pub to avoid, why the bus is useless, what the weird noticeboard notices really mean. Modern slang, quick comebacks, headphones round your neck. You like people who are not boring and who treat you as an equal.",
         "reminder": "You are Kez. Stay in your own voice: sardonic, quick, honest. Answer what was actually said.",
         "status": "On her break, sitting on the steps of the war memorial with a mug and her headphones round her neck.",
+        "description": "Nineteen, small, a dark bob with a purple streak, a nose stud.",
+        "appearance": "Tea-room apron over a hoodie, headphones round her neck.",
         "view_of_player": "Heard about the new person from Mo, who has talked of little else.",
         "relationship": "Strangers.",
         "location": "market-square",
@@ -298,11 +304,10 @@
         "offscreen_at": "",
         "active": true,
         "arriving": false,
+        "apart": true,
         "leaving": "",
         "offscreen_history": [],
-        "offscreen_retired": [],
-        "description": "Nineteen, small, a dark bob with a purple streak, a nose stud.",
-        "appearance": "Tea-room apron over a hoodie, headphones round her neck."
+        "offscreen_retired": []
       },
       {
         "id": "tomasz-wierzbicki",
@@ -320,6 +325,7 @@
         "offscreen_at": "",
         "active": true,
         "arriving": false,
+        "apart": false,
         "leaving": "",
         "offscreen_history": [],
         "offscreen_retired": []
@@ -337,29 +343,17 @@
         "open_threads": "",
         "cast": [
           {
-            "id": "arthur-bell",
-            "location": "market-square",
-            "status": "By the war memorial with a newspaper.",
-            "view_of_player": "",
-            "relationship": ""
-          },
-          {
             "id": "maureen-marsh",
             "location": "marsh-s-tea-room",
+            "apart": false,
             "status": "Behind the counter.",
-            "view_of_player": "",
-            "relationship": ""
-          },
-          {
-            "id": "kez-dunmore",
-            "location": "market-square",
-            "status": "On her break on the memorial steps with a mug.",
             "view_of_player": "",
             "relationship": ""
           },
           {
             "id": "ray-duckworth",
             "location": "the-wheatsheaf",
+            "apart": false,
             "status": "In the cellar.",
             "view_of_player": "",
             "relationship": ""
@@ -367,13 +361,31 @@
           {
             "id": "chloe-whitcombe",
             "location": "st-oswald-s-churchyard",
+            "apart": false,
             "status": "Sweeping the path.",
+            "view_of_player": "",
+            "relationship": ""
+          },
+          {
+            "id": "arthur-bell",
+            "location": "market-square",
+            "apart": true,
+            "status": "By the war memorial with a newspaper.",
+            "view_of_player": "",
+            "relationship": ""
+          },
+          {
+            "id": "kez-dunmore",
+            "location": "market-square",
+            "apart": true,
+            "status": "On her break on the memorial steps with a mug.",
             "view_of_player": "",
             "relationship": ""
           },
           {
             "id": "tomasz-wierzbicki",
             "location": "7-tanner-s-row",
+            "apart": false,
             "status": "In the workshop yard behind number 7, planing a door.",
             "view_of_player": "Saw the removal van on Tuesday; hasn't said hello yet.",
             "relationship": "Neighbours, not yet introduced."
@@ -391,43 +403,49 @@
         "open_threads": "",
         "cast": [
           {
-            "id": "ray-duckworth",
-            "location": "the-wheatsheaf",
-            "status": "Behind the bar.",
-            "view_of_player": "",
-            "relationship": ""
-          },
-          {
             "id": "maureen-marsh",
             "location": "the-wheatsheaf",
+            "apart": false,
             "status": "At the corner table with a sherry.",
             "view_of_player": "",
             "relationship": ""
           },
           {
-            "id": "kez-dunmore",
+            "id": "ray-duckworth",
             "location": "the-wheatsheaf",
-            "status": "Off shift, on her phone by the fire.",
-            "view_of_player": "",
-            "relationship": ""
-          },
-          {
-            "id": "arthur-bell",
-            "location": "the-wheatsheaf",
-            "status": "In his usual chair with half a bitter.",
+            "apart": false,
+            "status": "Behind the bar.",
             "view_of_player": "",
             "relationship": ""
           },
           {
             "id": "chloe-whitcombe",
             "location": "the-wheatsheaf",
+            "apart": false,
             "status": "Just in, shaking rain off her coat.",
+            "view_of_player": "",
+            "relationship": ""
+          },
+          {
+            "id": "arthur-bell",
+            "location": "the-wheatsheaf",
+            "apart": false,
+            "status": "In his usual chair with half a bitter.",
+            "view_of_player": "",
+            "relationship": ""
+          },
+          {
+            "id": "kez-dunmore",
+            "location": "the-wheatsheaf",
+            "apart": false,
+            "status": "Off shift, on her phone by the fire.",
             "view_of_player": "",
             "relationship": ""
           },
           {
             "id": "tomasz-wierzbicki",
             "location": "the-wheatsheaf",
+            "apart": false,
             "status": "At the end of the bar with a pint; Zosia is at a friend's sleepover.",
             "view_of_player": "The new neighbour at number 9; has said hello once over the fence.",
             "relationship": "Friendly neighbours."
@@ -554,8 +572,8 @@
     "player": {
       "name": "Sam",
       "description": "Sam, in their early thirties, a Londoner by accent. New to Marlbeck and a little unsure of the way round, but friendly.",
-      "background": "",
-      "appearance": "Work jacket with removal-van dust on the sleeves, jeans, trainers."
+      "appearance": "Work jacket with removal-van dust on the sleeves, jeans, trainers.",
+      "background": ""
     }
   }
 }

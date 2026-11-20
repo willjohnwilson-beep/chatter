@@ -70,7 +70,7 @@ log = logging.getLogger(__name__)
 # "event" is something on the world's schedule happening (a food drop, a vote called); it is shown to
 # the player when it happened where the scene is.
 # All are shown to a model without a speaker label.
-NOTICE_KINDS = ("move", "depart", "arrive", "discover", "event")
+NOTICE_KINDS = ("move", "depart", "arrive", "discover", "event", "approach")
 LAYOUTS = ("system", "tail")
 BID_INSTRUCTION = (
     "(Not your reply yet.) Please decide whether you want to speak. Think as {who}: given who you are, what you know and what has "
@@ -815,7 +815,7 @@ class Chatter:
     # ---------- the director ----------
 
     def candidates(self) -> list[str]:
-        ids = self.world.present_ids()
+        ids = self.world.hearing_ids()   # in the conversation: here and within earshot
         if self.world.narrator_enabled():
             ids.append(NARRATOR_ID)
         return ids
@@ -1004,7 +1004,10 @@ class Chatter:
                      "from": self.world.place_name(c.get("location")) if c.get("location") else ""}
                     for c in self.world.characters
                     if c.get("arriving") and not self.world.is_present(c) and c.get("active", True)]
-        if not cands:
+        apart = [{"id": c["id"], "name": c["name"], "status": c.get("status", "")} for c in self.world.characters
+                 if self.world.is_present(c) and c.get("apart") and c.get("active", True)]
+        apart_ids = {a["id"] for a in apart}
+        if not cands and not apart:
             # Alone: whoever has been on their way simply turns up.
             return {"speakers": [], "reason": "no one is present to answer", "bypassed": True,
                     "usage": llm.zero_usage(), "arrivals": [a["id"] for a in arriving][:1]}
@@ -1019,13 +1022,13 @@ class Chatter:
             and len(self.history) - s.get("last_hint_at", -999) >= HINT_GAP
             and any(c not in s.get("known_by", []) for c in speakers_here)
         ]
-        if len(cands) == 1 and not arriving and not hints:
+        if len(cands) == 1 and not arriving and not hints and not apart:
             return {"speakers": [{"id": cands[0], "cue": ""}], "reason": "only one possible speaker",
                     "bypassed": True, "usage": llm.zero_usage(), "arrivals": []}
         bids = None
         if self.speaker_mode == "bids" and len(speakers_here) >= 2:
             bids = self._collect_bids(cands, models)
-        if bids is not None and not arriving and not hints:
+        if bids is not None and not arriving and not hints and not apart:
             speakers, reason, usage, arrivals, foreshadow = [], "", llm.zero_usage(), [], []   # nothing left for a director to do
         else:
             roster = []
@@ -1045,6 +1048,7 @@ class Chatter:
                 offstage=offstage,
                 arriving=arriving,
                 hints=hints,
+                apart=apart,
                 roster=roster,
                 scene_text=self.world.render_scene(NARRATOR_ID),
                 recent_text=self.recent_text(None),
@@ -1055,12 +1059,18 @@ class Chatter:
             )
         if bids is not None:
             # In bids mode the speakers are the characters who each said they wanted to; a director, if there was one, only
-            # handled arrivals and hints.
+            # handled arrivals, hints and who comes over from out of earshot.
+            came_over = [s for s in speakers if s["id"] in apart_ids][:1]
             speakers, reason, u_bids = self._speakers_from_bids(bids, message)
+            speakers = came_over + speakers
             usage = {k: usage[k] + u_bids[k] for k in usage}
             chosen = {s["id"] for s in speakers}
             foreshadow = [f for f in foreshadow if f["to"] in chosen]
-        if not speakers and message is not None and self._expects_reply(message):
+        if not speakers and message is not None and cands == [NARRATOR_ID] and apart:
+            # Nobody can hear the player and nobody came over: the narrator answers, as it always did when it was the only one here, so the turn is not empty.
+            speakers = [{"id": NARRATOR_ID, "cue": "nobody here can hear the player: say what they see and do, and what goes on around them", "weight": "line"}]
+            reason = (reason + " " if reason else "") + "(fallback: nobody is in earshot, so the narrator describes)"
+        if not speakers and message is not None and cands and self._expects_reply(message):
             # The director sometimes talks itself out of an answer ("everyone is busy,
             # nobody was addressed"). A line meant for the room should get one.
             who = self._fallback_speaker(message, [c for c in cands if c != NARRATOR_ID] or cands)
@@ -1068,7 +1078,7 @@ class Chatter:
             reason = (reason + " " if reason else "") + "(fallback: the line wasn't an aside, so someone answers)"
         if message is not None:
             # Someone the player speaks to by name answers, and first, whatever the director chose.
-            named = self._addressed(message, [c for c in cands if c != NARRATOR_ID])
+            named = self._addressed(message, [c for c in cands if c != NARRATOR_ID] + [a["id"] for a in apart])   # calling to someone out of earshot brings them over
             if named:
                 have = {s["id"] for s in speakers}
                 added = [n for n in named if n not in have]
@@ -1095,7 +1105,7 @@ class Chatter:
             messages.append({"role": "system", "content": tail})
         extra = (" The narrator speaks only when the scene needs describing, a moment needs a transition, or something happens that no "
                  "character would voice." if cid == NARRATOR_ID else "")
-        n_here = len([c for c in self.world.present_ids()])
+        n_here = len([c for c in self.world.hearing_ids()])
         messages.append({"role": "user", "content": BID_INSTRUCTION.format(who=who, n=n_here, extra=extra)})
         try:
             response = llm.client().messages.create(**llm.params(
@@ -1137,6 +1147,36 @@ class Chatter:
                 chosen, note = [pool[0]], " (nobody has to: the most willing answers)"
         shown = ", ".join(f"{self._name(b['id'])} {b['urge']}" for b in sorted(bids, key=lambda b: -b["urge"]) if b["urge"])
         return [{"id": b["id"], "cue": b["cue"], "weight": b.get("weight", "")} for b in chosen], "bids: " + (shown or "nobody wants to speak") + note, usage
+
+    def _approach(self, cid: str, models: dict, start: int) -> dict:
+        """Someone out of earshot comes over to engage the player: they are in the conversation from here on, and a line says so, so that they do not appear from nowhere.
+        They have caught what was said this turn so far (it is what drew them), and everyone in the place sees them come over. Returns the usage of the narrator's line."""
+        w = self.world
+        c = w.character(cid)
+        player = self._name(PLAYER_ID)
+        c["apart"] = False
+        for m in self.history[start:]:
+            if cid not in m["present"]:
+                m["present"] = list(m["present"]) + [cid]
+        used = llm.zero_usage()
+        status = " ".join((c.get("status") or "").split())
+        prompt = (f"Write ONE short stage direction, in parentheses and the present tense, saying that {c['name']} goes over to {player} to start talking to them. "
+                  f"The place is {w.place_name(w.scene.get('location'))}. What {c['name']} was doing until now: {status or 'standing about'}."
+                  + " Say only what anyone there could see them do, using what they were doing as the way they set off. Do not list what they are wearing. No dialogue, nothing about "
+                    f"what they think or are about to say, under 20 words. Refer to {player} by name. Write only the stage direction.")
+        text = ""
+        try:   # a courtesy: without the line they still come over, with the plain one
+            r = llm.client().messages.create(**llm.params(models["state"], max_tokens=120, messages=[{"role": "user", "content": prompt}]))
+            used = llm.usage(r)
+            text = " ".join(llm.text(r).split()).strip().strip('"')
+        except Exception:  # noqa: BLE001
+            log.exception("approach line failed")
+        if not text or len(text) > 300:
+            text = f"({c['name']} comes over to {player}.)"
+        elif not text.startswith("("):
+            text = "(" + text + ")" if not text.endswith(")") else "(" + text
+        self._append(NARRATOR_ID, text, list(dict.fromkeys(w.present_ids())), approach=cid, kind="approach")
+        return used, text
 
     @staticmethod
     def _weighted_cue(sp: dict) -> str:
@@ -1723,12 +1763,13 @@ class Chatter:
         `hint` is the author's out-of-character note for these replies only (see `retry`)."""
         hint = " ".join((hint or "").split())[:600]
         names = self.world.names()
-        public = self.world.present_ids()
+        public = self.world.hearing_ids()   # who hears this line: here and within earshot
+        scene_before = self.world.present_ids()   # who is in the place (for who comes and goes)
         old_loc = self.world.scene.get("location")
         clock_before = self.world.scene.get("fiction_time", "")
         came_from = {c["id"]: c.get("location") or "" for c in self.world.characters}
         if to is not None and to not in public:
-            raise ValueError(f"{names.get(to, to)} is not in the scene")
+            raise ValueError(f"{names.get(to, to)} is " + ("out of earshot" if to in scene_before else "not in the scene"))
         private = to is not None
         audience = [to] if private else public
         self._checkpoint(message, to, notice)
@@ -1763,7 +1804,8 @@ class Chatter:
                 later, gone = gone["announced"], None
             if gone:
                 # They have walked somewhere: from here on, the people in that room are the scene.
-                public = self.world.present_ids()
+                public = self.world.hearing_ids()
+                scene_before = self.world.present_ids()
                 audience = public
                 old_loc = self.world.scene.get("location")
                 came_from = {c["id"]: c.get("location") or "" for c in self.world.characters}
@@ -1774,8 +1816,16 @@ class Chatter:
         foreshadowed: list[dict] = []
         replies = []
         u_retrieve, u_char, u_recall = llm.zero_usage(), llm.zero_usage(), llm.zero_usage()
+        u_beats = llm.zero_usage()
         for sp in decision["speakers"]:
             viewer = sp["id"]
+            if not private and (self.world.character(viewer) or {}).get("apart"):
+                u_beat, beat = self._approach(viewer, models, start)   # out of earshot until now: they come over (and a line says so) before they speak
+                u_beats = {k: u_beats[k] + u_beat[k] for k in u_beats}
+                replies.append({"speaker": NARRATOR_ID, "name": "Narrator", "content": beat, "cue": "comes over", "weight": "", "retrieved": [],
+                                "recalled_on_demand": [], "private": False, "approach": viewer})
+                public = list(public) + [viewer]
+                audience = list(audience) + [viewer]
             mem_viewer = None if viewer == NARRATOR_ID else viewer
             if self.recall_cap > 0:
                 retrieved, ur = memory.retrieve(
@@ -1822,7 +1872,14 @@ class Chatter:
             except Exception:
                 log.exception("announced moves failed")
         changes, u_state = self.world.watch(said, models["state"], present=audience, defer_leavers=self.offstage_rules and not private)
-        u_state = {k: u_state[k] + u_moves[k] for k in u_state}   # the state model's work: where everyone is
+        u_state = {k: u_state[k] + u_moves[k] + u_beats[k] for k in u_state}   # the state model's work: where everyone is, and the lines for who came over
+        for cc in changes:   # the watcher brought someone back within earshot with nobody saying so: they come over now, with a line, and speak from the next one
+            if cc["target"] != "scene" and cc["field"] == "apart" and cc["value"] == "within earshot":
+                u_late, beat = self._approach(cc["target"], models, len(self.history))
+                u_state = {k: u_state[k] + u_late[k] for k in u_state}
+                audience = list(audience) + [cc["target"]]
+                replies.append({"speaker": NARRATOR_ID, "name": "Narrator", "content": beat, "cue": "comes over", "weight": "", "retrieved": [],
+                                "recalled_on_demand": [], "private": False, "approach": cc["target"]})
         found, u_disc = [], llm.zero_usage()
         try:
             found, u_disc = self._discover(said, old_loc, audience, models["state"])
@@ -1831,11 +1888,11 @@ class Chatter:
         moved = next((c for c in changes if c["target"] == "scene" and c["field"] == "location"), None)
         after = self.world.present_ids()
         if moved:
-            self._note_scene_departure(old_loc, [c for c in public if c not in after],
-                                       [c for c in public if c in after], moved["value"])
+            self._note_scene_departure(old_loc, [c for c in scene_before if c not in after],
+                                       [c for c in scene_before if c in after], moved["value"])
         else:
-            self._note_leavers(public, after, old_loc)
-            self._note_arrivals(public, after, came_from, old_loc)
+            self._note_leavers(scene_before, after, old_loc)
+            self._note_arrivals(scene_before, after, came_from, old_loc)
         if moved:
             self._append(NARRATOR_ID, f"(The scene moves to {moved['value']}.)",
                          self.world.present_ids(), kind="move")

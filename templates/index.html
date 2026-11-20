@@ -368,7 +368,7 @@ function addSpoken(speaker, name, text, privateTo) {
 function renderSayTo() {
   const sel = document.getElementById("say-to");
   const cur = sel.value;
-  const here = (W?.characters || []).filter(c => c.present);
+  const here = (W?.characters || []).filter(c => c.present && !c.apart);
   sel.innerHTML = `<option value="">to everyone</option>`
     + here.map(c => `<option value="${esc(c.id)}">whisper to ${esc(c.name)}</option>`).join("");
   sel.value = here.some(c => c.id === cur) ? cur : "";
@@ -519,7 +519,7 @@ function renderFilter() {
 function renderCastStrip() {
   if (!W) return;
   const chips = W.characters.map(c =>
-    `<span class="chip ${c.present ? "" : "away"}" style="color:${colorOf(c.id)}" title="${c.present ? "here" : "at " + esc(placeName(c.location))}">${esc(c.name)}</span>`);
+    `<span class="chip ${c.present && !c.apart ? "" : "away"}" style="color:${colorOf(c.id)}" title="${c.present ? (c.apart ? "here, out of earshot" : "here") : "at " + esc(placeName(c.location))}">${esc(c.name)}</span>`);
   if (W.narrator.enabled) chips.push(`<span class="chip" style="color:var(--dim)">Narrator</span>`);
   document.getElementById("cast-strip").innerHTML =
     `<span>You are <b>${esc(W.player.name)}</b>, at <b>${esc(placeName(W.scene.location))}</b>. In the scene:</span> ` + chips.join("");
