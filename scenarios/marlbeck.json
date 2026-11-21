@@ -562,6 +562,50 @@
         ],
         "core": false,
         "tags": []
+      },
+      {
+        "id": "whos-who-mo-and-kez",
+        "text": "Mo Marsh has run Marsh's Tea Room on the square for thirty-one years, and her waitress is Kez Dunmore, 19, who has worked there five days a week for the last two years.",
+        "summary": "Mo Marsh has run Marsh's Tea Room on the square for thirty-one years, and her waitress is Kez Dunmore, 19, who has worked there five days a ",
+        "subject": "world",
+        "known_by": [
+          "*"
+        ],
+        "core": false,
+        "tags": []
+      },
+      {
+        "id": "whos-who-ray",
+        "text": "Ray Duckworth has been landlord of the Wheatsheaf for twenty years; he was at sea before that.",
+        "summary": "Ray Duckworth has been landlord of the Wheatsheaf for twenty years; he was at sea before that.",
+        "subject": "world",
+        "known_by": [
+          "*"
+        ],
+        "core": false,
+        "tags": []
+      },
+      {
+        "id": "whos-who-chloe",
+        "text": "The Reverend Chloe Whitcombe, a former solicitor from Manchester, has been vicar of St Oswald's for two and a half years.",
+        "summary": "The Reverend Chloe Whitcombe, a former solicitor from Manchester, has been vicar of St Oswald's for two and a half years.",
+        "subject": "world",
+        "known_by": [
+          "*"
+        ],
+        "core": false,
+        "tags": []
+      },
+      {
+        "id": "whos-who-arthur",
+        "text": "Arthur Bell is a retired schoolmaster and widower who lives at number 11 Tanner's Row, the town's unofficial historian and a regular writer of letters to the council about bins.",
+        "summary": "Arthur Bell is a retired schoolmaster and widower who lives at number 11 Tanner's Row, the town's unofficial historian and a regular writer ",
+        "subject": "world",
+        "known_by": [
+          "*"
+        ],
+        "core": false,
+        "tags": []
       }
     ],
     "narrator": {
