@@ -83,6 +83,8 @@ def decide(
     arriving: list[dict] | None = None,
     hints: list[dict] | None = None,
     apart: list[dict] | None = None,
+    narrator_rule: bool = True,
+    narrator_gap: int | None = None,
 ) -> tuple[list[dict], str, dict, list[str], list[dict]]:
     """Pick who speaks, in order.
 
@@ -95,6 +97,8 @@ def decide(
     to one chosen speaker.
     `apart`: [{"id", "name", "status"}], in this place but out of earshot: they cannot take part in what is said, and can be a speaker only by coming over to engage
     the player (at most one is kept, and the engine narrates it).
+    `narrator_rule`: with a narrator listed, tell the director what a narrator turn is for (an examined thing, something happening around the player, a
+    moment that needs marking) and, from `narrator_gap` (lines since the narrator last described something; None if it has not), how long it has been.
     `cap` is a ceiling, not a target: how many speak is the director's call.
     Returns (speakers, reason, usage, arrivals, foreshadow); each speaker is
     {"id", "cue", "weight"} and each foreshadow entry {"id", "to"}."""
@@ -104,7 +108,8 @@ def decide(
         if r["id"] == NARRATOR:
             lines.append(
                 f"- {r['id']} (Narrator) — describes the scene. Speaks only when the scene "
-                "needs description, a transition, or something happens that no character would voice."
+                "needs description, a transition, the result of something the player examines or does, or something "
+                "happens that no character would voice."
             )
         else:
             bits = [f"- {r['id']} ({r['name']})"]
@@ -155,6 +160,16 @@ def decide(
             "says they are about to say hello to someone new. At most ONE, usually nobody. If nobody comes over, only the people who can "
             "hear may answer, and if nobody can hear, return no speakers (the narrator, if listed, may describe the scene).\n"
             if apart else ""
+        ) + (
+            f"- The narrator is for what no character can do, and most exchanges have no narrator turn. List it when {player_name} examines, tries or "
+            "touches something in the place and the result is a matter of what is there (what the thing is like, whether it opens, what is found), "
+            "not anyone's talk about it; when something happens around them that nobody is speaking for (a sound, the weather, the clock, someone "
+            "passing, a change in the room); or when a moment needs marking (a silence after a revelation, a pause that hangs). Put the narrator first "
+            "when the result of an action has to be known before anyone reacts, and last when it marks the moment after what was said. Never to repeat "
+            "or sum up what someone has just said, and usually not on two exchanges running. "
+            + ("The narrator has not described anything yet.\n" if narrator_gap is None
+               else f"The narrator last described something {narrator_gap} line{'s' if narrator_gap != 1 else ''} ago.\n")
+            if narrator_rule and any(r["id"] == NARRATOR for r in roster) else ""
         ) +
         "- Someone addressed by name, by the player or by another character in the last few lines, "
         "who has not answered yet, speaks, and goes first.\n"

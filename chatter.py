@@ -203,6 +203,11 @@ BID_SCHEMA = {
 # Keep a memory of each place, and of each seeded fact, for whoever knows it (see Chatter.sync_places and sync_seeds).
 # CHATTER_AUTHORED_MEMORIES=0 turns it off.
 AUTHORED_MEMORIES = os.environ.get("CHATTER_AUTHORED_MEMORIES", "1") != "0"
+# Narration, when the narrator is on: when the player comes to a place, when nobody answers, and when the director calls for it
+# (an examined thing, something happening around them, a moment that needs marking). Each can be turned off with 0, for A/B runs.
+NARRATE_ARRIVAL = os.environ.get("CHATTER_NARRATE_ARRIVAL", "1") != "0"
+NARRATE_EMPTY = os.environ.get("CHATTER_NARRATE_EMPTY", "1") != "0"
+NARRATE_DIRECTED = os.environ.get("CHATTER_NARRATE_DIRECTED", "1") != "0"
 MAX_RECALL_CALLS = 2     # most on-demand recall calls within one reply
 
 RECALL_TOOL = {
@@ -527,10 +532,11 @@ class Chatter:
         self.sync_knowledge()
         self.save()
 
-    def move(self, to: str, bring: list[str] | None = None) -> dict:
+    def move(self, to: str, bring: list[str] | None = None, models: dict | None = None) -> dict:
         """Take the scene to another place (the player's call from the UI). A
         marker goes into the conversation so everyone who comes along sees where
-        the scene went; whoever is left behind never sees it."""
+        the scene went; whoever is left behind never sees it. With `models` and a
+        narrator, the narrator then sets the scene (`narration` in the result)."""
         if to == self.world.scene.get("location"):
             return {"from": to, "to": to, "brought": [], "left": []}
         info = self.world.move_scene(to, bring)
@@ -539,8 +545,41 @@ class Chatter:
                          self.world.present_ids(), kind="move")
         m["t"] = self.world.scene.get("fiction_time", "")
         self.sync_knowledge()
+        if models is not None and NARRATE_ARRIVAL:
+            text, _ = self._narrate(models, self._arrival_cue())
+            info["narration"] = text
         self.save()
         return info
+
+    def _arrival_cue(self) -> str:
+        """What the narrator is asked for when the player has just come to a place: the place as they take it in."""
+        player = self._name(PLAYER_ID)
+        return (f"{player} has just arrived at {self.world.place_name(self.world.scene.get('location'))}. Set the scene as they take it in: what the "
+                "place is like and who is there doing what, using only what the scene text tells you, with at most a small sensory detail of your own. "
+                f"Nobody speaks, and you do not say what {player} does, thinks or feels.")
+
+    def _narrate(self, models: dict, cue: str, audience: list[str] | None = None, **extra) -> tuple[str, dict]:
+        """One narrator beat, in the author's narrator voice, seen by `audience` (default: everyone in the place). Returns (text, usage);
+        no text if the narrator is off or the call fails (a courtesy: the scene carries on without it)."""
+        if not self.world.narrator_enabled():
+            return "", llm.zero_usage()
+        try:
+            reply, used, _, _ = self.respond(NARRATOR_ID, [], cue, models)
+        except Exception:  # noqa: BLE001
+            log.exception("narration failed")
+            return "", llm.zero_usage()
+        reply = reply.strip()
+        if reply:
+            self._append(NARRATOR_ID, reply, list(dict.fromkeys(self.world.present_ids() if audience is None else audience)), **extra)
+        return reply, used
+
+    def _narrator_gap(self) -> int | None:
+        """How many lines ago the narrator last described something (not a bare marker like 'comes in'); None if it has not."""
+        for i in range(len(self.history) - 1, -1, -1):
+            m = self.history[i]
+            if m["speaker"] == NARRATOR_ID and not m.get("kind"):
+                return len(self.history) - 1 - i
+        return None
 
     @staticmethod
     def _visible(m: dict, viewer: str | None) -> bool:
@@ -1056,6 +1095,8 @@ class Chatter:
                 player_name=self._name(PLAYER_ID),
                 cap=self.max_speakers,
                 model=models["director"],
+                narrator_rule=NARRATE_DIRECTED,
+                narrator_gap=self._narrator_gap(),
             )
         if bids is not None:
             # In bids mode the speakers are the characters who each said they wanted to; a director, if there was one, only
@@ -1076,6 +1117,14 @@ class Chatter:
             who = self._fallback_speaker(message, [c for c in cands if c != NARRATOR_ID] or cands)
             speakers = [{"id": who, "cue": ""}]
             reason = (reason + " " if reason else "") + "(fallback: the line wasn't an aside, so someone answers)"
+        if not speakers and message is not None and NARRATOR_ID in cands and NARRATE_EMPTY:
+            # Nobody answers: the narrator says what comes of the line or the action, so the turn is not left empty.
+            player = self._name(PLAYER_ID)
+            speakers = [{"id": NARRATOR_ID, "weight": "line", "cue": (
+                f"nobody answers {player}'s line or action. Say what comes of it, or what {player} notices, in the place as it is: what the "
+                "scene text and the place's description already say, with at most a small detail of your own. Nobody is quoted, and you do not "
+                f"say what {player} does, thinks or feels.")}]
+            reason = (reason + " " if reason else "") + "(fallback: nobody answers, so the narrator describes)"
         if message is not None:
             # Someone the player speaks to by name answers, and first, whatever the director chose.
             named = self._addressed(message, [c for c in cands if c != NARRATOR_ID] + [a["id"] for a in apart])   # calling to someone out of earshot brings them over
@@ -1811,6 +1860,10 @@ class Chatter:
                 came_from = {c["id"]: c.get("location") or "" for c in self.world.characters}
                 premoved = self.world.place_name(gone["to"])
             decision = self._direct(models, self.latest_for(None), message=message)
+            if premoved and NARRATE_ARRIVAL and self.world.narrator_enabled():
+                # They have walked into a place: it is set before anyone there answers.
+                decision["speakers"] = [{"id": NARRATOR_ID, "cue": self._arrival_cue(), "weight": "line", "forced": True}] \
+                    + [s for s in decision["speakers"] if s["id"] != NARRATOR_ID]
 
         extra = {"private_to": to} if private else {}
         foreshadowed: list[dict] = []
@@ -1827,7 +1880,7 @@ class Chatter:
                 public = list(public) + [viewer]
                 audience = list(audience) + [viewer]
             mem_viewer = None if viewer == NARRATOR_ID else viewer
-            if self.recall_cap > 0:
+            if self.recall_cap > 0 and not sp.get("forced"):
                 retrieved, ur = memory.retrieve(
                     self.store, self.latest_for(mem_viewer), self.recent_text(mem_viewer),
                     models["retrieval"], limit=self.recall_cap, viewer=viewer, names=names,
@@ -1853,7 +1906,13 @@ class Chatter:
                 foreshadowed.append({"to": names.get(viewer, viewer), "hint": sec["hint"]})
             if hint:
                 viewer_note = (viewer_note + " " if viewer_note else "") + self.author_note(hint)
-            reply, uc, ucr, on_demand = self.respond(viewer, retrieved, self._weighted_cue(sp), models, viewer_note)
+            try:
+                reply, uc, ucr, on_demand = self.respond(viewer, retrieved, self._weighted_cue(sp), models, viewer_note)
+            except Exception:
+                if not sp.get("forced"):
+                    raise
+                log.exception("scene-setting narration failed")   # a courtesy: the people there still answer
+                continue
             u_char = {k: u_char[k] + uc[k] for k in u_char}
             u_recall = {k: u_recall[k] + ucr[k] for k in u_recall}
             self._append(viewer, reply, audience, **extra)
@@ -1893,15 +1952,20 @@ class Chatter:
         else:
             self._note_leavers(scene_before, after, old_loc)
             self._note_arrivals(scene_before, after, came_from, old_loc)
+        arrival = ""   # the narrator setting the scene, when the scene has gone somewhere after the replies
         if moved:
             self._append(NARRATOR_ID, f"(The scene moves to {moved['value']}.)",
                          self.world.present_ids(), kind="move")
+            if NARRATE_ARRIVAL and not private:
+                arrival, u_arr = self._narrate(models, self._arrival_cue())
+                u_char = {k: u_char[k] + u_arr[k] for k in u_char}
         elif later and self.world.scene.get("location") == old_loc:
             try:   # they said what they would do and the others have answered: now they go, with whoever said they come
                 comps, u_comp = self._companions(models, said, later)
                 u_state = {k: u_state[k] + u_comp[k] for k in u_state}
-                info = self.move(later, comps)
+                info = self.move(later, comps, models=models)
                 moved = {"value": self.world.place_name(later)}
+                arrival = info.get("narration", "")
                 after = self.world.present_ids()
             except (ValueError, Exception):
                 log.exception("announced move failed")
@@ -1981,6 +2045,7 @@ class Chatter:
             },
             "scene_changes": changes,
             "moved": moved["value"] if moved else None,
+            "arrival": arrival,
             "premoved": premoved,
             "arrived": arrived,
             "discovered": found,

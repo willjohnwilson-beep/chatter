@@ -635,12 +635,13 @@ async function doMove() {
   const to = document.getElementById("sc-place").value;
   const bring = [...document.querySelectorAll(".mv-c:checked")].map(i => i.value);
   const res = await (await fetch("/api/move", {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, bring }),
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to, bring, models: models() }),
   })).json();
   if (res.error) { alert(res.error); return; }
   W = res.world;
   document.getElementById("move-plan").style.display = "none";
   addMsg("sys", "", `(The scene moves to ${placeName(to)}.)`);
+  if (res.move && res.move.narration) addSpoken("narrator", "Narrator", res.move.narration);
   renderScene(); renderCast(); renderCastStrip();
 }
 
@@ -843,6 +844,7 @@ async function send() {
     if (!d.replies.length) addMsg("sys", "", "(no one replies)");
     for (const r of d.replies) addSpoken(r.speaker, r.name, r.content, r.private ? to : null);
     if (d.moved) addMsg("sys", "", `(The scene moves to ${d.moved}.)`);
+    if (d.arrival) addSpoken("narrator", "Narrator", d.arrival);
     for (const n of d.arrived || []) addMsg("sys", "", `(${n} comes in.)`);
     for (const t of d.discovered || []) addMsg("sys", "", t);
     for (const t of d.happened || []) addMsg("sys", "", t);

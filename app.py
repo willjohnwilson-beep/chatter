@@ -317,7 +317,9 @@ def move_scene():
     if not world.can_enter(to):
         return jsonify({"error": "that place is locked; unlock it in the Places tab first"}), 400
     bring = body.get("bring")
-    info = chat_engine.move(to, bring if isinstance(bring, list) else None)
+    supplied = body.get("models") or {}
+    models = {k: supplied.get(k, v) for k, v in DEFAULT_MODELS.items()}
+    info = chat_engine.move(to, bring if isinstance(bring, list) else None, models=models)
     return jsonify({"ok": True, "move": info, **snapshot()})
 
 

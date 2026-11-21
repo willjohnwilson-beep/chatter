@@ -393,8 +393,11 @@ store, world, c = make([WREN, MICK], narrator=True)
 assert c.candidates() == ["wren", "mick", "narrator"]
 f = install(director={"speakers": [], "reason": "nobody would react"})
 r = c.turn("...", MODELS)
-assert r["replies"] == [] and f.kinds() == ["director", "watch"], f.kinds()
+assert [x["speaker"] for x in r["replies"]] == ["narrator"] and f.kinds() == ["director", "character", "watch"], f.kinds()   # the narrator says what comes of it
 store, world, c = make([WREN, MICK])
+f = install(director={"speakers": [], "reason": "nobody would react"})
+r = c.turn("...", MODELS)
+assert r["replies"] == [] and f.kinds() == ["director", "watch"], f.kinds()   # with no narrator, nobody replies
 for ch_ in world.characters:
     ch_["location"] = ""
 assert c.candidates() == [] and c._direct(MODELS, "x")["speakers"] == []
@@ -4381,7 +4384,8 @@ d = c._direct(MODELS, c.latest_for(None), message="Hm.")
 assert [s["id"] for s in d["speakers"]] == ["narrator"] and d["bids"][0]["id"] in ("wren", "mick", "sam", "narrator")
 install(bid=bidder(narrator=(1, "something"), wren=(0, ""), mick=(0, ""), sam=(0, "")))
 d = c._direct(MODELS, c.latest_for(None), message="*Hm.*")
-assert d["speakers"] == [], "only the narrator would speak, and not keenly: nobody"
+assert [s["id"] for s in d["speakers"]] == ["narrator"] and "nobody answers, so the narrator describes" in d["reason"], \
+    "no character answers and the narrator is on: it says what comes of it, though it was not keen"
 d = c._direct(MODELS, c.latest_for(None), message="Hm?")
 assert [s["id"] for s in d["speakers"]] != ["narrator"] and len(d["speakers"]) == 1, "the narrator is never picked just to have someone answer"
 # privacy: a character's bid is made from their own prompt, which holds only what they know
@@ -5568,6 +5572,97 @@ json.dump({"fixed": {}, "scene": {}, "characters": [{"name": "Wren"}], "narrator
 assert st.WorldState(old).characters[0]["apart"] is False, "a world file from before has nobody out of earshot"
 tmpl = ui_text()
 assert 'class="c-apart"' in tmpl or "c-apart" in tmpl and "pc-apart" in tmpl and "Out of earshot" in tmpl and "c.present && !c.apart" in tmpl
+print("   PASS")
+
+print("== 120. narration: the narrator sets the scene when the player comes to a place, says what comes of it when nobody answers, and is told what it is for ==")
+DIRMICK = {"speakers": [{"id": "mick", "cue": ""}], "reason": "x"}
+NARR = lambda kw: "The kitchen is warm." if "NARRATOR-VOICE" in kw["system"] else "Mick-reply"
+
+
+def narr_world():
+    store, world, c = walk_world()
+    world.narrator["enabled"], world.narrator["persona"] = True, "You are the NARRATOR-VOICE."
+    return store, world, c
+
+
+# the player walks into a room (premove): the narrator sets it before anyone there answers, with no memory lookup of its own
+store, world, c = narr_world()
+f = install(premove=MOVE("kitchen"), character=NARR, watch={"updates": []}, director=DIRMICK)
+r = c.turn("*I walk into the kitchen*", MODELS)
+assert [x["speaker"] for x in r["replies"]] == ["narrator", "mick"] and r["replies"][0]["content"] == "The kitchen is warm.", [x["speaker"] for x in r["replies"]]
+nk = next(kw for k, kw in f.calls if k == "character" and "NARRATOR-VOICE" in kw["system"])
+assert "has just arrived at The Kitchen" in nk["system"] + json.dumps(nk["messages"]) and "Nobody speaks" in nk["system"] + json.dumps(nk["messages"])
+assert f.kinds().count("retrieve") <= 1, "the forced beat does not search anyone's memory: only Mick's reply does"
+beat = next(m for m in c.history if m["speaker"] == "narrator" and not m.get("kind"))
+assert beat["present"] == ["mick"] and c.history.index(beat) > next(i for i, m in enumerate(c.history) if m.get("kind") == "move"), "after the marker, seen by the room"
+assert c._narrator_gap() == 1, c._narrator_gap()
+# without a narrator nothing changes: only Mick answers (as in 101)
+store, world, c = walk_world()
+install(premove=MOVE("kitchen"), character=NARR, watch={"updates": []}, director=DIR96)
+assert [x["speaker"] for x in c.turn("*I walk into the kitchen*", MODELS)["replies"]] == ["mick"]
+# a narrator that is on but whose call fails: the scene carries on
+store, world, c = narr_world()
+install(premove=MOVE("kitchen"), character=lambda kw: (_ for _ in ()).throw(RuntimeError("down")) if "NARRATOR-VOICE" in kw["system"] else "Mick-reply",
+        watch={"updates": []}, director=DIRMICK)
+r = c.turn("*I walk into the kitchen*", MODELS)
+assert [x["speaker"] for x in r["replies"]] == ["mick"], "the scene-setting is a courtesy: the room still answers"
+
+# the watcher moves the scene after the replies: the narrator sets the new place after the marker, and the turn says so
+store, world, c = narr_world()
+install(character=NARR, watch={"updates": [{"target": "scene", "field": "location", "value": "kitchen", "why": "go"},
+                                            {"target": "wren", "field": "location", "value": "kitchen", "why": "goes too"}]},
+        director=DIR96, premove=MOVE("kitchen", moves=False))
+r = c.turn("Let's go to the kitchen.", MODELS)
+assert r["moved"], r["scene_changes"]
+if True:
+    assert r["arrival"] == "The kitchen is warm." and c.history[-1]["speaker"] == "narrator" and not c.history[-1].get("kind"), c.history[-1]
+    assert c.history[-2]["kind"] == "move" and c.history[-1]["present"] == world.present_ids()
+# the UI's own move: the narrator sets the scene when given models, and not otherwise
+store, world, c = narr_world()
+install(character=NARR)
+info = c.move("kitchen", ["wren"], models=MODELS)
+assert info["narration"] == "The kitchen is warm." and c.history[-1]["speaker"] == "narrator" and c.history[-2]["kind"] == "move"
+store, world, c = narr_world()
+install(character=NARR)
+assert "narration" not in c.move("kitchen", ["wren"]) and c.history[-1]["kind"] == "move"
+store, world, c = walk_world()
+install(character=NARR)
+assert c.move("kitchen", ["wren"], models=MODELS)["narration"] == "", "no narrator, no narration"
+# the author's opening for a preset is the narration of that scene: begin_scene adds nothing
+# nobody answers (narrator on): the narrator says what comes of it, from the place; a line nobody needs to answer is not lost
+store, world, c = narr_world()
+world.scene["location"] = "salt-line"
+f = install(character=NARR, watch={"updates": []}, director={"speakers": [], "reason": "nobody answers"})
+r = c.turn("*I examine the old clock above the bar*", MODELS)
+assert [x["speaker"] for x in r["replies"]] == ["narrator"] and "nobody answers" in json.dumps(next(kw for k, kw in f.calls if k == "character"))
+
+# the director: a narrator listed gets the rule (what it is for, and how long since it last described something); none listed, none given
+import director
+f = install(director={"speakers": [{"id": "narrator", "cue": "what the clock shows"}], "reason": "x"})
+roster = [{"id": "wren", "name": "Wren", "brief": "b"}, {"id": "narrator", "name": "Narrator"}]
+sp, _, _, _, _ = director.decide(roster, "scene", "recent", "latest", "Alex", 3, "m", narrator_gap=None)
+p1 = f.calls[-1][1]["messages"][0]["content"]
+assert "The narrator is for what no character can do" in p1 and "examines, tries or touches something" in p1 and "has not described anything yet" in p1
+assert [s["id"] for s in sp] == ["narrator"]
+director.decide(roster, "scene", "recent", "latest", "Alex", 3, "m", narrator_gap=4)
+assert "last described something 4 lines ago" in f.calls[-1][1]["messages"][0]["content"]
+director.decide(roster, "scene", "recent", "latest", "Alex", 3, "m", narrator_gap=1)
+assert "last described something 1 line ago" in f.calls[-1][1]["messages"][0]["content"]
+director.decide(roster, "scene", "recent", "latest", "Alex", 3, "m", narrator_rule=False)
+assert "The narrator is for what no character can do" not in f.calls[-1][1]["messages"][0]["content"], "the switch turns the rule off"
+director.decide([{"id": "wren", "name": "Wren"}, {"id": "mick", "name": "Mick"}], "scene", "recent", "latest", "Alex", 3, "m")
+assert "The narrator is for" not in f.calls[-1][1]["messages"][0]["content"], "no narrator in the roster, no rule"
+# the engine hands the director the gap
+store, world, c = narr_world()
+world.scene["location"] = "salt-line"
+c._append("narrator", "Rain on the window.", ["wren", "sam"])
+c._append("player", "Hm.", ["wren", "sam"])
+f = install(character="ok", watch={"updates": []}, director={"speakers": [{"id": "wren", "cue": ""}], "reason": "x"})
+c.turn("Is it raining?", MODELS)
+assert "last described something 2 lines ago" in next(kw for k, kw in f.calls if k == "director")["messages"][0]["content"]
+# the UI reads the new fields
+tmpl = ui_text()
+assert "d.arrival" in tmpl and "res.move.narration" in tmpl and "models: models() })" in tmpl
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
