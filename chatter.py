@@ -174,6 +174,20 @@ def shares_a_place_word(text: str, vocab: set) -> bool:
     return any(w[:5] in prefixes for w in words if len(w) >= 5)
 
 
+def names_a_place(text: str, places: list[dict]) -> bool:
+    """Does a line call one of these places by its name: the whole name, one of its words (three letters too: 'pub', 'tea'), or two of its words run together
+    ('tearoom' for 'Tea Room')? Everyday words like 'room' and 'house' do not count alone."""
+    low = (text or "").lower()
+    for p in places:
+        name = re.sub(r"^the\s+", "", p["name"].lower())
+        toks = re.findall(r"[a-z]+", name)
+        words = {x for x in toks if (len(x) >= 4 and x not in GENERIC_PLACE_WORDS) or (len(x) == 3 and x not in _SHORT_STOP)}
+        words |= {a + b for a, b in zip(toks, toks[1:]) if len(a + b) >= 6}
+        if re.search(r"\b" + re.escape(name) + r"\b", low) or any(re.search(r"\b" + re.escape(x) + r"\b", low) for x in words):
+            return True
+    return False
+
+
 def going_gate(text: str, vocab: set) -> bool:
     """Is this spoken line worth asking a model whether the speaker is going somewhere? Either it sounds like going (or like taking a leave) AND shares a word with one of the places,
     or it is a first-person line with a word of motion in it, whether or not it names a place."""
@@ -208,6 +222,7 @@ AUTHORED_MEMORIES = os.environ.get("CHATTER_AUTHORED_MEMORIES", "1") != "0"
 NARRATE_ARRIVAL = os.environ.get("CHATTER_NARRATE_ARRIVAL", "1") != "0"
 NARRATE_EMPTY = os.environ.get("CHATTER_NARRATE_EMPTY", "1") != "0"
 NARRATE_DIRECTED = os.environ.get("CHATTER_NARRATE_DIRECTED", "1") != "0"
+NARRATE_GUARD = os.environ.get("CHATTER_NARRATE_GUARD", "1") != "0"   # tell the narrator the scene has not moved (see Chatter._narrator_guard)
 MAX_RECALL_CALLS = 2     # most on-demand recall calls within one reply
 
 RECALL_TOOL = {
@@ -557,6 +572,13 @@ class Chatter:
         return (f"{player} has just arrived at {self.world.place_name(self.world.scene.get('location'))}. Set the scene as they take it in: what the "
                 "place is like and who is there doing what, using only what the scene text tells you, with at most a small sensory detail of your own. "
                 f"Nobody speaks, and you do not say what {player} does, thinks or feels.")
+
+    def _narrator_guard(self) -> str:
+        """Said to the narrator whenever it describes something other than an arrival: the scene is where it is, and a line that sets off for another place has not
+        got there. (Without it the narrator described the tearoom the player said they were going into while the scene, and everyone's picture of it, stayed in the square.)"""
+        player = self._name(PLAYER_ID)
+        return (f"The scene is at {self.world.place_name(self.world.scene.get('location'))}: describe only what is there. If {player}'s line has them setting off for "
+                "somewhere else, narrate only the setting off: they have not arrived, and you do not describe the place they are heading for.")
 
     def _narrate(self, models: dict, cue: str, audience: list[str] | None = None, **extra) -> tuple[str, dict]:
         """One narrator beat, in the author's narrator voice, seen by `audience` (default: everyone in the place). Returns (text, usage);
@@ -948,20 +970,17 @@ class Chatter:
         here = w.scene.get("location")
         places = [p for p in w.locations if p["id"] != here and not p.get("locked")]
 
-        def names_a_place(text: str) -> bool:
-            low = text.lower()
-            for p in places:
-                name = re.sub(r"^the\s+", "", p["name"].lower())
-                words = {x for x in re.findall(r"[a-z]{4,}", name) if x not in GENERIC_PLACE_WORDS}
-                if re.search(r"\b" + re.escape(name) + r"\b", low) or any(re.search(r"\b" + re.escape(x) + r"\b", low) for x in words):
-                    return True
-            return False
+        vocab = place_vocab(places)
+
+        def worth_asking(text: str) -> bool:
+            # A place named, or a line that is plainly about going ('I go into the tearoom', 'popping over to the café': the place is called by what it is, not by its name)
+            return names_a_place(text, places) or going_gate(text, vocab) or bool(_MOTION_RE.search(text))
 
         # What the others said just before: an invitation ('kitchen first... Come on, all of us') that the player's line may be answering
         # ('Lead on', 'Fine, I'll follow') without naming the place itself.
         # Only what people said: a stage direction ('(Imogen leaves for The Front Hall.)') is not an invitation, and took the player there once.
         before = [m for m in self.history[:-1][-4:] if m["speaker"] not in (PLAYER_ID, NARRATOR_ID) and not m.get("kind") and not m.get("private_to")]
-        if not (names_a_place(message) or any(names_a_place(m["content"]) or INVITE_RE.search(m["content"]) for m in before)):
+        if not (worth_asking(message) or any(names_a_place(m["content"], places) or INVITE_RE.search(m["content"]) for m in before)):
             return None
         present = [c for c in w.characters if w.is_present(c)]
         player = self._name(PLAYER_ID)
@@ -1122,8 +1141,8 @@ class Chatter:
             player = self._name(PLAYER_ID)
             speakers = [{"id": NARRATOR_ID, "weight": "line", "cue": (
                 f"nobody answers {player}'s line or action. Say what comes of it, or what {player} notices, in the place as it is: what the "
-                "scene text and the place's description already say, with at most a small detail of your own. Nobody is quoted, and you do not "
-                f"say what {player} does, thinks or feels.")}]
+                f"scene text and the place's description already say, with at most a small detail of your own. Nobody is quoted, and you do not "
+                f"say what {player} does, thinks or feels. " + self._narrator_guard())}]
             reason = (reason + " " if reason else "") + "(fallback: nobody answers, so the narrator describes)"
         if message is not None:
             # Someone the player speaks to by name answers, and first, whatever the director chose.
@@ -1906,8 +1925,11 @@ class Chatter:
                 foreshadowed.append({"to": names.get(viewer, viewer), "hint": sec["hint"]})
             if hint:
                 viewer_note = (viewer_note + " " if viewer_note else "") + self.author_note(hint)
+            cue = self._weighted_cue(sp)
+            if viewer == NARRATOR_ID and not sp.get("forced") and NARRATE_GUARD and "nobody answers" not in cue:
+                cue = (cue + " " if cue else "") + self._narrator_guard()   # (the empty-turn cue already carries it)
             try:
-                reply, uc, ucr, on_demand = self.respond(viewer, retrieved, self._weighted_cue(sp), models, viewer_note)
+                reply, uc, ucr, on_demand = self.respond(viewer, retrieved, cue, models, viewer_note)
             except Exception:
                 if not sp.get("forced"):
                     raise

@@ -4496,7 +4496,7 @@ store, world, c = walk_world()
 world.set_locations([{"id": "a", "name": "The Great Room"}, {"id": "b", "name": "The Blue Room", "known_by": []}, {"id": "c", "name": "The Pool Terrace"}])
 world.scene["location"] = "c"
 f = install(premove=MOVE("a", moves=False))
-for line, asked in (("I go back to the great room", True), ("Anyone in the blue room?", True), ("What a lovely room", False), ("back to the house", False), ("up to the terrace", False)):
+for line, asked in (("I go back to the great room", True), ("Anyone in the blue room?", True), ("What a lovely room", False), ("back to the house", True), ("up to the terrace", False)):   # "back to" is going, whether or not a place is named
     n = f.kinds().count("premove")
     c._premove(MODELS, line)
     assert (f.kinds().count("premove") - n == 1) == asked, line
@@ -5663,6 +5663,51 @@ assert "last described something 2 lines ago" in next(kw for k, kw in f.calls if
 # the UI reads the new fields
 tmpl = ui_text()
 assert "d.arrival" in tmpl and "res.move.narration" in tmpl and "models: models() })" in tmpl
+print("   PASS")
+
+print("== 121. a player who goes somewhere called by what it is ('the tearoom', 'the café') is asked about; the narrator is told the scene has not moved ==")
+PL = [{"id": "square", "name": "Market Square", "brief": "cobbled square with a slow clock", "connects_to": ["tea", "pub", "no9"]},
+      {"id": "tea", "name": "Marsh's Tea Room", "brief": "steamy café with mismatched cups", "connects_to": ["square"]},
+      {"id": "pub", "name": "The Wheatsheaf", "brief": "low-beamed stone pub", "connects_to": ["square"]},
+      {"id": "no9", "name": "9 Tanner's Row", "brief": "the player's new terraced house", "connects_to": ["square"]}]
+store, world, c = make([WREN, MICK])
+world.set_locations(PL)
+world.scene["location"] = "square"
+f = install(premove=MOVE("tea", moves=False))
+for line, asked in (("*I go into the tearoom*", True), ("I'm heading for the café", True), ("*I walk to the pub*", True), ("*I go over to number 9*", True),
+                    ("*I push open the door of the Wheatsheaf*", True), ("*I head home*", True),
+                    ("*I look at the stalls*", False), ("Is the clock really always slow?", False), ("I'll have a bacon roll", False),
+                    ("*I wander around the market*", False), ("I'll go and have a think", False), ("What do you make of the vicar?", False)):
+    n = f.kinds().count("premove")
+    c._premove(MODELS, line)
+    assert (f.kinds().count("premove") - n == 1) == asked, line
+# a name run together or split ('Tea Room' / 'tearoom') is the same place
+assert ch.names_a_place("the tearoom", PL[1:]) and ch.names_a_place("the tea room", PL[1:]) and not ch.names_a_place("the room", PL[1:])
+
+# the narrator is told where the scene is, whenever it is not setting a place on arrival
+store, world, c = make([WREN, MICK], narrator=True)
+world.set_locations(PL)
+world.narrator["persona"] = "You are the NARRATOR-VOICE."
+for cid in ("wren", "mick"):
+    world.character(cid)["location"] = world.scene["location"] = "square"
+f = install(character=lambda kw: "The square hums.", watch={"updates": []}, director={"speakers": [], "reason": "nobody answers"}, premove=MOVE("tea", moves=False))
+c.turn("*I go into the tearoom*", MODELS)
+call = json.dumps(next(kw for k, kw in f.calls if k == "character"))
+assert "The scene is at Market Square: describe only what is there" in call and "you do not describe the place they are heading for" in call, call[-600:]
+f = install(character=lambda kw: "The square hums.", watch={"updates": []}, director={"speakers": [{"id": "narrator", "cue": "what the clock shows"}], "reason": "x"})
+c.turn("*I look at the clock*", MODELS)
+assert "The scene is at Market Square: describe only what is there" in json.dumps(next(kw for k, kw in f.calls if k == "character"))
+# and not when it is setting the place the player has just come to
+store, world, c = make([WREN, MICK], narrator=True)
+world.set_locations(PL)
+world.narrator["persona"] = "You are the NARRATOR-VOICE."
+for cid in ("wren", "mick"):
+    world.character(cid)["location"] = world.scene["location"] = "square"
+world.character("mick")["location"] = "tea"
+f = install(character=lambda kw: "The tea room steams.", watch={"updates": []}, director={"speakers": [{"id": "mick", "cue": ""}], "reason": "x"}, premove=MOVE("tea"))
+c.turn("*I go into the tearoom*", MODELS)
+nk = json.dumps(next(kw for k, kw in f.calls if k == "character" and "NARRATOR-VOICE" in kw["system"]))
+assert "has just arrived at Marsh's Tea Room" in nk and "describe only what is there" not in nk
 print("   PASS")
 
 print("\nALL DETERMINISTIC TESTS PASSED")
