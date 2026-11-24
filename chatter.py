@@ -547,7 +547,7 @@ class Chatter:
         self.sync_knowledge()
         self.save()
 
-    def move(self, to: str, bring: list[str] | None = None, models: dict | None = None) -> dict:
+    def move(self, to: str, bring: list[str] | None = None, models: dict | None = None, via: str = "ui", why: str = "") -> dict:
         """Take the scene to another place (the player's call from the UI). A
         marker goes into the conversation so everyone who comes along sees where
         the scene went; whoever is left behind never sees it. With `models` and a
@@ -557,7 +557,8 @@ class Chatter:
         info = self.world.move_scene(to, bring)
         self._note_scene_departure(info["from"], info["left"], info["brought"], self.world.place_name(to))
         m = self._append(NARRATOR_ID, f"(The scene moves to {self.world.place_name(to)}.)",
-                         self.world.present_ids(), kind="move")
+                         self.world.present_ids(), kind="move", via=via, why=why)   # how it came about is kept with the marker, for the author
+        log.info("scene moves to %s (%s): %s", to, via, why)
         m["t"] = self.world.scene.get("fiction_time", "")
         self.sync_knowledge()
         if models is not None and NARRATE_ARRIVAL:
@@ -1028,7 +1029,7 @@ class Chatter:
             return {"announced": to}
         companions = [c for c in dict.fromkeys(got.get("companions") or []) if c in {x["id"] for x in present}]
         try:
-            info = self.move(to, companions)
+            info = self.move(to, companions, via="premove", why=str(got.get("why") or "")[:200])
         except ValueError:
             return None
         return info
@@ -1977,7 +1978,8 @@ class Chatter:
         arrival = ""   # the narrator setting the scene, when the scene has gone somewhere after the replies
         if moved:
             self._append(NARRATOR_ID, f"(The scene moves to {moved['value']}.)",
-                         self.world.present_ids(), kind="move")
+                         self.world.present_ids(), kind="move", via="watcher", why=str(moved.get("why") or "")[:200])
+            log.info("scene moves to %s (watcher): %s", moved["value"], moved.get("why"))
             if NARRATE_ARRIVAL and not private:
                 arrival, u_arr = self._narrate(models, self._arrival_cue())
                 u_char = {k: u_char[k] + u_arr[k] for k in u_char}
@@ -1985,7 +1987,7 @@ class Chatter:
             try:   # they said what they would do and the others have answered: now they go, with whoever said they come
                 comps, u_comp = self._companions(models, said, later)
                 u_state = {k: u_state[k] + u_comp[k] for k in u_state}
-                info = self.move(later, comps, models=models)
+                info = self.move(later, comps, models=models, via="announced", why="the player said they would go, and the others have answered")
                 moved = {"value": self.world.place_name(later)}
                 arrival = info.get("narration", "")
                 after = self.world.present_ids()

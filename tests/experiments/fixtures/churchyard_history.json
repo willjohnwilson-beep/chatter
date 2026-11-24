@@ -1,0 +1,323 @@
+[
+ {
+  "speaker": "player",
+  "content": "*I wander around the square, looking at the market stalls*",
+  "t": "Thursday 12 November 2026, 10:31am",
+  "present": [],
+  "loc": "market-square"
+ },
+ {
+  "speaker": "narrator",
+  "content": "The strip of awnings between the war memorial and the market hall smells of wet canvas and winter greens; a stallholder in a flat cap is weighing potatoes on a brass scale while a woman ahead of him counts change twice, unhurried. The clock on the old hall shows half past ten and always will, four minutes behind everyone else's, and the cobbles underfoot are dry but cold, with grit and cabbage leaves tracked across them from the Tuesday rain. Somewhere behind the cheese stall a dog is barking at nothing in particular.",
+  "t": "Thursday 12 November 2026, 10:31am",
+  "present": [],
+  "loc": "market-square"
+ },
+ {
+  "speaker": "player",
+  "content": "*I wander in the direction of the tearoom*",
+  "t": "Thursday 12 November 2026, 10:32am",
+  "present": [],
+  "loc": "market-square"
+ },
+ {
+  "speaker": "narrator",
+  "content": "(Sam leaves for Marsh's Tea Room.)",
+  "t": "Thursday 12 November 2026, 10:32am",
+  "present": [
+   "arthur-bell",
+   "kez-dunmore"
+  ],
+  "loc": "market-square",
+  "kind": "depart"
+ },
+ {
+  "speaker": "narrator",
+  "content": "(The scene moves to Marsh's Tea Room.)",
+  "t": "Thursday 12 November 2026, 10:32am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room",
+  "kind": "move"
+ },
+ {
+  "speaker": "narrator",
+  "content": "The door swings shut behind Sam and the steam off the kettle fogs the glass further, so the square outside goes soft and grey. Eight tables, several of them taken, and a glass cabinet of scones and parkin by the counter, where Maureen Marsh is lifting a tray of something out of the oven, flour to her elbow in her cardigan sleeve. By the door the noticeboard is thick with lost cats, piano lessons and a parish newsletter, and the room smells of tea, sugar and hot fat.",
+  "t": "Thursday 12 November 2026, 10:32am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Now then, love — come in, come in, shut that door behind you or we'll have all t'square in. You'll be the one at number 9, then. I heard there was a moving van up Tanner's Row Tuesday. *wipes hands on the apron.* Sit yourself down, it's parkin day and the kettle's not long boiled. Tea?",
+  "t": "Thursday 12 November 2026, 10:32am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "Yes...please. What gave me away?",
+  "t": "Thursday 12 November 2026, 10:33am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Oh, love, you've flour on your sleeve and removal-van dust on your shoulders, and you've that look on you like a lamb that's wandered into t'wrong field. Besides, I've been watching that street all week — a van on Tuesday, curtains twitching since. Sit down, do.",
+  "t": "Thursday 12 November 2026, 10:33am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "Very well. I see nothing gets past you. *I sit.* Do you run this place alone?",
+  "t": "Thursday 12 November 2026, 10:34am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Alone? Give over — I've Kez, she's in five days a week, been with me two years come January. She's not here this minute, mind. But mostly it's me and the kettle, and the kettle's the better company. Been at this thirty-one years, so I'd say we rub along. Why, were you after a job?",
+  "t": "Thursday 12 November 2026, 10:34am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "No, no. Just curious. Tea and something to eat would be lovely",
+  "t": "Thursday 12 November 2026, 10:35am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Right then — a pot of tea for two, since I'm having one whether you like it or not, and you'll have a scone with it and a bit of parkin on the side, warm from oven. No arguing. Now then, what brings you up to Marlbeck from that London? Work, was it?",
+  "t": "Thursday 12 November 2026, 10:35am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "No, no. Just needed to get out of the city",
+  "t": "Thursday 12 November 2026, 10:36am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Aye, well. Cities'll do that to you. *sets the pot down.* There's worse places to land than Marlbeck, I'll say that much. It's quiet, mind — nobody'll hurry you and nobody'll leave you be, neither, so you'll have to pick which one you can live with. Milk and sugar?",
+  "t": "Thursday 12 November 2026, 10:36am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "Please, both",
+  "t": "Thursday 12 November 2026, 10:37am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "There we are — milk and one sugar, and if it's too strong for you, say so, I don't stand on ceremony. *pours.* Now then. You've got the house, you've got the tea. What else have you got? A job to go to, or are you going to be at a loose end come Monday?",
+  "t": "Thursday 12 November 2026, 10:37am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "I've got something, but it isn't starting for a week or so. *I take a sip.* Pretty good",
+  "t": "Thursday 12 November 2026, 10:39am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Good, that's the way I like it — a bit of body to it, none of your dishwater. *sits down opposite.* So what is it, then, this something that doesn't start till next week? Don't leave me hanging, love, I've a whole café to tell it to after you've gone.",
+  "t": "Thursday 12 November 2026, 10:39am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "It's positively indecent, I warn you. Taxes",
+  "t": "Thursday 12 November 2026, 10:41am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Taxes! *laughs.* Well, that's the first time anyone's called taxes indecent in my café and meant it as a joke. Go on then — are you an inspector, or is it summat duller like doing other people's for them? Because if it's the first, I'll be wanting me receipts in order, and if it's the second, half of Marlbeck'll be at your door by Sunday.",
+  "t": "Thursday 12 November 2026, 10:41am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "I'm just an accountant, Nothing too romantic",
+  "t": "Thursday 12 November 2026, 10:42am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "An accountant. *grins.* Well, I'm disappointed now, I'd had you down as summat exciting. Still, every town needs one and ours has been making do with a man in Skipton who takes three weeks to answer a letter, so you'll be a novelty. Where are you set up, then — here in town, or are you off to Skipton on the bus every morning?",
+  "t": "Thursday 12 November 2026, 10:42am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "No, I can work out of the house for the time being",
+  "t": "Thursday 12 November 2026, 10:43am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Working from home. Now I'm jealous — I've not had a quiet hour to meself since 1995. Mind, that house of yours, you'll get more quiet than you bargained for. Tanner's Row's a street where you can hear a kettle boil three doors down.",
+  "t": "Thursday 12 November 2026, 10:43am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "I'm hardly here looking for hustle and bustle. It'll work out",
+  "t": "Thursday 12 November 2026, 10:44am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Aye, that's the right way to look at it. Marlbeck'll not rush you and it'll not judge you, and if you want to be left alone of an evening, you will be. *sips her tea.* Mind, don't go being too much of a stranger. Half of what's good about this town happens in other people's kitchens.",
+  "t": "Thursday 12 November 2026, 10:44am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "I think I'll leave people to what they get up to in their own kitchen",
+  "t": "Thursday 12 November 2026, 10:44am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Ha! Well, that's you told, Maureen. *sits back.* Suit yourself, love — but I'll warn you now, in this town it's the other way round. You'll be sat in your kitchen minding your own business and somebody'll knock on with a bit of sponge and a question about your pipes. There's no stopping it. Best just to open the door and get it over with.",
+  "t": "Thursday 12 November 2026, 10:44am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "My pipes? Do people often enquire about one another's pipes?",
+  "t": "Thursday 12 November 2026, 10:45am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Pipes, aye — has nobody warned you? Come January this town freezes solid and every pipe in Tanner's Row starts complaining. So folk knock on, ostensibly about your pipes, and then they stay for an hour and tell you what's wrong with the council. It's the plumbing that gets them through the door, love. The tea does the rest.",
+  "t": "Thursday 12 November 2026, 10:45am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "What is wrong with the council?",
+  "t": "Thursday 12 November 2026, 10:47am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Oh, where do I start. Bins, for one — they moved us to fortnightly collection and half the town's been writing letters since. Arthur Bell at number eleven, your neighbour, he'll tell you all about it given half a chance, he writes to them about twice a month and they write back about twice a year. And the clock in the square's four minutes slow, has been since before the war, and the council won't touch it. Some say it's a listed eccentricity. I say they've just never noticed it's wrong.",
+  "t": "Thursday 12 November 2026, 10:47am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "They won't adjust the clock? But surely they change it twice a year for daylight saings?",
+  "t": "Thursday 12 November 2026, 10:49am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "maureen-marsh",
+  "content": "Oh, that's the joke of it — they do, twice a year, somebody goes up that ladder and turns it. And it's still four minutes slow afterward! Every single time. It's like it's decided, the clock has, and it's not shifting for any of us. My Les used to set his watch by it and then add the four, and he'd still be late.",
+  "t": "Thursday 12 November 2026, 10:49am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ },
+ {
+  "speaker": "player",
+  "content": "How odd",
+  "t": "Thursday 12 November 2026, 10:50am",
+  "present": [
+   "maureen-marsh"
+  ],
+  "loc": "marsh-s-tea-room"
+ }
+]

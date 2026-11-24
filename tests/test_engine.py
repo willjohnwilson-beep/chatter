@@ -5710,4 +5710,22 @@ nk = json.dumps(next(kw for k, kw in f.calls if k == "character" and "NARRATOR-V
 assert "has just arrived at Marsh's Tea Room" in nk and "describe only what is there" not in nk
 print("   PASS")
 
+DIRWREN = {"speakers": [{"id": "wren", "cue": ""}], "reason": "x"}
+print("== 122. every move of the scene keeps how it came about, so the author can see why the scene went where it did ==")
+marker = lambda c_: [m for m in c_.history if m.get("kind") == "move"][-1]
+store, world, c = walk_world()
+install(premove={"moves": True, "to": "kitchen", "companions": [], "why": "they walk in"}, character="hi", watch={"updates": []}, director=DIR96)
+c.turn("*I walk into the kitchen*", MODELS)
+assert marker(c)["via"] == "premove" and marker(c)["why"] == "they walk in", marker(c)
+store, world, c = fresh()
+install(character="ok", watch={"updates": [{"target": "scene", "field": "location", "value": "cellar", "why": "went down"},
+                                            {"target": "wren", "field": "location", "value": "cellar", "why": "goes too"}]}, director=DIRWREN)
+c.turn("Let's go down to the cellar.", MODELS)
+assert marker(c)["via"] == "watcher" and marker(c)["why"] == "went down", marker(c)
+store, world, c = fresh()
+install(character="ok")
+c.move("cellar", ["wren"])
+assert marker(c)["via"] == "ui" and marker(c)["why"] == ""
+print("   PASS")
+
 print("\nALL DETERMINISTIC TESTS PASSED")

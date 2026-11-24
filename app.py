@@ -792,4 +792,11 @@ def session_delete():
 
 
 if __name__ == "__main__":
+    import logging
+
+    # The engine's own notes (why the scene moved) reach the server log; Python shows only warnings by default. Only when serving: the tests exercise failure paths on purpose.
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logging.getLogger("chatter").addHandler(_h)
+    logging.getLogger("chatter").setLevel(logging.INFO)
     app.run(port=5005, debug=False)
